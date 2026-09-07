@@ -371,6 +371,7 @@ export interface SuggestedQuestion {
 export function getSuggestedQuestions(
   agentId: string,
   params?: {
+    agent_source_tenant_id?: string;
     knowledge_base_ids?: string[];
     knowledge_ids?: string[];
     tag_scopes?: Array<{ knowledge_base_id: string; tag_ids: string[] }>;
@@ -378,6 +379,7 @@ export function getSuggestedQuestions(
   }
 ) {
   const query = new URLSearchParams();
+  if (params?.agent_source_tenant_id) query.set('agent_source_tenant_id', params.agent_source_tenant_id);
   if (params?.knowledge_base_ids?.length) query.set('knowledge_base_ids', params.knowledge_base_ids.join(','));
   if (params?.knowledge_ids?.length) query.set('knowledge_ids', params.knowledge_ids.join(','));
   if (params?.tag_scopes?.length) query.set('tag_scopes', JSON.stringify(params.tag_scopes));

@@ -24,6 +24,7 @@ type suggestedQuestionsAgentService struct {
 func (s *suggestedQuestionsAgentService) GetSuggestedQuestions(
 	_ context.Context,
 	_ string,
+	_ uint64,
 	_ []string,
 	_ []string,
 	tagScopes []types.TagScope,

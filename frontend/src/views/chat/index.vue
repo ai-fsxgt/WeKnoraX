@@ -408,6 +408,7 @@ const debouncedFetchSuggestions = () => {
 watch(
     () => ({
         agentId: useSettingsStoreInstance.selectedAgentId,
+        agentSourceTenantId: useSettingsStoreInstance.selectedAgentSourceTenantId,
         kbs: useSettingsStoreInstance.settings.selectedKnowledgeBases,
         files: useSettingsStoreInstance.settings.selectedFiles,
         tags: useSettingsStoreInstance.settings.selectedTags,

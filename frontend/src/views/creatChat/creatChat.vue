@@ -167,6 +167,7 @@ const debouncedFetch = () => {
 watch(
     () => ({
         agentId: settingsStore.selectedAgentId,
+        agentSourceTenantId: settingsStore.selectedAgentSourceTenantId,
         kbs: settingsStore.settings.selectedKnowledgeBases,
         files: settingsStore.settings.selectedFiles,
         tags: settingsStore.settings.selectedTags,
