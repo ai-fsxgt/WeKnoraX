@@ -436,7 +436,6 @@ export const useSettingsStore = defineStore("settings", {
         tag_ids: [...new Set(ids)],
       }));
       return {
-        agent_source_tenant_id: this.selectedAgentSourceTenantId || undefined,
         // A tag's parent KB is only an ownership hint, not an explicit whole-KB
         // selection. Keep it in tag_scopes so the backend cannot widen a tag to
         // every document in that KB.

@@ -71,7 +71,6 @@ type CustomAgentService interface {
 	// Parameters:
 	//   - ctx: Context information
 	//   - agentID: Agent ID
-	//   - agentSourceTenantID: Source tenant ID when using a shared agent
 	//   - kbIDs: Optional knowledge base IDs to override agent config
 	//   - knowledgeIDs: Optional knowledge item IDs to further filter
 	//   - tagScopes: Optional KB-scoped knowledge tags (OR semantics within each KB)
@@ -79,15 +78,7 @@ type CustomAgentService interface {
 	// Returns:
 	//   - List of suggested questions
 	//   - Possible errors
-	GetSuggestedQuestions(
-		ctx context.Context,
-		agentID string,
-		agentSourceTenantID uint64,
-		kbIDs []string,
-		knowledgeIDs []string,
-		tagScopes []types.TagScope,
-		limit int,
-	) ([]types.SuggestedQuestion, error)
+	GetSuggestedQuestions(ctx context.Context, agentID string, kbIDs []string, knowledgeIDs []string, tagScopes []types.TagScope, limit int) ([]types.SuggestedQuestion, error)
 
 	// GetKnowledgeSuggestedQuestions returns only knowledge-derived candidates.
 	// It is independent of whether starter suggestions are enabled and is used

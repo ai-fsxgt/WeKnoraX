@@ -308,11 +308,10 @@ type SuggestedQuestion struct {
 
 // SuggestedQuestionsRequest represents the options for getting suggested questions
 type SuggestedQuestionsRequest struct {
-	AgentSourceTenantID uint64                      // Optional: source tenant when using a shared agent
-	KnowledgeBaseIDs    []string                    // Optional: override agent's KB scope
-	KnowledgeIDs        []string                    // Optional: limit to specific knowledge items
-	TagScopes           []SuggestedQuestionTagScope // Optional: limit to tags within their parent KBs
-	Limit               int                         // Optional: max questions to return (default 6)
+	KnowledgeBaseIDs []string                    // Optional: override agent's KB scope
+	KnowledgeIDs     []string                    // Optional: limit to specific knowledge items
+	TagScopes        []SuggestedQuestionTagScope // Optional: limit to tags within their parent KBs
+	Limit            int                         // Optional: max questions to return (default 6)
 }
 
 // SuggestedQuestionTagScope preserves the KB-local identity of tag IDs.
@@ -339,9 +338,6 @@ func (c *Client) GetSuggestedQuestions(ctx context.Context, agentID string, requ
 
 	query := url.Values{}
 	if request != nil {
-		if request.AgentSourceTenantID > 0 {
-			query.Set("agent_source_tenant_id", strconv.FormatUint(request.AgentSourceTenantID, 10))
-		}
 		if len(request.KnowledgeBaseIDs) > 0 {
 			query.Set("knowledge_base_ids", strings.Join(request.KnowledgeBaseIDs, ","))
 		}

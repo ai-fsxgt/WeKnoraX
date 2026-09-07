@@ -36,15 +36,14 @@ const (
 
 // customAgentService implements the CustomAgentService interface
 type customAgentService struct {
-	repo              interfaces.CustomAgentRepository
-	chunkRepo         interfaces.ChunkRepository
-	kbService         interfaces.KnowledgeBaseService
-	kbShareService    interfaces.KBShareService
-	agentShareService interfaces.AgentShareService
-	wikiPageRepo      interfaces.WikiPageRepository
-	tagRepo           interfaces.KnowledgeTagRepository
-	knowledgeRepo     interfaces.KnowledgeRepository
-	modelService      interfaces.ModelService
+	repo           interfaces.CustomAgentRepository
+	chunkRepo      interfaces.ChunkRepository
+	kbService      interfaces.KnowledgeBaseService
+	kbShareService interfaces.KBShareService
+	wikiPageRepo   interfaces.WikiPageRepository
+	tagRepo        interfaces.KnowledgeTagRepository
+	knowledgeRepo  interfaces.KnowledgeRepository
+	modelService   interfaces.ModelService
 }
 
 // NewCustomAgentService creates a new custom agent service
@@ -53,22 +52,20 @@ func NewCustomAgentService(
 	chunkRepo interfaces.ChunkRepository,
 	kbService interfaces.KnowledgeBaseService,
 	kbShareService interfaces.KBShareService,
-	agentShareService interfaces.AgentShareService,
 	wikiPageRepo interfaces.WikiPageRepository,
 	tagRepo interfaces.KnowledgeTagRepository,
 	knowledgeRepo interfaces.KnowledgeRepository,
 	modelService interfaces.ModelService,
 ) interfaces.CustomAgentService {
 	return &customAgentService{
-		repo:              repo,
-		chunkRepo:         chunkRepo,
-		kbService:         kbService,
-		kbShareService:    kbShareService,
-		agentShareService: agentShareService,
-		wikiPageRepo:      wikiPageRepo,
-		tagRepo:           tagRepo,
-		knowledgeRepo:     knowledgeRepo,
-		modelService:      modelService,
+		repo:           repo,
+		chunkRepo:      chunkRepo,
+		kbService:      kbService,
+		kbShareService: kbShareService,
+		wikiPageRepo:   wikiPageRepo,
+		tagRepo:        tagRepo,
+		knowledgeRepo:  knowledgeRepo,
+		modelService:   modelService,
 	}
 }
 
@@ -543,13 +540,12 @@ func (s *customAgentService) CopyAgent(ctx context.Context, id string) (*types.C
 func (s *customAgentService) GetSuggestedQuestions(
 	ctx context.Context,
 	agentID string,
-	agentSourceTenantID uint64,
 	kbIDs []string,
 	knowledgeIDs []string,
 	tagScopes []types.TagScope,
 	limit int,
 ) ([]types.SuggestedQuestion, error) {
-	return s.getSuggestedQuestions(ctx, agentID, agentSourceTenantID, kbIDs, knowledgeIDs, tagScopes, limit, true)
+	return s.getSuggestedQuestions(ctx, agentID, kbIDs, knowledgeIDs, tagScopes, limit, true)
 }
 
 func (s *customAgentService) GetKnowledgeSuggestedQuestions(
@@ -560,13 +556,12 @@ func (s *customAgentService) GetKnowledgeSuggestedQuestions(
 	tagScopes []types.TagScope,
 	limit int,
 ) ([]types.SuggestedQuestion, error) {
-	return s.getSuggestedQuestions(ctx, agentID, 0, kbIDs, knowledgeIDs, tagScopes, limit, false)
+	return s.getSuggestedQuestions(ctx, agentID, kbIDs, knowledgeIDs, tagScopes, limit, false)
 }
 
 func (s *customAgentService) getSuggestedQuestions(
 	ctx context.Context,
 	agentID string,
-	agentSourceTenantID uint64,
 	kbIDs []string,
 	knowledgeIDs []string,
 	tagScopes []types.TagScope,
@@ -598,26 +593,11 @@ func (s *customAgentService) getSuggestedQuestions(
 		return nil, ErrInvalidTenantID
 	}
 
-	// Resolve a shared agent against the caller's tenant before reading its
-	// configuration. Built-in agents reuse the same ID in every tenant, so the
-	// source tenant is required to avoid accidentally loading the local copy.
-	var agent *types.CustomAgent
-	var err error
-	isSharedAgent := agentSourceTenantID != 0
-	if isSharedAgent {
-		if s.agentShareService == nil {
-			return nil, ErrAgentSharePermission
-		}
-		agent, err = s.agentShareService.GetSharedAgentForTenant(
-			ctx, tenantID, types.TenantRoleFromContext(ctx), agentID, agentSourceTenantID,
-		)
-	} else {
-		agent, err = s.GetAgentByID(ctx, agentID)
-	}
+	// Get agent configuration
+	agent, err := s.GetAgentByID(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
-	agent.EnsureDefaults()
 
 	var curated []types.SuggestedQuestion
 	starterMode := types.SuggestionModeKnowledge
@@ -652,51 +632,10 @@ func (s *customAgentService) getSuggestedQuestions(
 		}
 	}
 
-	var sharedAgentKBIDs []string
-	if isSharedAgent {
-		sharedAgentKBIDs, err = s.resolveSharedAgentSuggestionKBIDs(ctx, agent)
-		if err != nil {
-			return nil, err
-		}
-		allowed := make(map[string]bool, len(sharedAgentKBIDs))
-		for _, id := range sharedAgentKBIDs {
-			allowed[id] = true
-		}
-		for _, id := range kbIDs {
-			if !allowed[id] {
-				return nil, ErrAgentSharePermission
-			}
-		}
-		for _, scope := range tagScopes {
-			if !allowed[scope.KnowledgeBaseID] {
-				return nil, ErrAgentSharePermission
-			}
-		}
-		requestedKnowledgeIDs := mergeUniqueStrings(nil, knowledgeIDs)
-		if len(requestedKnowledgeIDs) > 0 {
-			knowledgeItems, err := s.knowledgeRepo.GetKnowledgeBatch(ctx, agent.TenantID, requestedKnowledgeIDs)
-			if err != nil {
-				return nil, err
-			}
-			if len(knowledgeItems) != len(requestedKnowledgeIDs) {
-				return nil, ErrAgentSharePermission
-			}
-			for _, knowledge := range knowledgeItems {
-				if knowledge == nil || !allowed[knowledge.KnowledgeBaseID] {
-					return nil, ErrAgentSharePermission
-				}
-			}
-		}
-	}
-
 	resolvedTags := resolvedSuggestionTagScopes{}
 	if len(scopeTagIDs) > 0 {
 		var err error
-		tagScopeTenantID := tenantID
-		if isSharedAgent {
-			tagScopeTenantID = agent.TenantID
-		}
-		resolvedTags, err = s.resolveSuggestionTagScopes(ctx, tagScopeTenantID, tagScopes)
+		resolvedTags, err = s.resolveSuggestionTagScopes(ctx, tenantID, tagScopes)
 		if err != nil {
 			logger.ErrorWithFields(ctx, err, map[string]interface{}{
 				"agent_id":      agentID,
@@ -713,59 +652,51 @@ func (s *customAgentService) getSuggestedQuestions(
 	// 2. Determine knowledge base scope
 	effectiveKBIDs := kbIDs
 	if len(effectiveKBIDs) == 0 && len(knowledgeIDs) == 0 && len(resolvedTags.TagIDsByTenant) == 0 {
-		if isSharedAgent {
-			effectiveKBIDs = sharedAgentKBIDs
-		} else {
-			// Use agent's KB configuration
-			switch agent.Config.KBSelectionMode {
-			case "all":
-				accessibleKBs, err := s.kbService.ListKnowledgeBases(ctx)
-				if err != nil {
-					logger.ErrorWithFields(ctx, err, map[string]interface{}{
-						"agent_id": agentID,
-					})
-					// Return what we have so far (agent_config suggestions)
-					return finalizeStarterSuggestions(curated, nil, starterMode, limit), nil
-				}
-				if s.kbShareService != nil {
-					sharedKBs, err := s.kbShareService.ListSharedKnowledgeBases(
-						ctx, tenantID, types.TenantRoleFromContext(ctx),
-					)
-					if err != nil {
-						logger.ErrorWithFields(ctx, err, map[string]interface{}{
-							"agent_id": agentID,
-						})
-						return nil, err
-					}
-					for _, sharedKB := range sharedKBs {
-						if sharedKB != nil && sharedKB.KnowledgeBase != nil {
-							accessibleKBs = append(accessibleKBs, sharedKB.KnowledgeBase)
-						}
-					}
-				}
-				// Honor the agent's implicit/explicit capability requirements so
-				// e.g. a quick-answer (RAG-only) agent doesn't surface wiki-only
-				// KBs whose wiki pages it could never answer from. Same filter
-				// the @ mention dropdown applies on the frontend.
-				capFilter := tools.DeriveKBFilterForAgent(agent.Config.AgentMode, agent.Config.AllowedTools)
-				for _, kb := range accessibleKBs {
-					if !capFilter.IsEmpty() &&
-						!tools.KBSatisfiesAgentRequirements(
-							kb.Capabilities(), agent.Config.AgentMode, agent.Config.AllowedTools,
-						) {
-						continue
-					}
-					effectiveKBIDs = append(effectiveKBIDs, kb.ID)
-				}
-			case "selected":
-				effectiveKBIDs = agent.Config.KnowledgeBases
-			case "none":
-				// No KB access, return agent_config suggestions only
+		// Use agent's KB configuration
+		switch agent.Config.KBSelectionMode {
+		case "all":
+			kbs, err := s.kbService.ListKnowledgeBases(ctx)
+			if err != nil {
+				logger.ErrorWithFields(ctx, err, map[string]interface{}{
+					"agent_id": agentID,
+				})
+				// Return what we have so far (agent_config suggestions)
 				return finalizeStarterSuggestions(curated, nil, starterMode, limit), nil
-			default:
-				// Default to agent's configured KBs
-				effectiveKBIDs = agent.Config.KnowledgeBases
 			}
+			// Include the caller's shared KBs in the default recommendation scope.
+			if s.kbShareService != nil {
+				sharedKBs, err := s.kbShareService.ListSharedKnowledgeBases(
+					ctx, tenantID, types.TenantRoleFromContext(ctx),
+				)
+				if err != nil {
+					return nil, err
+				}
+				for _, sharedKB := range sharedKBs {
+					if sharedKB != nil && sharedKB.KnowledgeBase != nil {
+						kbs = append(kbs, sharedKB.KnowledgeBase)
+					}
+				}
+			}
+			// Honor the agent's implicit/explicit capability requirements so
+			// e.g. a quick-answer (RAG-only) agent doesn't surface wiki-only
+			// KBs whose wiki pages it could never answer from. Same filter
+			// the @ mention dropdown applies on the frontend.
+			capFilter := tools.DeriveKBFilterForAgent(agent.Config.AgentMode, agent.Config.AllowedTools)
+			for _, kb := range kbs {
+				if !capFilter.IsEmpty() &&
+					!tools.KBSatisfiesAgentRequirements(kb.Capabilities(), agent.Config.AgentMode, agent.Config.AllowedTools) {
+					continue
+				}
+				effectiveKBIDs = append(effectiveKBIDs, kb.ID)
+			}
+		case "selected":
+			effectiveKBIDs = agent.Config.KnowledgeBases
+		case "none":
+			// No KB access, return agent_config suggestions only
+			return finalizeStarterSuggestions(curated, nil, starterMode, limit), nil
+		default:
+			// Default to agent's configured KBs
+			effectiveKBIDs = agent.Config.KnowledgeBases
 		}
 	}
 	// Match the chat retrieval target semantics: a tag scope narrows its parent
@@ -812,15 +743,11 @@ func (s *customAgentService) getSuggestedQuestions(
 	// querying a KB shared from tenant B would hit `tenant_id = A` and get zero
 	// rows back — the symptom is "suggested questions never appear for shared KBs".
 	scopeKBIDs := mergeUniqueStrings(queryKBIDs, resolvedTags.KnowledgeBaseIDs)
-	scopeTenantID := tenantID
-	if isSharedAgent {
-		scopeTenantID = agent.TenantID
-	}
-	kbGroups := s.groupKBIDsByEffectiveTenant(ctx, scopeTenantID, scopeKBIDs)
-	// Keep the effective retrieval tenant in the iteration so knowledge_ids-only
-	// requests (no kbIDs) still execute one query.
+	kbGroups := s.groupKBIDsByEffectiveTenant(ctx, tenantID, scopeKBIDs)
+	// Always keep the caller's tenant in the iteration so knowledge_ids-only
+	// requests (no kbIDs) still execute one query under the caller's tenant.
 	if len(scopeKBIDs) == 0 {
-		kbGroups[scopeTenantID] = nil
+		kbGroups[tenantID] = nil
 	}
 
 	// Collect FAQ recommended chunks
@@ -963,46 +890,6 @@ func (s *customAgentService) getSuggestedQuestions(
 	}
 
 	return finalizeStarterSuggestions(curated, knowledgeResult, starterMode, limit), nil
-}
-
-// resolveSharedAgentSuggestionKBIDs mirrors the runtime scope for an agent
-// shared from another tenant. "all" means the source tenant's compatible KBs;
-// it must not expand to KBs shared to the caller or to the source tenant.
-func (s *customAgentService) resolveSharedAgentSuggestionKBIDs(
-	ctx context.Context,
-	agent *types.CustomAgent,
-) ([]string, error) {
-	if agent == nil {
-		return nil, ErrAgentNotFound
-	}
-	switch agent.Config.KBSelectionMode {
-	case "all":
-		kbs, err := s.kbService.ListKnowledgeBasesByTenantID(ctx, agent.TenantID)
-		if err != nil {
-			return nil, err
-		}
-		capFilter := tools.DeriveKBFilterForAgent(agent.Config.AgentMode, agent.Config.AllowedTools)
-		ids := make([]string, 0, len(kbs))
-		for _, kb := range kbs {
-			if kb == nil {
-				continue
-			}
-			if !capFilter.IsEmpty() &&
-				!tools.KBSatisfiesAgentRequirements(
-					kb.Capabilities(), agent.Config.AgentMode, agent.Config.AllowedTools,
-				) {
-				continue
-			}
-			ids = append(ids, kb.ID)
-		}
-		return mergeUniqueStrings(nil, ids), nil
-	case "selected":
-		return mergeUniqueStrings(nil, agent.Config.KnowledgeBases), nil
-	case "none":
-		return nil, nil
-	default:
-		return mergeUniqueStrings(nil, agent.Config.KnowledgeBases), nil
-	}
 }
 
 type resolvedSuggestionTagScopes struct {

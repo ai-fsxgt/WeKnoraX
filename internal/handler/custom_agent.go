@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"encoding/json"
-	stderrors "errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -581,7 +580,6 @@ func (h *CustomAgentHandler) GetAgentTypePresets(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id                  path      string  true   "智能体ID"
-// @Param        agent_source_tenant_id query  integer false  "共享智能体来源空间ID"
 // @Param        knowledge_base_ids  query     string  false  "知识库ID列表（逗号分隔），覆盖智能体默认配置"
 // @Param        knowledge_ids       query     string  false  "知识ID列表（逗号分隔），限定到具体文档"
 // @Param        tag_scopes          query     string  false  "带知识库归属的标签范围（JSON）"
@@ -600,11 +598,6 @@ func (h *CustomAgentHandler) GetSuggestedQuestions(c *gin.Context) {
 	if id == "" {
 		logger.Error(ctx, "Agent ID is empty")
 		c.Error(errors.NewBadRequestError("Agent ID cannot be empty"))
-		return
-	}
-	agentSourceTenantID, err := types.ParseAgentSourceTenantID(c.Query(types.AgentSourceTenantIDParam))
-	if err != nil {
-		_ = c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
 
@@ -648,21 +641,13 @@ func (h *CustomAgentHandler) GetSuggestedQuestions(c *gin.Context) {
 	logger.Infof(ctx, "Getting suggested questions for agent %s, kbIDs: %v, tagScopes: %d, limit: %d",
 		secutils.SanitizeForLog(id), kbIDs, len(tagScopes), limit)
 
-	questions, err := h.service.GetSuggestedQuestions(
-		ctx, id, agentSourceTenantID, kbIDs, knowledgeIDs, tagScopes, limit,
-	)
+	questions, err := h.service.GetSuggestedQuestions(ctx, id, kbIDs, knowledgeIDs, tagScopes, limit)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"agent_id": id,
 		})
 		if err == service.ErrAgentNotFound {
 			c.Error(errors.NewNotFoundError("Agent not found"))
-			return
-		}
-		if stderrors.Is(err, service.ErrAgentShareNotFound) ||
-			stderrors.Is(err, service.ErrAgentSharePermission) ||
-			stderrors.Is(err, service.ErrAgentNotFoundForShare) {
-			_ = c.Error(errors.NewForbiddenError("no permission for this shared agent"))
 			return
 		}
 		if appErr, ok := err.(*errors.AppError); ok {

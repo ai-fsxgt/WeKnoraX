@@ -1373,7 +1373,7 @@ func (s *installCustomAgentService) CopyAgent(
 }
 
 func (s *installCustomAgentService) GetSuggestedQuestions(
-	context.Context, string, uint64, []string, []string, []types.TagScope, int,
+	context.Context, string, []string, []string, []types.TagScope, int,
 ) ([]types.SuggestedQuestion, error) {
 	return nil, nil
 }
