@@ -157,13 +157,18 @@ type IntegrationTokenExchangeRequest struct {
 	CodeVerifier string `json:"code_verifier" form:"code_verifier"`
 }
 
-// IntegrationTokenExchangeResult returns the per-user Agent credential and browser launch path.
+// IntegrationTokenExchangeResult returns the per-user Agent credential, launch path and basic user profile.
 type IntegrationTokenExchangeResult struct {
 	AccessToken  string            `json:"access_token"`
 	TokenType    string            `json:"token_type"`
 	ConnectionID string            `json:"connection_id"`
 	LaunchPath   string            `json:"launch_path"`
 	Scopes       types.StringArray `json:"scopes"`
+	UserID       string            `json:"user_id"`
+	Username     string            `json:"username"`
+	Name         string            `json:"name"`
+	Email        string            `json:"email"`
+	Avatar       string            `json:"avatar"`
 }
 
 // IntegrationConnectionView exposes a connection's current effective permissions.
@@ -181,6 +186,7 @@ type IntegrationConnectionView struct {
 // IntegrationService manages client registration, consent, credentials and effective access.
 type IntegrationService struct {
 	repo          interfaces.IntegrationRepository
+	userRepo      interfaces.UserRepository
 	kbRepo        interfaces.KnowledgeBaseRepository
 	kbShareRepo   interfaces.KBShareRepository
 	tenantService interfaces.TenantService
@@ -191,13 +197,14 @@ type IntegrationService struct {
 // NewIntegrationService creates the third-party integration service.
 func NewIntegrationService(
 	repo interfaces.IntegrationRepository,
+	userRepo interfaces.UserRepository,
 	kbRepo interfaces.KnowledgeBaseRepository,
 	kbShareRepo interfaces.KBShareRepository,
 	tenantService interfaces.TenantService,
 	memberService interfaces.TenantMemberService,
 ) *IntegrationService {
 	return &IntegrationService{
-		repo: repo, kbRepo: kbRepo, kbShareRepo: kbShareRepo,
+		repo: repo, userRepo: userRepo, kbRepo: kbRepo, kbShareRepo: kbShareRepo,
 		tenantService: tenantService, memberService: memberService,
 	}
 }
@@ -622,6 +629,10 @@ func (s *IntegrationService) ExchangeAuthorizationCode(
 	if !types.IntegrationScopesContain(access.Scopes, types.IntegrationScopeKnowledgeRead) {
 		return nil, ErrIntegrationPolicyDisabled
 	}
+	user, err := s.userRepo.GetUserByID(ctx, connection.UserID)
+	if err != nil {
+		return nil, err
+	}
 	token, err := generateIntegrationSecret("wkic_", 32)
 	if err != nil {
 		return nil, err
@@ -642,6 +653,11 @@ func (s *IntegrationService) ExchangeAuthorizationCode(
 		ConnectionID: connection.ID,
 		LaunchPath:   fmt.Sprintf("/integrations/launch/%s", connection.ID),
 		Scopes:       access.Scopes,
+		UserID:       user.ID,
+		Username:     user.Username,
+		Name:         user.Name,
+		Email:        user.Email,
+		Avatar:       user.Avatar,
 	}, nil
 }
 

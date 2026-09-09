@@ -182,9 +182,26 @@ code_verifier=VERIFIER
   "token_type": "API-Key",
   "connection_id": "0d2c1ff4-1b55-4d98-9830-f056ccb9e643",
   "launch_path": "/integrations/launch/0d2c1ff4-1b55-4d98-9830-f056ccb9e643",
-  "scopes": ["knowledge.read"]
+  "scopes": ["knowledge.read"],
+  "user_id": "8d10aa71-25c1-4c5c-a5b8-2fa674a31023",
+  "username": "zhangsan",
+  "name": "张三",
+  "email": "zhangsan@example.com",
+  "avatar": ""
 }
 ```
+
+用户信息取自本次授权的 WeKnora 用户，所有字段均返回：
+
+| 字段 | 含义 |
+| --- | --- |
+| `user_id` | 当前 WeKnora 部署内稳定的用户标识；与应用和用户之间的 `connection_id` 不同 |
+| `username` | 登录用户名；Poco 连接器将其映射为 `external_account_name` |
+| `name` | 用户姓名，未填写时为空字符串 |
+| `email` | 用户邮箱，未设置时为空字符串 |
+| `avatar` | 用户头像地址，未设置时为空字符串 |
+
+这些信息是交换凭证时的用户资料快照，再次授权并交换凭证时返回最新值。第三方识别用户时使用 `user_id`，不要依赖可能变更的用户名、姓名或邮箱。接入多个 WeKnora 部署时，应将部署地址与 `user_id` 一起作为身份标识。
 
 授权码有效期为 5 分钟且只能使用一次。对同一连接再次成功交换授权码时，旧 `wkic_` 凭证会被撤销，因此第三方必须原子替换保存的凭证。
 
