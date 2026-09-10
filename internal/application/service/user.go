@@ -348,7 +348,8 @@ type jianlongSSOTokenResponse struct {
 type jianlongSSOUserInfoResponse struct {
 	Code json.RawMessage `json:"code"`
 	Data struct {
-		EmployeeNo string `json:"empNo"`
+		EmployeeNo   string `json:"empNo"`
+		EmployeeName string `json:"empName"`
 	} `json:"data"`
 }
 
@@ -402,9 +403,12 @@ func (s *userService) LoginWithJianlongSSO(
 	if err != nil {
 		return nil, err
 	}
-	return s.loginWithEmployeeSSO(
-		ctx, info.Data.EmployeeNo, info.Data.EmployeeNo, cfg.EmailSuffix, provisioning,
-	)
+	employeeName := info.Data.EmployeeName
+	if employeeName == "" {
+		logger.Error(ctx, "Jianlong SSO user info does not contain an employee name; using the employee number instead")
+		employeeName = info.Data.EmployeeNo
+	}
+	return s.loginWithEmployeeSSO(ctx, info.Data.EmployeeNo, employeeName, cfg.EmailSuffix, provisioning)
 }
 
 func (s *userService) loginWithEmployeeSSO(
@@ -612,7 +616,7 @@ func fetchJianlongSSOUserInfo(
 	cfg *config.JianlongSSOConfig,
 	accessToken string,
 ) (*jianlongSSOUserInfoResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.BaseURL+"/uinfo", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.BaseURL+"/uinfo?method=emailphone", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Jianlong SSO userinfo request: %w", err)
 	}
@@ -638,6 +642,7 @@ func fetchJianlongSSOUserInfo(
 		return nil, fmt.Errorf("failed to decode Jianlong SSO userinfo response: %w", err)
 	}
 	result.Data.EmployeeNo = strings.TrimSpace(result.Data.EmployeeNo)
+	result.Data.EmployeeName = strings.TrimSpace(result.Data.EmployeeName)
 	if !isJianlongSSOSuccess(result.Code) || result.Data.EmployeeNo == "" {
 		return nil, errors.New("no valid employee number in Jianlong SSO userinfo response")
 	}
