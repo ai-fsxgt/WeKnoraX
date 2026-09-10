@@ -28,7 +28,7 @@ env:
 jobs:
   verify:
     name: Test, type-check, and build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 20
     defaults:
       run:
