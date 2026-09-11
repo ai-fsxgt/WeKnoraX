@@ -72,6 +72,16 @@ jobs:
       - name: Download modules
         run: go mod download
 
+      - name: Prepare SQLite headers
+        shell: bash
+        run: |
+          # Use the driver's SQLite headers so sqlite-vec can filter before TopK.
+          sqlite_module_dir=$(go list -m -f '{{.Dir}}' github.com/mattn/go-sqlite3)
+          sqlite_include_dir="$RUNNER_TEMP/sqlite-include"
+          mkdir -p "$sqlite_include_dir"
+          cp "$sqlite_module_dir/sqlite3-binding.h" "$sqlite_include_dir/sqlite3.h"
+          echo "CGO_CPPFLAGS=-I$sqlite_include_dir" >> "$GITHUB_ENV"
+
       - name: Check formatting
         shell: bash
         run: |
