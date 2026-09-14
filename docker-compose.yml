@@ -479,7 +479,7 @@ services:
 
   # 修改的PostgreSQL配置
   postgres:
-    image: paradedb/paradedb:v0.22.2-pg17
+    image: registry.cn-hangzhou.aliyuncs.com/ripper/paradedb:v0.22.2-pg17
     container_name: WeKnora-postgres
     ports:
       - "${DB_PORT:-5432}:5432"
