@@ -140,11 +140,11 @@ func parseTelegramMessage(msg *telegramMsg) *im.IncomingMessage {
 		return nil
 	}
 
-	chatType := im.ChatTypeDirect
-	chatID := ""
-	if msg.Chat.Type == "group" || msg.Chat.Type == "supergroup" {
-		chatType = im.ChatTypeGroup
-		chatID = fmt.Sprintf("%d", msg.Chat.ID)
+	chatType := im.ChatTypeGroup
+	chatID := fmt.Sprintf("%d", msg.Chat.ID)
+	if msg.Chat.Type == "private" {
+		chatType = im.ChatTypeDirect
+		chatID = ""
 	}
 
 	userID := ""

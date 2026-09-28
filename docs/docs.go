@@ -2624,6 +2624,276 @@ const docTemplate = `{
                 }
             }
         },
+        "/im/binding-requests": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "为当前用户和工作空间生成一次性 IM 绑定码",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 绑定"
+                ],
+                "summary": "创建 IM 绑定请求",
+                "parameters": [
+                    {
+                        "description": "绑定参数（im_channel_id/tenant_id）",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "绑定请求",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数或渠道状态错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "无工作空间访问权限",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/im/binding-requests/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "获取当前用户指定绑定请求的状态",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 绑定"
+                ],
+                "summary": "获取 IM 绑定请求",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "绑定请求 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "绑定请求",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "绑定请求不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/im/bindings": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "获取当前用户的有效 IM 账号绑定",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 绑定"
+                ],
+                "summary": "获取个人 IM 绑定",
+                "responses": {
+                    "200": {
+                        "description": "个人绑定列表",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/im/bindings/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "撤销当前用户指定的 IM 账号绑定",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 绑定"
+                ],
+                "summary": "解除个人 IM 绑定",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "绑定 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "success: true",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "绑定不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/im/channels": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "获取当前用户可发起个人绑定的已启用机器人列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 绑定"
+                ],
+                "summary": "获取可绑定的 IM 渠道",
+                "responses": {
+                    "200": {
+                        "description": "可绑定渠道列表",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/system/admin/im-channels": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "获取全部系统级 IM 机器人配置，不返回凭证内容",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 渠道"
+                ],
+                "summary": "获取 IM 渠道列表",
+                "responses": {
+                    "200": {
+                        "description": "渠道列表",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "创建系统级 IM 机器人配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "IM 渠道"
+                ],
+                "summary": "创建 IM 渠道",
+                "parameters": [
+                    {
+                        "description": "渠道配置",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "创建后的渠道",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数或渠道配置错误",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "机器人身份已存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/system/admin/im-channels/{id}": {
             "put": {
                 "security": [
@@ -11135,7 +11405,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "获取当前空间的会话列表，支持分页、关键字搜索、按来源/Agent 筛选",
+                "description": "获取当前空间的会话列表，支持分页、关键字搜索和按来源筛选",
                 "consumes": [
                     "application/json"
                 ],

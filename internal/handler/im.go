@@ -37,6 +37,19 @@ func NewIMHandler(imService *im.Service) *IMHandler {
 }
 
 // CreateIMChannel creates a system-managed bot installation.
+//
+// CreateIMChannel godoc
+// @Summary      创建 IM 渠道
+// @Description  创建系统级 IM 机器人配置
+// @Tags         IM 渠道
+// @Accept       json
+// @Produce      json
+// @Param        request  body      map[string]interface{}  true  "渠道配置"
+// @Success      200      {object}  map[string]interface{}  "创建后的渠道"
+// @Failure      400      {object}  map[string]interface{}  "请求参数或渠道配置错误"
+// @Failure      409      {object}  map[string]interface{}  "机器人身份已存在"
+// @Security     Bearer
+// @Router       /system/admin/im-channels [post]
 func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 	userID, ok := types.UserIDFromContext(c.Request.Context())
 	if !ok {
@@ -106,6 +119,15 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 }
 
 // ListIMChannels lists all system-managed bot installations.
+//
+// ListIMChannels godoc
+// @Summary      获取 IM 渠道列表
+// @Description  获取全部系统级 IM 机器人配置，不返回凭证内容
+// @Tags         IM 渠道
+// @Produce      json
+// @Success      200  {object}  map[string]interface{}  "渠道列表"
+// @Security     Bearer
+// @Router       /system/admin/im-channels [get]
 func (h *IMHandler) ListIMChannels(c *gin.Context) {
 	channels, err := h.imService.ListChannels()
 	if err != nil {
@@ -287,6 +309,15 @@ func (h *IMHandler) ToggleIMChannel(c *gin.Context) {
 
 // ListBindableIMChannels lists the credential-free bot directory available to
 // the current signed-in user.
+//
+// ListBindableIMChannels godoc
+// @Summary      获取可绑定的 IM 渠道
+// @Description  获取当前用户可发起个人绑定的已启用机器人列表
+// @Tags         IM 绑定
+// @Produce      json
+// @Success      200  {object}  map[string]interface{}  "可绑定渠道列表"
+// @Security     Bearer
+// @Router       /im/channels [get]
 func (h *IMHandler) ListBindableIMChannels(c *gin.Context) {
 	channels, err := h.imService.ListBindableChannels()
 	if err != nil {
@@ -297,6 +328,19 @@ func (h *IMHandler) ListBindableIMChannels(c *gin.Context) {
 }
 
 // CreateIMBindingRequest starts the web-to-IM one-time-code flow.
+//
+// CreateIMBindingRequest godoc
+// @Summary      创建 IM 绑定请求
+// @Description  为当前用户和工作空间生成一次性 IM 绑定码
+// @Tags         IM 绑定
+// @Accept       json
+// @Produce      json
+// @Param        request  body      map[string]interface{}  true  "绑定参数（im_channel_id/tenant_id）"
+// @Success      200      {object}  map[string]interface{}  "绑定请求"
+// @Failure      400      {object}  map[string]interface{}  "请求参数或渠道状态错误"
+// @Failure      403      {object}  map[string]interface{}  "无工作空间访问权限"
+// @Security     Bearer
+// @Router       /im/binding-requests [post]
 func (h *IMHandler) CreateIMBindingRequest(c *gin.Context) {
 	userID, ok := types.UserIDFromContext(c.Request.Context())
 	if !ok {
@@ -322,6 +366,17 @@ func (h *IMHandler) CreateIMBindingRequest(c *gin.Context) {
 }
 
 // GetIMBindingRequest returns the current user's binding request status.
+//
+// GetIMBindingRequest godoc
+// @Summary      获取 IM 绑定请求
+// @Description  获取当前用户指定绑定请求的状态
+// @Tags         IM 绑定
+// @Produce      json
+// @Param        id   path      string                  true  "绑定请求 ID"
+// @Success      200  {object}  map[string]interface{}  "绑定请求"
+// @Failure      404  {object}  map[string]interface{}  "绑定请求不存在"
+// @Security     Bearer
+// @Router       /im/binding-requests/{id} [get]
 func (h *IMHandler) GetIMBindingRequest(c *gin.Context) {
 	userID, ok := types.UserIDFromContext(c.Request.Context())
 	if !ok {
@@ -341,6 +396,15 @@ func (h *IMHandler) GetIMBindingRequest(c *gin.Context) {
 }
 
 // ListIMBindings lists the current user's active IM bindings.
+//
+// ListIMBindings godoc
+// @Summary      获取个人 IM 绑定
+// @Description  获取当前用户的有效 IM 账号绑定
+// @Tags         IM 绑定
+// @Produce      json
+// @Success      200  {object}  map[string]interface{}  "个人绑定列表"
+// @Security     Bearer
+// @Router       /im/bindings [get]
 func (h *IMHandler) ListIMBindings(c *gin.Context) {
 	userID, ok := types.UserIDFromContext(c.Request.Context())
 	if !ok {
@@ -356,6 +420,17 @@ func (h *IMHandler) ListIMBindings(c *gin.Context) {
 }
 
 // DeleteIMBinding revokes one active IM binding owned by the current user.
+//
+// DeleteIMBinding godoc
+// @Summary      解除个人 IM 绑定
+// @Description  撤销当前用户指定的 IM 账号绑定
+// @Tags         IM 绑定
+// @Produce      json
+// @Param        id   path      string                  true  "绑定 ID"
+// @Success      200  {object}  map[string]interface{}  "success: true"
+// @Failure      404  {object}  map[string]interface{}  "绑定不存在"
+// @Security     Bearer
+// @Router       /im/bindings/{id} [delete]
 func (h *IMHandler) DeleteIMBinding(c *gin.Context) {
 	userID, ok := types.UserIDFromContext(c.Request.Context())
 	if !ok {

@@ -1045,6 +1045,9 @@ func (s *Service) StartChannel(channel *IMChannel) error {
 	if s.stopped.Load() {
 		return fmt.Errorf("im service is stopped")
 	}
+	if !channel.Enabled {
+		return ErrChannelDisabled
+	}
 
 	s.mu.Lock()
 	s.stopLeaderRetryLocked(channel.ID)
@@ -3145,14 +3148,19 @@ func (s *Service) DeleteChannel(channelID string) error {
 // ToggleChannel enables or disables a system bot installation.
 func (s *Service) ToggleChannel(channelID string) (*IMChannel, error) {
 	var ch IMChannel
-	if err := s.db.Where("id = ? AND deleted_at IS NULL", channelID).First(&ch).Error; err != nil {
-		return nil, err
-	}
-	ch.Enabled = !ch.Enabled
-	if err := validateChannel(&ch); err != nil {
-		return nil, err
-	}
-	if err := s.db.Save(&ch).Error; err != nil {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND deleted_at IS NULL", channelID).
+			First(&ch).Error; err != nil {
+			return err
+		}
+		ch.Enabled = !ch.Enabled
+		if err := validateChannel(&ch); err != nil {
+			return err
+		}
+		return tx.Save(&ch).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	if ch.Enabled {

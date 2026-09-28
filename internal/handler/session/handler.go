@@ -204,7 +204,7 @@ func (h *Handler) GetSession(c *gin.Context) {
 
 // GetSessionsByTenant godoc
 // @Summary      获取会话列表
-// @Description  获取当前空间的会话列表，支持分页、关键字搜索、按来源/Agent 筛选
+// @Description  获取当前空间的会话列表，支持分页、关键字搜索和按来源筛选
 // @Tags         会话
 // @Accept       json
 // @Produce      json

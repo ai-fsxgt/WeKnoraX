@@ -120,10 +120,7 @@ func (c *LongConnClient) handleEvent(ctx context.Context, eventsAPIEvent slackev
 				return
 			}
 
-			chatType := im.ChatTypeDirect
-			if ev.ChannelType == "channel" || ev.ChannelType == "group" {
-				chatType = im.ChatTypeGroup
-			}
+			chatType := slackChatType(ev.ChannelType)
 
 			threadTs := ev.ThreadTimeStamp
 			if threadTs == "" {

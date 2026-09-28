@@ -250,11 +250,8 @@ func (r *sessionRepository) QueryPaged(
 	)).
 		Select(`s.*,
 			imc.platform         AS im_platform,
-			''                   AS im_chat_id,
-			''                   AS im_thread_id,
 			imb.external_user_id AS im_user_id,
-			''                   AS im_agent_id,
-			ics.im_channel_id  AS im_channel_id`).
+			ics.im_channel_id    AS im_channel_id`).
 		Order(orderClause).
 		Offset((page - 1) * size).
 		Limit(size)

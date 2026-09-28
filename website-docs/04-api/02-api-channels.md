@@ -72,7 +72,7 @@ curl -X DELETE $BASE/api/v1/system/admin/im-channels/ch-1 -H "Authorization: Bea
 
 ### POST /api/v1/system/admin/im-channels/:id/toggle
 
-用途：切换机器人启用状态。停用时撤销相关个人绑定和待消费绑定请求。无请求体。
+用途：切换机器人启用状态。停用后个人绑定暂不可用，重新启用后恢复。无请求体。
 
 响应：200 `{"data":{IMChannel}}`
 
