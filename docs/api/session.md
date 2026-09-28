@@ -150,7 +150,7 @@ curl --location 'http://localhost:8080/api/v1/sessions/ceb9babb-1e30-41d7-817d-f
 
 ## GET `/sessions` - 获取当前空间的会话列表
 
-获取当前空间的会话列表，支持分页、关键字搜索、按来源 / Agent 过滤。
+获取当前空间的会话列表，支持分页、关键字搜索和按来源过滤。
 
 **请求**:
 
@@ -167,8 +167,7 @@ curl --location 'http://localhost:8080/api/v1/sessions?page=1&page_size=10&keywo
 | `page`      | int    | 否   | 页码（默认 1）                                                    |
 | `page_size` | int    | 否   | 每页数量（默认 10）                                               |
 | `keyword`   | string | 否   | 按标题模糊匹配（ILIKE `%keyword%`）                               |
-| `source`    | string | 否   | 来源过滤：`web`（无 IM 映射）或 IM 平台名，如 `feishu`、`wechat`、`slack` |
-| `agent_id`  | string | 否   | 按 Agent 过滤（仅对 IM 会话生效）                                 |
+| `source`    | string | 否   | 来源过滤：`web`、`api`、`embed`、`embed:<channel_id>` 或 IM 平台名 |
 
 **响应**:
 
@@ -188,8 +187,8 @@ curl --location 'http://localhost:8080/api/v1/sessions?page=1&page_size=10&keywo
             "updated_at": "2026-03-27T12:26:19.611616+08:00",
             "deleted_at": null,
             "im_platform": "feishu",
-            "im_chat_id": "oc_xxx",
-            "im_agent_id": "agent-001"
+            "im_user_id": "ou_xxx",
+            "im_channel_id": "channel-001"
         }
     ],
     "total": 1,
@@ -198,7 +197,7 @@ curl --location 'http://localhost:8080/api/v1/sessions?page=1&page_size=10&keywo
 }
 ```
 
-> 列表项始终包含置顶状态字段，IM 来源相关字段（`im_platform`、`im_chat_id`、`im_thread_id`、`im_user_id`、`im_agent_id`、`im_channel_id`）仅对 IM 创建的会话填充，Web 会话省略。
+> 列表项始终包含置顶状态字段。`im_platform`、`im_user_id` 和 `im_channel_id` 仅对 IM 创建的会话填充，其他来源的会话省略。
 
 ## PUT `/sessions/:id` - 更新会话
 

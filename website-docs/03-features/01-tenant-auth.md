@@ -330,7 +330,7 @@ refreshClaims := jwt.MapClaims{
 | `manage_models` | 管理模型定义与凭证 |
 | `manage_mcp_services` | 管理 MCP 服务与凭证 |
 | `manage_datasources` | 管理数据源连接器与同步任务 |
-| `manage_channels` | 管理 Embed / IM 渠道集成 |
+| `manage_channels` | 管理 Embed 渠道集成 |
 | `manage_vector_stores` | 管理向量库与解析器 |
 | `manage_storage_backends` | 管理对象存储后端 |
 | `manage_web_search` | 管理 Web 搜索配置 |
@@ -478,7 +478,7 @@ sequenceDiagram
 
 `rbac.go` 明文规定了新增路由的守卫选择方法：
 
-- **Q1：资源有 creator 吗？** 有（KB、Agent、知识文档、Chunk、WikiPage、FAQ 条目、KB 标签）→ 变更路由用 `OwnedXxxOrAdmin`；没有（Model、VectorStore、IM 渠道、WebSearchProvider、DataSource、MCPService 等租户级基础设施）→ 用 `Admin()`；创建入口（资源尚不存在）→ `Contributor()`。
+- **Q1：资源有 creator 吗？** 有（KB、Agent、知识文档、Chunk、WikiPage、FAQ 条目、KB 标签）→ 变更路由用 `OwnedXxxOrAdmin`；没有（Model、VectorStore、WebSearchProvider、DataSource、MCPService 等租户级基础设施）→ 用 `Admin()`；创建入口（资源尚不存在）→ `Contributor()`。系统 IM 机器人使用独立的 `SystemAdmin()` 守卫。
 - **Q2：副作用私有还是公开？** 私有（如 `POST /agents/:id/copy` 只给自己复制）→ `Contributor()` 足够；公开（共享 KB 到组织、禁用全租户 Agent、转移所有权）→ `OwnedXxxOrAdmin` 或 `Admin`。
 
 ### 6.3 所有权守卫清单

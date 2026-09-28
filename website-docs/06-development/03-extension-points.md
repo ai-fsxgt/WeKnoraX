@@ -23,8 +23,10 @@ graph LR
     P1 -->|"markdown + 图片"| P2
     P2 -->|"chunks"| P3
     P6 -->|"外部内容同步"| P1
-    P7 -->|"IM 消息"| AG["Agent 引擎"]
-    AG --> P8
+    P7 -->|"IM 消息"| QA["快速问答"]
+    QA --> P3
+    QA --> P4
+    AG["Agent 引擎"] --> P8
     P8 --> P3
     P8 --> P5
     AG --> P4
@@ -523,7 +525,7 @@ type StreamSender interface {
     EndStream(ctx context.Context, incoming *IncomingMessage, streamID string) error
 }
 
-// FileDownloader：实现后，配置了 knowledge_base_id 的渠道会把文件消息入库
+// FileDownloader：实现后，文件消息可作为当前问题的附件
 type FileDownloader interface {
     DownloadFile(ctx context.Context, msg *IncomingMessage) (io.ReadCloser, string, error)
 }
@@ -542,7 +544,7 @@ func (s *Service) RegisterAdapterFactory(platform string, factory AdapterFactory
 
 ### 现有实现
 
-`internal/im/` 下每个平台一个子包：`wecom/`、`feishu/`（lark 复用，`feishu.NewFactory(RegionLark)`）、`slack/`、`telegram/`、`dingtalk/`、`mattermost/`、`wechat/`、`qqbot/`、`yunzhijia/`。
+系统机器人配置支持 `wecom/`、`feishu/`（Lark 复用 `feishu.NewFactory(RegionLark)`）、`slack/`、`telegram/`、`dingtalk/`、`wechat/` 和 `qqbot/`。个人绑定目前只开放企业微信、飞书、Lark、Slack、Telegram 和钉钉。Mattermost 与云之家目录属于未纳入当前配置入口的既有实现。
 
 ### 新增步骤
 
@@ -559,7 +561,7 @@ func registerIMAdapterFactories(imService *imPkg.Service) {
 }
 ```
 
-4. 渠道配置持久化在 `im_channels` 表，会话映射在 `im_channel_sessions`；前端渠道管理页需增加对应平台的配置表单。
+4. 在 `internal/handler/im.go` 的系统机器人平台白名单和前端管理页增加配置选项；确认平台能可靠识别私聊用户后，再加入 `ListBindableChannels` 的个人绑定范围。渠道配置保存在 `im_channels`，个人绑定和会话映射分别保存在 `im_user_bindings` 与 `im_channel_sessions`。
 
 ---
 

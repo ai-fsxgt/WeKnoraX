@@ -1644,7 +1644,7 @@ func (a *Adapter) HandleURLVerification(c *gin.Context) bool { /* URL 验证 */ 
 
 可选接口：
 - 实现 `im.StreamSender` 以支持流式输出
-- 实现 `im.FileDownloader` 以支持文件消息自动保存到知识库
+- 实现 `im.FileDownloader` 以支持把文件消息作为当前问题的附件
 
 > 可参考已有的 Telegram（纯 HTTP API）和 DingTalk（SDK + AI 卡片）适配器作为实现参考。
 
