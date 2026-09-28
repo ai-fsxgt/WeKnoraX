@@ -3221,6 +3221,9 @@ func validateChannel(channel *IMChannel) error {
 	if err != nil {
 		return fmt.Errorf("%w: credentials must be a JSON object", ErrChannelConfigurationInvalid)
 	}
+	if channel.OutputMode != "" && channel.OutputMode != "stream" && channel.OutputMode != "full" {
+		return fmt.Errorf("%w: unsupported output mode %s", ErrChannelConfigurationInvalid, channel.OutputMode)
+	}
 	requiredFields, err := requiredChannelCredentialFields(channel.Platform, channel.Mode)
 	if err != nil {
 		return err
