@@ -10,9 +10,11 @@ export type IMPlatform =
   | 'wechat'
   | 'qqbot'
 
+export type LegacyIMPlatform = 'mattermost' | 'yunzhijia'
+
 export interface IMChannelSummary {
   id: string
-  platform: IMPlatform
+  platform: IMPlatform | LegacyIMPlatform
   name: string
   enabled: boolean
   mode: 'webhook' | 'websocket' | 'longpoll'

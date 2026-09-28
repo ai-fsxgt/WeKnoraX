@@ -16,7 +16,13 @@
       <div v-if="channels.length" class="channel-list">
         <article v-for="channel in channels" :key="channel.id" class="channel-card">
           <div class="channel-main">
-            <img :src="platformLogo(channel.platform)" :alt="platformLabel(channel.platform)" class="platform-logo" />
+            <img
+              v-if="platformLogo(channel.platform)"
+              :src="platformLogo(channel.platform)"
+              :alt="platformLabel(channel.platform)"
+              class="platform-logo"
+            />
+            <t-icon v-else name="chat-message" size="38px" class="platform-logo" />
             <div class="channel-copy">
               <div class="channel-title">
                 <h3>{{ channel.name || platformLabel(channel.platform) }}</h3>
@@ -39,7 +45,7 @@
                   {{ channel.personal_binding ? t('imAdmin.personalBindingReady') : t('imAdmin.personalBindingUnavailable') }}
                 </span>
               </div>
-              <div v-if="channel.mode === 'webhook'" class="callback-row">
+              <div v-if="channel.mode === 'webhook' && isSupportedPlatform(channel.platform)" class="callback-row">
                 <code>{{ callbackURL(channel.id) }}</code>
                 <t-button size="small" variant="text" :title="t('common.copy')" @click="copyCallback(channel.id)">
                   <t-icon name="file-copy" />
@@ -48,8 +54,20 @@
             </div>
           </div>
           <div class="channel-actions">
-            <t-switch :value="channel.enabled" :loading="togglingId === channel.id" @change="toggleChannel(channel)" />
-            <t-button size="small" variant="outline" @click="openEdit(channel)">{{ t('common.edit') }}</t-button>
+            <t-switch
+              :value="channel.enabled"
+              :loading="togglingId === channel.id"
+              :disabled="!isSupportedPlatform(channel.platform)"
+              @change="toggleChannel(channel)"
+            />
+            <t-button
+              size="small"
+              variant="outline"
+              :disabled="!isSupportedPlatform(channel.platform)"
+              @click="openEdit(channel)"
+            >
+              {{ t('common.edit') }}
+            </t-button>
             <t-button size="small" variant="outline" theme="danger" @click="confirmDelete(channel)">
               {{ t('common.delete') }}
             </t-button>
@@ -299,11 +317,15 @@ const credentialFields = computed<CredentialField[]>(() => {
       ]
 })
 
-function platformLogo(platform: IMPlatform) {
-  return logoMap[platform]
+function isSupportedPlatform(platform: IMChannelSummary['platform']): platform is IMPlatform {
+  return Object.prototype.hasOwnProperty.call(logoMap, platform)
 }
 
-function platformLabel(platform: IMPlatform) {
+function platformLogo(platform: IMChannelSummary['platform']) {
+  return isSupportedPlatform(platform) ? logoMap[platform] : ''
+}
+
+function platformLabel(platform: IMChannelSummary['platform']) {
   return t(`agentEditor.im.${platform}`)
 }
 
@@ -330,6 +352,7 @@ function openCreate() {
 }
 
 function openEdit(channel: IMChannelSummary) {
+  if (!isSupportedPlatform(channel.platform)) return
   resetForm()
   editingChannel.value = channel
   Object.assign(form, {
@@ -413,6 +436,7 @@ async function loadChannels() {
 }
 
 async function toggleChannel(channel: IMChannelSummary) {
+  if (!isSupportedPlatform(channel.platform)) return
   togglingId.value = channel.id
   try {
     await toggleSystemIMChannel(channel.id)
