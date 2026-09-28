@@ -32,6 +32,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -2045,6 +2046,17 @@ func (s *Service) handleCommand(
 	result, err := cmd.Execute(ctx, cmdCtx, args)
 	if err != nil {
 		logger.Errorf(ctx, "[IM] Command /%s error: %v", cmd.Name(), err)
+	}
+	if _, _, bindingErr := s.ValidateActiveBinding(ctx, binding.ID); bindingErr != nil {
+		if !errors.Is(bindingErr, gorm.ErrRecordNotFound) &&
+			!errors.Is(bindingErr, ErrBindingMembershipInvalid) {
+			return fmt.Errorf("validate binding before command delivery: %w", bindingErr)
+		}
+		logger.Infof(ctx, "[IM] Suppressing command result for inactive binding: binding=%s: %v",
+			binding.ID, bindingErr)
+		return nil
+	}
+	if err != nil {
 		_ = adapter.SendReply(ctx, msg, &ReplyMessage{
 			Content: "抱歉，执行指令时出现了异常，请稍后再试。",
 			IsFinal: true,
@@ -3000,16 +3012,28 @@ func (s *Service) UpdateChannel(channel *IMChannel) error {
 	if err := s.checkDuplicateBot(channel, channel.ID); err != nil {
 		return err
 	}
-	var stored IMChannel
-	if err := s.db.Where("id = ? AND deleted_at IS NULL", channel.ID).First(&stored).Error; err != nil {
-		return err
-	}
-	identityChanged := stored.BotIdentity != newIdentity
 	var revokedBindingIDs []string
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		var stored IMChannel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND deleted_at IS NULL", channel.ID).
+			First(&stored).Error; err != nil {
+			return err
+		}
+		identityChanged := stored.BotIdentity != newIdentity
 		if identityChanged {
+			now := time.Now().UTC()
+			if err := tx.Model(&BindingRequest{}).
+				Where("im_channel_id = ? AND status = ?", channel.ID, IMBindingRequestPending).
+				Updates(map[string]any{
+					"status":       IMBindingRequestCancelled,
+					"cancelled_at": now,
+					"updated_at":   now,
+				}).Error; err != nil {
+				return err
+			}
 			var err error
-			revokedBindingIDs, err = revokeChannelBindingsInTx(tx, channel.ID, time.Now().UTC())
+			revokedBindingIDs, err = revokeChannelBindingsInTx(tx, channel.ID, now)
 			if err != nil {
 				return err
 			}

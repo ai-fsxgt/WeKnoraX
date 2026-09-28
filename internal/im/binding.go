@@ -139,6 +139,23 @@ func (s *Service) getBindableChannel(channelID string) (*IMChannel, error) {
 	return channel, nil
 }
 
+func lockBindableChannel(tx *gorm.DB, channelID string) error {
+	var channel IMChannel
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Select("id", "platform").
+		Where("id = ? AND enabled = ? AND deleted_at IS NULL", channelID, true).
+		First(&channel).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrBindingUnavailable
+		}
+		return err
+	}
+	if !SupportsPersonalBinding(channel.Platform) {
+		return ErrBindingUnavailable
+	}
+	return nil
+}
+
 // ListBindableChannels lists enabled system bot installations that have passed
 // the product capability gate for personal private-chat binding.
 func (s *Service) ListBindableChannels() ([]BindableChannel, error) {
@@ -187,6 +204,9 @@ func (s *Service) CreateBindingRequest(
 		ExpiresAt:   now.Add(bindingCodeTTL),
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := lockBindableChannel(tx, channel.ID); err != nil {
+			return err
+		}
 		var user types.User
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Select("id").
@@ -260,6 +280,9 @@ func (s *Service) ConsumeBindingCode(
 	var binding *UserBinding
 	var replacedBindingID string
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockBindableChannel(tx, channel.ID); err != nil {
+			return err
+		}
 		var request BindingRequest
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("code_hash = ? AND im_channel_id = ? AND status = ? AND expires_at > ?",
