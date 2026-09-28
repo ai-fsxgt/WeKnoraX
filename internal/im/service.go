@@ -1979,6 +1979,15 @@ func (s *Service) executeQARequest(req *qaRequest) {
 		}
 		return
 	}
+	if req.queueTimedOut {
+		if err := req.adapter.SendReply(ctx, req.msg, &ReplyMessage{
+			Content: "您的消息等待超时，请重新发送。",
+			IsFinal: true,
+		}); err != nil {
+			logger.Warnf(ctx, "[IM] Failed to send queue timeout reply: %v", err)
+		}
+		return
+	}
 
 	// Track in-flight request so /stop can cancel it.
 	entry := &inflightEntry{cancel: req.cancel}
@@ -1998,6 +2007,16 @@ func (s *Service) executeQARequest(req *qaRequest) {
 	attachments, imageURLs, err := s.prepareIMAttachments(ctx, req.msg, req.adapter)
 	if err != nil {
 		logger.Warnf(ctx, "[IM] attachment preparation failed: %v", err)
+		if _, _, bindingErr := s.ValidateActiveBinding(ctx, req.bindingID); bindingErr != nil {
+			if isInactiveBindingError(bindingErr) {
+				logger.Infof(ctx,
+					"[IM] Suppressing attachment error reply for inactive binding: binding=%s", req.bindingID)
+			} else {
+				logger.Errorf(ctx, "[IM] Failed to validate binding before attachment error reply: binding=%s: %v",
+					req.bindingID, bindingErr)
+			}
+			return
+		}
 		if sendErr := req.adapter.SendReply(ctx, req.msg, &ReplyMessage{Content: "❌ 无法读取此附件，请重试或改用文字描述。", IsFinal: true}); sendErr != nil {
 			logger.Warnf(ctx, "[IM] Failed to send attachment error reply: %v", sendErr)
 		}

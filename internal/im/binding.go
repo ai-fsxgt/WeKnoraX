@@ -296,11 +296,11 @@ func (s *Service) ConsumeBindingCode(
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().UTC()
+	lookupTime := time.Now().UTC()
 	var pendingRequest BindingRequest
 	if err := s.db.WithContext(ctx).
 		Where("code_hash = ? AND im_channel_id = ? AND status = ? AND expires_at > ?",
-			hashBindingCode(code), channel.ID, IMBindingRequestPending, now).
+			hashBindingCode(code), channel.ID, IMBindingRequestPending, lookupTime).
 		First(&pendingRequest).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrBindingCodeInvalid
@@ -316,10 +316,11 @@ func (s *Service) ConsumeBindingCode(
 		if err := lockBindableChannel(tx, channel.ID); err != nil {
 			return err
 		}
+		consumeTime := time.Now().UTC()
 		var request BindingRequest
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("code_hash = ? AND im_channel_id = ? AND status = ? AND expires_at > ?",
-				hashBindingCode(code), channel.ID, IMBindingRequestPending, now).
+				hashBindingCode(code), channel.ID, IMBindingRequestPending, consumeTime).
 			First(&request).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrBindingCodeInvalid
@@ -334,7 +335,7 @@ func (s *Service) ConsumeBindingCode(
 				return ErrBindingIdentityInUse
 			}
 			replacedBindingID = current.ID
-			if err := revokeBindingInTx(tx, &current, now); err != nil {
+			if err := revokeBindingInTx(tx, &current, consumeTime); err != nil {
 				return err
 			}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -369,8 +370,8 @@ func (s *Service) ConsumeBindingCode(
 				"status":                   IMBindingRequestConsumed,
 				"claimed_external_user_id": binding.ExternalUserID,
 				"binding_id":               binding.ID,
-				"consumed_at":              now,
-				"updated_at":               now,
+				"consumed_at":              consumeTime,
+				"updated_at":               consumeTime,
 			})
 		if result.Error != nil {
 			return result.Error
