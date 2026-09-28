@@ -179,7 +179,7 @@ jobs:
   reuse-images:
     needs: changes
     if: needs.changes.outputs.reuse != '[]'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.reuse) }}
@@ -221,7 +221,7 @@ jobs:
   build-ui:
     needs: changes
     if: needs.changes.outputs.ui == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -282,7 +282,7 @@ jobs:
   build-docreader:
     needs: changes
     if: needs.changes.outputs.docreader == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -339,7 +339,7 @@ jobs:
   build-sandbox:
     needs: changes
     if: needs.changes.outputs.sandbox == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -407,7 +407,7 @@ jobs:
   build-mcp:
     needs: changes
     if: needs.changes.outputs.mcp == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -447,7 +447,7 @@ jobs:
   build-odl-hybrid:
     needs: changes
     if: needs.changes.outputs.odl-hybrid == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -499,7 +499,7 @@ jobs:
   build-app:
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 60
     steps:
       - name: Checkout code
