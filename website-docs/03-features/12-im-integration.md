@@ -142,4 +142,4 @@ sequenceDiagram
 - 平台适配器：`internal/im/{wecom,feishu,slack,telegram,dingtalk,wechat,qqbot}/`
 - HTTP 接口：`internal/handler/im.go`、`internal/handler/wechat_qrcode.go`
 - 路由：`internal/router/routes_agent.go` 中的 `RegisterIMRoutes` 和 `RegisterIMChannelRoutes`
-- 前端入口：`frontend/src/components/IMChannelManager.vue`、`frontend/src/components/IMBindingPanel.vue`
+- 前端入口：`frontend/src/components/IMChannelPanel.vue`、`frontend/src/components/IMBindingPanel.vue`

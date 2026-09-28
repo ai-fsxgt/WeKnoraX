@@ -85,6 +85,19 @@ func imCredentialsConfigured(cred types.JSON) bool {
 	return s != "" && s != "{}"
 }
 
+// SupportsSystemChannel reports whether administrators can create and enable
+// a system-managed bot installation for the platform.
+func SupportsSystemChannel(platform string) bool {
+	switch platform {
+	case string(PlatformWeCom), string(PlatformFeishu), string(PlatformLark),
+		string(PlatformSlack), string(PlatformTelegram), string(PlatformDingtalk),
+		string(PlatformWeChat), string(PlatformQQBot):
+		return true
+	default:
+		return false
+	}
+}
+
 // SupportsPersonalBinding reports whether a platform is allowed to enter the
 // shared per-user binding flow. QQ and WeChat stay closed until their required
 // multi-user private-chat checks have passed. Mattermost and Yunzhijia are not

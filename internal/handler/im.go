@@ -14,13 +14,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// validIMPlatforms is the set of system-managed platforms. Mattermost and
-// Yunzhijia remain in the adapter tree but are excluded from the new setup.
-var validIMPlatforms = map[string]bool{
-	"wecom": true, "feishu": true, "lark": true, "slack": true, "telegram": true, "dingtalk": true,
-	"wechat": true, "qqbot": true,
-}
-
 const invalidIMPlatformError = "platform must be one of: 'dingtalk', 'feishu', 'lark', 'qqbot', " +
 	"'slack', 'telegram', 'wechat', 'wecom'"
 
@@ -70,7 +63,7 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 		return
 	}
 
-	if !validIMPlatforms[req.Platform] {
+	if !im.SupportsSystemChannel(req.Platform) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": invalidIMPlatformError})
 		return
 	}
@@ -201,6 +194,10 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 
 	if err := h.imService.UpdateChannel(channel); err != nil {
 		logger.Errorf(c.Request.Context(), "[IM] Update channel failed: %v", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
+			return
+		}
 		if errors.Is(err, im.ErrChannelIdentityMissing) || errors.Is(err, im.ErrChannelConfigurationInvalid) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

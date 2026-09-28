@@ -3194,6 +3194,9 @@ func (s *Service) ToggleChannel(channelID string) (*IMChannel, error) {
 			return err
 		}
 		ch.Enabled = !ch.Enabled
+		if ch.Enabled && !SupportsSystemChannel(ch.Platform) {
+			return fmt.Errorf("%w: platform %s is not supported", ErrChannelConfigurationInvalid, ch.Platform)
+		}
 		if err := validateChannel(&ch); err != nil {
 			return err
 		}
