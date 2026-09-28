@@ -154,8 +154,12 @@ func (r *sessionRepository) QueryPaged(
 	// Dialect-aware bits so the same query works on Postgres and SQLite (Lite build).
 	isPostgres := r.db.Dialector.Name() == "postgres"
 	platformExpr := imPlatformExpr(r.db)
+	imUserExpr := "COALESCE(NULLIF(imb.external_user_id, ''), " +
+		"json_extract(ics.metadata, '$.legacy_external_user_id'), '')"
 	titleLikeExpr := "LOWER(s.title) LIKE LOWER(?)"
 	if isPostgres {
+		imUserExpr = "COALESCE(NULLIF(imb.external_user_id, ''), " +
+			"ics.metadata ->> 'legacy_external_user_id', '')"
 		titleLikeExpr = "s.title ILIKE ?"
 	}
 	// SQLite (the driver used by Lite) does not support NULLS LAST; its default
@@ -259,7 +263,7 @@ func (r *sessionRepository) QueryPaged(
 	)).
 		Select(`s.*,
 			` + platformExpr + ` AS im_platform,
-			imb.external_user_id AS im_user_id,
+			` + imUserExpr + ` AS im_user_id,
 			ics.im_channel_id    AS im_channel_id`).
 		Order(orderClause).
 		Offset((page - 1) * size).

@@ -151,6 +151,9 @@ func isInactiveBindingError(err error) bool {
 func (s *Service) getBindableChannel(channelID string) (*IMChannel, error) {
 	channel, err := s.GetChannelByID(channelID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrBindingUnavailable
+		}
 		return nil, err
 	}
 	if !channel.Enabled || !SupportsPersonalBinding(channel.Platform) {
@@ -213,7 +216,6 @@ func (s *Service) CreateBindingRequest(
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().UTC()
 	request := &BindingRequest{
 		ID:          uuid.New().String(),
 		CodeHash:    hashBindingCode(code),
@@ -221,7 +223,6 @@ func (s *Service) CreateBindingRequest(
 		UserID:      userID,
 		TenantID:    tenantID,
 		Status:      IMBindingRequestPending,
-		ExpiresAt:   now.Add(bindingCodeTTL),
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := lockBindableChannel(tx, channel.ID); err != nil {
@@ -234,12 +235,14 @@ func (s *Service) CreateBindingRequest(
 			First(&user).Error; err != nil {
 			return err
 		}
+		createdAt := time.Now().UTC()
+		request.ExpiresAt = createdAt.Add(bindingCodeTTL)
 		if err := tx.Model(&BindingRequest{}).
 			Where("user_id = ? AND im_channel_id = ? AND status = ?", userID, channel.ID, IMBindingRequestPending).
 			Updates(map[string]any{
 				"status":       IMBindingRequestCancelled,
-				"cancelled_at": now,
-				"updated_at":   now,
+				"cancelled_at": createdAt,
+				"updated_at":   createdAt,
 			}).Error; err != nil {
 			return err
 		}
