@@ -60,6 +60,10 @@ const (
 	// agentCompleteWaitTimeout bounds how long IM waits for EventAgentComplete after
 	// the final answer stream finishes, preventing indefinite hangs.
 	agentCompleteWaitTimeout = 10 * time.Second
+	// imSiteTitleSettingKey is the existing system branding title used by IM replies.
+	imSiteTitleSettingKey = "branding.site_title"
+	// defaultIMSystemName keeps replies neutral when no custom site title is configured.
+	defaultIMSystemName = "知识库"
 )
 
 // imCitationTagRe matches inline citation tags produced by the agent pipeline.
@@ -253,12 +257,13 @@ type inflightEntry struct {
 // 4. Calls the WeKnora QA pipeline for normal messages
 // 5. Collects the streaming answer and sends it back via the Adapter
 type Service struct {
-	db             *gorm.DB
-	sessionService interfaces.SessionService
-	messageService interfaces.MessageService
-	tenantService  interfaces.TenantService
-	userService    interfaces.UserService
-	memberService  interfaces.TenantMemberService
+	db               *gorm.DB
+	sessionService   interfaces.SessionService
+	messageService   interfaces.MessageService
+	tenantService    interfaces.TenantService
+	userService      interfaces.UserService
+	memberService    interfaces.TenantMemberService
+	systemSettingSvc interfaces.SystemSettingService
 
 	// kbService resolves the selected workspace's own knowledge bases.
 	kbService interfaces.KnowledgeBaseService
@@ -787,6 +792,7 @@ func NewService(
 	tenantService interfaces.TenantService,
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
+	systemSetting interfaces.SystemSettingService,
 	kbService interfaces.KnowledgeBaseService,
 	streamManager interfaces.StreamManager,
 	defaultFileSvc interfaces.FileService,
@@ -815,6 +821,7 @@ func NewService(
 		tenantService:    tenantService,
 		userService:      userService,
 		memberService:    memberService,
+		systemSettingSvc: systemSetting,
 		kbService:        kbService,
 		streamManager:    streamManager,
 		defaultFileSvc:   defaultFileSvc,
@@ -857,6 +864,17 @@ func NewService(
 	}
 
 	return s
+}
+
+func (s *Service) systemName(ctx context.Context) string {
+	if s.systemSettingSvc == nil {
+		return defaultIMSystemName
+	}
+	title := strings.TrimSpace(s.systemSettingSvc.GetString(ctx, imSiteTitleSettingKey, "", ""))
+	if title == "" {
+		return defaultIMSystemName
+	}
+	return title
 }
 
 // RegisterAdapterFactory registers a factory for creating adapters for a given platform.
@@ -1702,10 +1720,15 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 
 	binding, member, err := s.ResolveActiveBinding(ctx, channelID, msg.UserID)
 	if err != nil {
-		content := "尚未绑定 WeKnora 账号。请先在 WeKnora 的 IM 绑定页面选择工作空间，再将生成的绑定码发送给我。"
+		systemName := s.systemName(ctx)
+		content := fmt.Sprintf(
+			"尚未绑定「%s」账号。请先登录「%s」，在 IM 绑定页面选择工作空间，再将生成的绑定码发送给我。",
+			systemName,
+			systemName,
+		)
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			if errors.Is(err, ErrBindingMembershipInvalid) {
-				content = "绑定的账号或工作空间权限已失效，请在 WeKnora 中重新绑定。"
+				content = fmt.Sprintf("绑定的账号或工作空间权限已失效，请登录「%s」重新绑定。", systemName)
 			} else {
 				return fmt.Errorf("resolve active binding: %w", err)
 			}
@@ -1883,17 +1906,18 @@ func (s *Service) handleBindingCode(
 	msg *IncomingMessage,
 ) error {
 	_, err := s.ConsumeBindingCode(ctx, channelID, msg.UserID, msg.UserName, msg.Content)
-	content := "绑定成功，后续将使用你选择的 WeKnora 工作空间。"
+	systemName := s.systemName(ctx)
+	content := fmt.Sprintf("绑定成功，后续将使用你在「%s」中选择的工作空间。", systemName)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBindingCodeInvalid):
-			content = "绑定码无效或已过期，请在 WeKnora 中重新生成。"
+			content = fmt.Sprintf("绑定码无效或已过期，请登录「%s」重新生成。", systemName)
 		case errors.Is(err, ErrBindingIdentityInUse):
-			content = "当前 IM 账号已绑定其他 WeKnora 账号，请先解除原绑定。"
+			content = fmt.Sprintf("当前 IM 账号已绑定其他「%s」账号，请先解除原绑定。", systemName)
 		case errors.Is(err, ErrBindingUserInUse):
-			content = "当前 WeKnora 账号已绑定该机器人下的其他 IM 账号，请先解除原绑定。"
+			content = fmt.Sprintf("当前「%s」账号已绑定该机器人下的其他 IM 账号，请先解除原绑定。", systemName)
 		case errors.Is(err, ErrBindingMembershipInvalid):
-			content = "账号或工作空间权限已失效，请返回 WeKnora 重新选择。"
+			content = fmt.Sprintf("账号或工作空间权限已失效，请返回「%s」重新选择。", systemName)
 		case errors.Is(err, ErrBindingUnavailable):
 			content = "当前机器人暂不可绑定，请联系系统管理员。"
 		default:
