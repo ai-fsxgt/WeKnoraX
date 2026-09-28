@@ -130,8 +130,7 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 // @Failure      400      {object}  map[string]interface{}  "请求参数错误"
 // @Failure      404      {object}  map[string]interface{}  "渠道不存在"
 // @Security     Bearer
-// @Security     ApiKeyAuth
-// @Router       /im-channels/{id} [put]
+// @Router       /system/admin/im-channels/{id} [put]
 func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 	channelID := c.Param("id")
 	if channelID == "" {
@@ -237,8 +236,7 @@ func mergeIMCredentials(current, update types.JSON) (types.JSON, error) {
 // @Failure      400  {object}  map[string]interface{}  "请求参数错误"
 // @Failure      404  {object}  map[string]interface{}  "渠道不存在"
 // @Security     Bearer
-// @Security     ApiKeyAuth
-// @Router       /im-channels/{id} [delete]
+// @Router       /system/admin/im-channels/{id} [delete]
 func (h *IMHandler) DeleteIMChannel(c *gin.Context) {
 	channelID := c.Param("id")
 	if channelID == "" {
@@ -266,8 +264,7 @@ func (h *IMHandler) DeleteIMChannel(c *gin.Context) {
 // @Failure      400  {object}  map[string]interface{}  "请求参数错误"
 // @Failure      404  {object}  map[string]interface{}  "渠道不存在"
 // @Security     Bearer
-// @Security     ApiKeyAuth
-// @Router       /im-channels/{id}/toggle [post]
+// @Router       /system/admin/im-channels/{id}/toggle [post]
 func (h *IMHandler) ToggleIMChannel(c *gin.Context) {
 	channelID := c.Param("id")
 	if channelID == "" {
