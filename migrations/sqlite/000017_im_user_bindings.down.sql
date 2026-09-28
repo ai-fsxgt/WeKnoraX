@@ -18,13 +18,38 @@ CREATE TABLE im_channel_sessions (
     deleted_at DATETIME
 );
 INSERT INTO im_channel_sessions (
-    id, session_id, tenant_id, im_channel_id, status, metadata,
-    created_at, updated_at, deleted_at
+    id, platform, user_id, chat_id, session_id, tenant_id, agent_id,
+    im_channel_id, thread_id, status, metadata, created_at, updated_at, deleted_at
 )
 SELECT
-    id, session_id, tenant_id, im_channel_id, status, metadata,
-    created_at, updated_at, deleted_at
-FROM im_channel_sessions_binding;
+    session_map.id,
+    COALESCE(json_extract(session_map.metadata, '$.legacy_platform'), channel.platform, ''),
+    COALESCE(
+        json_extract(session_map.metadata, '$.legacy_external_user_id'),
+        substr(binding.external_user_id, 1, 128),
+        ''
+    ),
+    COALESCE(
+        json_extract(session_map.metadata, '$.legacy_chat_id'),
+        CASE WHEN session_map.binding_id IS NOT NULL THEN '__binding__:' || session_map.binding_id END,
+        ''
+    ),
+    session_map.session_id,
+    session_map.tenant_id,
+    CASE
+        WHEN json_type(session_map.metadata, '$.legacy_agent_id') IS NULL THEN ''
+        ELSE json_extract(session_map.metadata, '$.legacy_agent_id')
+    END,
+    session_map.im_channel_id,
+    COALESCE(json_extract(session_map.metadata, '$.legacy_thread_id'), ''),
+    session_map.status,
+    session_map.metadata,
+    session_map.created_at,
+    session_map.updated_at,
+    session_map.deleted_at
+FROM im_channel_sessions_binding AS session_map
+LEFT JOIN im_user_bindings AS binding ON binding.id = session_map.binding_id
+LEFT JOIN im_channels AS channel ON channel.id = binding.im_channel_id;
 DROP TABLE im_channel_sessions_binding;
 
 CREATE UNIQUE INDEX idx_channel_lookup
@@ -59,14 +84,33 @@ CREATE TABLE im_channels (
     deleted_at DATETIME
 );
 INSERT INTO im_channels (
-    id, platform, name, enabled, mode, output_mode, credentials,
-    bot_identity, created_at, updated_at, deleted_at
+    id, tenant_id, agent_id, platform, name, enabled, mode, output_mode,
+    credentials, knowledge_base_id, bot_identity, session_mode,
+    created_at, updated_at, deleted_at
 )
 SELECT
-    id, platform, name, enabled, mode, output_mode, credentials,
-    bot_identity, created_at, updated_at, deleted_at
-FROM im_channels_system;
+    channel.id,
+    COALESCE(backup.tenant_id, 0),
+    COALESCE(backup.agent_id, ''),
+    channel.platform,
+    channel.name,
+    COALESCE(backup.enabled, channel.enabled),
+    channel.mode,
+    channel.output_mode,
+    channel.credentials,
+    CASE
+        WHEN backup.id IS NULL THEN ''
+        ELSE backup.knowledge_base_id
+    END,
+    channel.bot_identity,
+    COALESCE(backup.session_mode, 'user'),
+    channel.created_at,
+    channel.updated_at,
+    channel.deleted_at
+FROM im_channels_system AS channel
+LEFT JOIN im_channel_legacy_config_backup AS backup ON backup.id = channel.id;
 DROP TABLE im_channels_system;
+DROP TABLE im_channel_legacy_config_backup;
 
 CREATE INDEX idx_im_channels_tenant ON im_channels(tenant_id);
 CREATE INDEX idx_im_channels_agent ON im_channels(agent_id);

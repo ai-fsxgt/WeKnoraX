@@ -90,7 +90,7 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 
 	if err := h.imService.CreateChannel(channel); err != nil {
 		logger.Errorf(c.Request.Context(), "[IM] Create channel failed: %v", err)
-		if errors.Is(err, im.ErrChannelIdentityMissing) {
+		if errors.Is(err, im.ErrChannelIdentityMissing) || errors.Is(err, im.ErrChannelConfigurationInvalid) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -184,7 +184,7 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 
 	if err := h.imService.UpdateChannel(channel); err != nil {
 		logger.Errorf(c.Request.Context(), "[IM] Update channel failed: %v", err)
-		if errors.Is(err, im.ErrChannelIdentityMissing) {
+		if errors.Is(err, im.ErrChannelIdentityMissing) || errors.Is(err, im.ErrChannelConfigurationInvalid) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -215,6 +215,10 @@ func mergeIMCredentials(current, update types.JSON) (types.JSON, error) {
 		return nil, err
 	}
 	for key, value := range updateValues {
+		if text, ok := value.(string); ok && strings.TrimSpace(text) == "" {
+			delete(currentValues, key)
+			continue
+		}
 		currentValues[key] = value
 	}
 
@@ -273,7 +277,7 @@ func (h *IMHandler) ToggleIMChannel(c *gin.Context) {
 
 	channel, err := h.imService.ToggleChannel(channelID)
 	if err != nil {
-		if errors.Is(err, im.ErrChannelIdentityMissing) {
+		if errors.Is(err, im.ErrChannelIdentityMissing) || errors.Is(err, im.ErrChannelConfigurationInvalid) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -441,6 +445,11 @@ func (h *IMHandler) IMCallback(c *gin.Context) {
 	}
 
 	logger.Infof(ctx, "[IM] Callback received platform=%s path_channel_id=%s", channel.Platform, channelID)
+	if channel.Mode != "webhook" {
+		logger.Warnf(ctx, "[IM] HTTP callback rejected for non-webhook channel %s", channelID)
+		c.JSON(http.StatusNotFound, gin.H{"error": "channel does not accept webhook callbacks"})
+		return
+	}
 
 	// Handle URL verification
 	if adapter.HandleURLVerification(c) {

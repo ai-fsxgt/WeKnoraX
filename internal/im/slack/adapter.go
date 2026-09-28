@@ -99,7 +99,7 @@ func (a *Adapter) Platform() im.Platform {
 
 func (a *Adapter) VerifyCallback(c *gin.Context) error {
 	if a.signingSecret == "" {
-		return nil
+		return fmt.Errorf("signing secret is not configured")
 	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)

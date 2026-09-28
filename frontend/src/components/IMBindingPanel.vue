@@ -1,8 +1,8 @@
 <template>
   <div class="im-binding-panel">
     <t-loading :loading="loading" show-overlay>
-      <div v-if="channels.length" class="binding-layout">
-        <section class="binding-create">
+      <div v-if="channels.length || bindings.length" class="binding-layout">
+        <section v-if="channels.length" class="binding-create">
           <h3>{{ t('imBinding.createTitle') }}</h3>
           <div class="binding-form">
             <label>{{ t('imBinding.workspace') }}</label>
@@ -50,6 +50,12 @@
           </div>
 
           <t-alert v-else-if="requestState === 'expired'" theme="warning" :message="t('imBinding.expired')" />
+        </section>
+
+        <section v-else class="binding-create no-channels">
+          <t-icon name="chat-message" size="46px" />
+          <h3>{{ t('imBinding.noChannelsTitle') }}</h3>
+          <p>{{ t('imBinding.noChannels') }}</p>
         </section>
 
         <section class="binding-list-section">
@@ -193,6 +199,7 @@ async function loadData() {
 async function generateBindingCode() {
   if (!selectedTenantID.value || !selectedChannelID.value) return
   stopPolling()
+  pendingRequest.value = null
   generating.value = true
   requestState.value = ''
   try {
@@ -215,8 +222,10 @@ function schedulePoll(delay = 2000) {
 
 async function pollBindingRequest() {
   if (!polling || !pendingRequest.value) return
+  const requestID = pendingRequest.value.id
   try {
-    const response = await getIMBindingRequest(pendingRequest.value.id)
+    const response = await getIMBindingRequest(requestID)
+    if (!polling || pendingRequest.value?.id !== requestID) return
     requestState.value = response.data.status
     if (response.data.status === 'consumed') {
       stopPolling()
@@ -231,12 +240,13 @@ async function pollBindingRequest() {
       return
     }
   } catch (error: any) {
+    if (!polling || pendingRequest.value?.id !== requestID) return
     stopPolling()
     pendingRequest.value = null
     MessagePlugin.error(error?.message || t('imBinding.failed'))
     return
   }
-  schedulePoll()
+  if (polling && pendingRequest.value?.id === requestID) schedulePoll()
 }
 
 function stopPolling() {

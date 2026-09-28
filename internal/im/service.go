@@ -214,6 +214,9 @@ var ErrChannelDisabled = errors.New("channel is disabled")
 // without a stable platform identity for duplicate and rebind protection.
 var ErrChannelIdentityMissing = errors.New("channel credentials do not contain a stable bot identity")
 
+// ErrChannelConfigurationInvalid prevents an incomplete channel from being enabled.
+var ErrChannelConfigurationInvalid = errors.New("channel configuration is invalid")
+
 // channelState holds runtime state for a running IM channel.
 type channelState struct {
 	Channel      *IMChannel
@@ -1882,15 +1885,23 @@ func (s *Service) handleBindingCode(
 }
 
 func (s *Service) resolveBindingKnowledgeBaseIDs(ctx context.Context, tenantID uint64) ([]string, error) {
-	kbs, err := s.kbService.ListKnowledgeBasesByTenantID(ctx, tenantID)
-	if err != nil {
+	var kbs []*types.KnowledgeBase
+	if err := s.db.WithContext(ctx).
+		Select("id", "type", "indexing_strategy").
+		Where("tenant_id = ? AND is_temporary = ?", tenantID, false).
+		Order("created_at DESC").
+		Find(&kbs).Error; err != nil {
 		return nil, err
 	}
 	filter := agenttools.DeriveKBFilterForAgent(types.AgentModeQuickAnswer, nil)
 	ids := make([]string, 0, len(kbs))
 	for _, kb := range kbs {
-		if kb == nil || (!filter.IsEmpty() &&
-			!agenttools.KBSatisfiesAgentRequirements(kb.Capabilities(), types.AgentModeQuickAnswer, nil)) {
+		if kb == nil {
+			continue
+		}
+		kb.EnsureDefaults()
+		if !filter.IsEmpty() &&
+			!agenttools.KBSatisfiesAgentRequirements(kb.Capabilities(), types.AgentModeQuickAnswer, nil) {
 			continue
 		}
 		ids = append(ids, kb.ID)
@@ -2961,8 +2972,8 @@ func (s *Service) ListChannels() ([]IMChannel, error) {
 // CreateChannel creates a new IM channel and optionally starts it.
 // Returns a duplicate_bot error if the bot identity is already used by another channel.
 func (s *Service) CreateChannel(channel *IMChannel) error {
-	if channel.Enabled && requiresStableBotIdentity(channel.Platform) && channel.computeBotIdentity() == "" {
-		return ErrChannelIdentityMissing
+	if err := validateChannel(channel); err != nil {
+		return err
 	}
 	if err := s.checkDuplicateBot(channel, ""); err != nil {
 		return err
@@ -2983,8 +2994,8 @@ func (s *Service) CreateChannel(channel *IMChannel) error {
 // Returns a duplicate_bot error if the bot identity is already used by another channel.
 func (s *Service) UpdateChannel(channel *IMChannel) error {
 	newIdentity := channel.computeBotIdentity()
-	if channel.Enabled && requiresStableBotIdentity(channel.Platform) && newIdentity == "" {
-		return ErrChannelIdentityMissing
+	if err := validateChannel(channel); err != nil {
+		return err
 	}
 	if err := s.checkDuplicateBot(channel, channel.ID); err != nil {
 		return err
@@ -3057,8 +3068,8 @@ func (s *Service) ToggleChannel(channelID string) (*IMChannel, error) {
 		return nil, err
 	}
 	ch.Enabled = !ch.Enabled
-	if ch.Enabled && requiresStableBotIdentity(ch.Platform) && ch.computeBotIdentity() == "" {
-		return nil, ErrChannelIdentityMissing
+	if err := validateChannel(&ch); err != nil {
+		return nil, err
 	}
 	if err := s.db.Save(&ch).Error; err != nil {
 		return nil, err
@@ -3072,6 +3083,88 @@ func (s *Service) ToggleChannel(channelID string) (*IMChannel, error) {
 	}
 	s.publishChannelConfigChange(channelID)
 	return &ch, nil
+}
+
+func validateChannel(channel *IMChannel) error {
+	credentials, err := ParseCredentials(channel.Credentials)
+	if err != nil {
+		return fmt.Errorf("%w: credentials must be a JSON object", ErrChannelConfigurationInvalid)
+	}
+	requiredFields, err := requiredChannelCredentialFields(channel.Platform, channel.Mode)
+	if err != nil {
+		return err
+	}
+	if !channel.Enabled {
+		return nil
+	}
+	for _, field := range requiredFields {
+		if !channelCredentialConfigured(credentials, field) {
+			return fmt.Errorf("%w: %s is required", ErrChannelConfigurationInvalid, field)
+		}
+	}
+	if requiresStableBotIdentity(channel.Platform) && channel.computeBotIdentity() == "" {
+		return ErrChannelIdentityMissing
+	}
+	return nil
+}
+
+func requiredChannelCredentialFields(platform, mode string) ([]string, error) {
+	switch platform {
+	case string(PlatformWeCom):
+		switch mode {
+		case "websocket":
+			return []string{"bot_id", "bot_secret"}, nil
+		case "webhook":
+			return []string{"corp_id", "corp_agent_id", "agent_secret", "token", "encoding_aes_key"}, nil
+		}
+	case string(PlatformFeishu), string(PlatformLark):
+		switch mode {
+		case "websocket":
+			return []string{"app_id", "app_secret"}, nil
+		case "webhook":
+			return []string{"app_id", "app_secret", "verification_token"}, nil
+		}
+	case string(PlatformSlack):
+		switch mode {
+		case "websocket":
+			return []string{"bot_token", "app_token"}, nil
+		case "webhook":
+			return []string{"bot_token", "signing_secret"}, nil
+		}
+	case string(PlatformTelegram):
+		switch mode {
+		case "websocket":
+			return []string{"bot_token"}, nil
+		case "webhook":
+			return []string{"bot_token", "secret_token"}, nil
+		}
+	case string(PlatformDingtalk):
+		if mode == "websocket" || mode == "webhook" {
+			return []string{"client_id", "client_secret"}, nil
+		}
+	case string(PlatformWeChat):
+		if mode == "longpoll" {
+			return []string{"bot_token", "ilink_bot_id"}, nil
+		}
+	case string(PlatformQQBot):
+		if mode == "websocket" {
+			return []string{"app_id", "client_secret"}, nil
+		}
+	default:
+		return nil, nil
+	}
+	return nil, fmt.Errorf("%w: %s does not support %s mode", ErrChannelConfigurationInvalid, platform, mode)
+}
+
+func channelCredentialConfigured(credentials map[string]any, field string) bool {
+	if strings.TrimSpace(GetString(credentials, field)) != "" {
+		return true
+	}
+	if field != "corp_agent_id" {
+		return false
+	}
+	value, ok := credentials[field].(float64)
+	return ok && value > 0
 }
 
 func requiresStableBotIdentity(platform string) bool {

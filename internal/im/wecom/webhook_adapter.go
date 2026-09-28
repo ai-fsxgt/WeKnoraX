@@ -135,6 +135,9 @@ func (a *WebhookAdapter) Platform() im.Platform {
 
 // VerifyCallback verifies the WeCom callback signature.
 func (a *WebhookAdapter) VerifyCallback(c *gin.Context) error {
+	if a.token == "" {
+		return fmt.Errorf("callback token is not configured")
+	}
 	timestamp := c.Query("timestamp")
 	nonce := c.Query("nonce")
 	msgSignature := c.Query("msg_signature")

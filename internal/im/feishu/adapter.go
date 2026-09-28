@@ -157,10 +157,9 @@ func (a *Adapter) Platform() im.Platform {
 }
 
 // VerifyCallback verifies the Feishu event callback by checking the verification token.
-// If no verification token is configured (e.g., WebSocket mode), skip verification.
 func (a *Adapter) VerifyCallback(c *gin.Context) error {
 	if a.verificationToken == "" {
-		return nil
+		return fmt.Errorf("verification token is not configured")
 	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)

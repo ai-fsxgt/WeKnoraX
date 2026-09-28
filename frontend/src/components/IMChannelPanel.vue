@@ -111,7 +111,7 @@
           <label>{{ t('agentEditor.im.mode') }}</label>
           <t-radio-group v-model="form.mode">
             <t-radio value="websocket">WebSocket</t-radio>
-            <t-radio value="webhook">Webhook</t-radio>
+            <t-radio v-if="form.platform !== 'qqbot'" value="webhook">Webhook</t-radio>
           </t-radio-group>
         </template>
 
@@ -143,8 +143,8 @@
           <t-button :loading="wechatLoading" variant="outline" @click="startWeChatBinding">
             {{ t('agentEditor.im.wechatScanBind') }}
           </t-button>
-          <div v-if="wechatQRImage" class="wechat-qr">
-            <img :src="wechatQRImage" :alt="t('agentEditor.im.wechatScanBind')" />
+          <div v-if="wechatQRContent" class="wechat-qr">
+            <t-qrcode :value="wechatQRContent" :size="200" />
             <p>{{ wechatStatus === 'scaned' ? t('agentEditor.im.wechatBinding') : t('agentEditor.im.wechatScanning') }}</p>
           </div>
           <t-alert v-if="wechatStatus === 'expired'" theme="warning" :message="t('agentEditor.im.wechatQRExpired')" />
@@ -205,7 +205,7 @@ const editingChannel = ref<IMChannelSummary | null>(null)
 const step = ref(0)
 const wechatLoading = ref(false)
 const wechatQRCode = ref('')
-const wechatQRImage = ref('')
+const wechatQRContent = ref('')
 const wechatStatus = ref('')
 const wechatCredentialsReady = ref(false)
 let wechatPollTimer: ReturnType<typeof setTimeout> | null = null
@@ -318,7 +318,7 @@ function resetForm() {
   })
   step.value = 0
   wechatQRCode.value = ''
-  wechatQRImage.value = ''
+  wechatQRContent.value = ''
   wechatStatus.value = ''
   wechatCredentialsReady.value = false
 }
@@ -361,8 +361,7 @@ function onPlatformChange() {
 function cleanedCredentials() {
   return Object.fromEntries(
     Object.entries(form.credentials)
-      .map(([key, value]) => [key, String(value).trim()])
-      .filter(([, value]) => value !== ''),
+      .map(([key, value]) => [key, String(value).trim()]),
   )
 }
 
@@ -456,12 +455,12 @@ async function copyCallback(channelID: string) {
 async function startWeChatBinding() {
   stopWeChatPolling()
   wechatLoading.value = true
-  wechatQRImage.value = ''
+  wechatQRContent.value = ''
   wechatStatus.value = ''
   try {
     const response = await getWeChatQRCode()
     wechatQRCode.value = response.data.qrcode
-    wechatQRImage.value = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(response.data.qrcode_url)}`
+    wechatQRContent.value = response.data.qrcode_url
     wechatStatus.value = 'wait'
     wechatPolling = true
     void pollWeChatStatus()
@@ -729,11 +728,6 @@ onUnmounted(stopWeChatPolling)
 
 .wechat-qr {
   text-align: center;
-
-  img {
-    width: 200px;
-    height: 200px;
-  }
 
   p {
     margin: 8px 0 0;

@@ -62,7 +62,7 @@ func (a *Adapter) HandleURLVerification(c *gin.Context) bool {
 
 func (a *Adapter) VerifyCallback(c *gin.Context) error {
 	if a.secretToken == "" {
-		return nil
+		return fmt.Errorf("secret token is not configured")
 	}
 	token := c.GetHeader("X-Telegram-Bot-Api-Secret-Token")
 	if subtle.ConstantTimeCompare([]byte(token), []byte(a.secretToken)) != 1 {

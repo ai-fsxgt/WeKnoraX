@@ -3,6 +3,8 @@ package wecom
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/Tencent/WeKnora/internal/im"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -28,6 +30,11 @@ func NewFactory() im.AdapterFactory {
 					corpAgentID = int(val)
 				case int:
 					corpAgentID = val
+				case string:
+					corpAgentID, err = strconv.Atoi(strings.TrimSpace(val))
+					if err != nil {
+						return nil, nil, fmt.Errorf("invalid wecom corp_agent_id: %w", err)
+					}
 				}
 			}
 			adapter, err := NewWebhookAdapter(

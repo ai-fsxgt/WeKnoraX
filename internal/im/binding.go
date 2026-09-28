@@ -187,6 +187,13 @@ func (s *Service) CreateBindingRequest(
 		ExpiresAt:   now.Add(bindingCodeTTL),
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		var user types.User
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Select("id").
+			Where("id = ?", userID).
+			First(&user).Error; err != nil {
+			return err
+		}
 		if err := tx.Model(&BindingRequest{}).
 			Where("user_id = ? AND im_channel_id = ? AND status = ?", userID, channel.ID, IMBindingRequestPending).
 			Updates(map[string]any{

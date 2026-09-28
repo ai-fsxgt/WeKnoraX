@@ -92,7 +92,7 @@ func (a *Adapter) HandleURLVerification(c *gin.Context) bool {
 // VerifyCallback verifies the DingTalk webhook signature (HmacSHA256).
 func (a *Adapter) VerifyCallback(c *gin.Context) error {
 	if a.clientSecret == "" {
-		return nil
+		return fmt.Errorf("client secret is not configured")
 	}
 
 	timestamp := c.GetHeader("Timestamp")

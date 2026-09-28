@@ -1,4 +1,18 @@
 -- Mirrors versioned migration 000091_im_user_bindings.
+CREATE TABLE im_channel_legacy_config_backup (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id INTEGER NOT NULL,
+    agent_id VARCHAR(36) NOT NULL,
+    knowledge_base_id VARCHAR(36),
+    session_mode VARCHAR(20) NOT NULL,
+    enabled INTEGER NOT NULL
+);
+INSERT INTO im_channel_legacy_config_backup (
+    id, tenant_id, agent_id, knowledge_base_id, session_mode, enabled
+)
+SELECT id, tenant_id, agent_id, knowledge_base_id, session_mode, enabled
+FROM im_channels;
+
 UPDATE im_channels SET enabled = 0;
 
 ALTER TABLE im_channels RENAME TO im_channels_legacy;
@@ -72,6 +86,9 @@ CREATE INDEX idx_im_binding_requests_owner
     ON im_binding_requests(user_id, created_at DESC);
 CREATE INDEX idx_im_binding_requests_channel_status
     ON im_binding_requests(im_channel_id, status, expires_at);
+CREATE UNIQUE INDEX idx_im_binding_requests_user_pending
+    ON im_binding_requests(im_channel_id, user_id)
+    WHERE status = 'pending';
 
 ALTER TABLE im_channel_sessions RENAME TO im_channel_sessions_legacy;
 CREATE TABLE im_channel_sessions (
@@ -92,7 +109,15 @@ INSERT INTO im_channel_sessions (
 )
 SELECT
     id, NULL, session_id, tenant_id, im_channel_id, status,
-    metadata, created_at, updated_at, deleted_at
+    json_set(
+        CASE WHEN json_valid(metadata) THEN COALESCE(metadata, '{}') ELSE '{}' END,
+        '$.legacy_platform', platform,
+        '$.legacy_external_user_id', user_id,
+        '$.legacy_chat_id', chat_id,
+        '$.legacy_thread_id', thread_id,
+        '$.legacy_agent_id', agent_id
+    ),
+    created_at, updated_at, deleted_at
 FROM im_channel_sessions_legacy;
 DROP TABLE im_channel_sessions_legacy;
 

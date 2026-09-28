@@ -1,6 +1,21 @@
 -- Move IM bot installations to system scope and add per-user workspace bindings.
 DO $$ BEGIN RAISE NOTICE '[Migration 000091] Creating per-user IM bindings'; END $$;
 
+CREATE TABLE im_channel_legacy_config_backup (
+    id                VARCHAR(36) PRIMARY KEY,
+    tenant_id         BIGINT      NOT NULL,
+    agent_id          VARCHAR(36) NOT NULL,
+    knowledge_base_id VARCHAR(36),
+    session_mode      VARCHAR(20) NOT NULL,
+    enabled           BOOLEAN     NOT NULL
+);
+
+INSERT INTO im_channel_legacy_config_backup (
+    id, tenant_id, agent_id, knowledge_base_id, session_mode, enabled
+)
+SELECT id, tenant_id, agent_id, knowledge_base_id, session_mode, enabled
+FROM im_channels;
+
 -- Existing channel ownership cannot be widened safely. Keep the installation
 -- configuration for administrator review, but require explicit re-enablement.
 UPDATE im_channels SET enabled = FALSE;
@@ -61,6 +76,9 @@ CREATE INDEX idx_im_binding_requests_owner
     ON im_binding_requests(user_id, created_at DESC);
 CREATE INDEX idx_im_binding_requests_channel_status
     ON im_binding_requests(im_channel_id, status, expires_at);
+CREATE UNIQUE INDEX idx_im_binding_requests_user_pending
+    ON im_binding_requests(im_channel_id, user_id)
+    WHERE status = 'pending';
 
 -- Preserve old session provenance in metadata, then make new continuity depend
 -- exclusively on binding_id. Legacy rows intentionally remain unbound.
