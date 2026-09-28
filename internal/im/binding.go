@@ -297,6 +297,19 @@ func (s *Service) ConsumeBindingCode(
 		return nil, err
 	}
 	now := time.Now().UTC()
+	var pendingRequest BindingRequest
+	if err := s.db.WithContext(ctx).
+		Where("code_hash = ? AND im_channel_id = ? AND status = ? AND expires_at > ?",
+			hashBindingCode(code), channel.ID, IMBindingRequestPending, now).
+		First(&pendingRequest).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrBindingCodeInvalid
+		}
+		return nil, err
+	}
+	if _, err := s.validateBindingAccess(ctx, pendingRequest.UserID, pendingRequest.TenantID); err != nil {
+		return nil, err
+	}
 	var binding *UserBinding
 	var replacedBindingID string
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -313,10 +326,6 @@ func (s *Service) ConsumeBindingCode(
 			}
 			return err
 		}
-		if _, err := s.validateBindingAccess(ctx, request.UserID, request.TenantID); err != nil {
-			return err
-		}
-
 		var current UserBinding
 		err := tx.Where("im_channel_id = ? AND external_user_id = ? AND revoked_at IS NULL",
 			channel.ID, externalUserID).First(&current).Error

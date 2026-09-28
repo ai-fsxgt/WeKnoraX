@@ -484,6 +484,7 @@ type testListSessionsIMChannelSession struct {
 	SessionID   string `gorm:"column:session_id"`
 	BindingID   string `gorm:"column:binding_id"`
 	IMChannelID string `gorm:"column:im_channel_id"`
+	Metadata    types.JSON
 	Platform    string `gorm:"-"`
 }
 

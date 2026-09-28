@@ -190,6 +190,7 @@ type testIMChannelSession struct {
 	BindingID   string
 	IMChannelID string `gorm:"column:im_channel_id"`
 	TenantID    uint64
+	Metadata    types.JSON `gorm:"type:json"`
 	DeletedAt   gorm.DeletedAt
 }
 
@@ -295,10 +296,18 @@ func TestSessionRepositoryGetIMPlatform(t *testing.T) {
 		ID: "ics-1", SessionID: imSession.ID, IMChannelID: "channel-feishu",
 	}).Error)
 	webSession := createSessionForTest(t, db, 1, "alice")
+	legacySession := createSessionForTest(t, db, 1, "")
+	require.NoError(t, db.Create(&testIMChannelSession{
+		ID: "ics-legacy", SessionID: legacySession.ID, Metadata: types.JSON(`{"legacy_platform":"dingtalk"}`),
+	}).Error)
 
 	platform, err := repo.GetIMPlatform(ctx, 1, imSession.ID)
 	require.NoError(t, err)
 	require.Equal(t, "feishu", platform)
+
+	platform, err = repo.GetIMPlatform(ctx, 1, legacySession.ID)
+	require.NoError(t, err)
+	require.Equal(t, "dingtalk", platform)
 
 	platform, err = repo.GetIMPlatform(ctx, 1, webSession.ID)
 	require.NoError(t, err)

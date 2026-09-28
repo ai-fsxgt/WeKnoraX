@@ -19,6 +19,7 @@ FROM im_channels;
 -- Existing channel ownership cannot be widened safely. Keep the installation
 -- configuration for administrator review, but require explicit re-enablement.
 UPDATE im_channels SET enabled = FALSE;
+ALTER TABLE im_channels ALTER COLUMN enabled SET DEFAULT FALSE;
 
 ALTER TABLE im_channels
     ADD COLUMN IF NOT EXISTS created_by VARCHAR(36) NOT NULL DEFAULT '';

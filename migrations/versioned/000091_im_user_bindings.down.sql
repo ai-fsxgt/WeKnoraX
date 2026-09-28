@@ -53,6 +53,8 @@ SET tenant_id = backup.tenant_id,
 FROM im_channel_legacy_config_backup AS backup
 WHERE channel.id = backup.id;
 
+ALTER TABLE im_channels ALTER COLUMN enabled SET DEFAULT TRUE;
+
 DROP TABLE im_channel_legacy_config_backup;
 ALTER TABLE im_channels DROP COLUMN IF EXISTS created_by;
 

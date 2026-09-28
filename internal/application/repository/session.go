@@ -30,6 +30,13 @@ func NewSessionRepository(db *gorm.DB) interfaces.SessionRepository {
 	return &sessionRepository{db: db}
 }
 
+func imPlatformExpr(db *gorm.DB) string {
+	if db.Name() == "postgres" {
+		return "COALESCE(NULLIF(imc.platform, ''), ics.metadata ->> 'legacy_platform', '')"
+	}
+	return "COALESCE(NULLIF(imc.platform, ''), json_extract(ics.metadata, '$.legacy_platform'), '')"
+}
+
 // Create creates a new session
 func (r *sessionRepository) Create(ctx context.Context, session *types.Session) (*types.Session, error) {
 	session.CreatedAt = time.Now()
@@ -82,10 +89,11 @@ func (r *sessionRepository) GetIMPlatform(
 	err := r.db.WithContext(ctx).
 		Table("im_channel_sessions AS ics").
 		Joins("JOIN sessions AS s ON s.id = ics.session_id").
-		Joins("JOIN im_channels AS imc ON imc.id = ics.im_channel_id").
+		Joins("LEFT JOIN im_channels AS imc ON imc.id = ics.im_channel_id").
 		Where("ics.session_id = ? AND s.tenant_id = ?", sessionID, tenantID).
 		Limit(1).
-		Pluck("imc.platform", &platform).Error
+		Select(imPlatformExpr(r.db)).
+		Scan(&platform).Error
 	if err != nil {
 		return "", err
 	}
@@ -145,6 +153,7 @@ func (r *sessionRepository) QueryPaged(
 ) ([]*types.SessionListItem, int64, error) {
 	// Dialect-aware bits so the same query works on Postgres and SQLite (Lite build).
 	isPostgres := r.db.Dialector.Name() == "postgres"
+	platformExpr := imPlatformExpr(r.db)
 	titleLikeExpr := "LOWER(s.title) LIKE LOWER(?)"
 	if isPostgres {
 		titleLikeExpr = "s.title ILIKE ?"
@@ -223,7 +232,7 @@ func (r *sessionRepository) QueryPaged(
 					return db.Where("ics.id IS NULL AND s.description = ?", embedPrefix+channelID)
 				}
 			}
-			return db.Where("imc.platform = ?", lower)
+			return db.Where(platformExpr+" = ?", lower)
 		}
 	}
 	// Count distinct sessions to guard against fan-out from the join.
@@ -249,7 +258,7 @@ func (r *sessionRepository) QueryPaged(
 		r.db.WithContext(ctx).Table("sessions AS s").Joins(joinClause),
 	)).
 		Select(`s.*,
-			imc.platform         AS im_platform,
+			` + platformExpr + ` AS im_platform,
 			imb.external_user_id AS im_user_id,
 			ics.im_channel_id    AS im_channel_id`).
 		Order(orderClause).

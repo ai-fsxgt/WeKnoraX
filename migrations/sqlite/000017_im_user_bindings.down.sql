@@ -72,7 +72,7 @@ CREATE TABLE im_channels (
     agent_id VARCHAR(36) NOT NULL DEFAULT '',
     platform VARCHAR(20) NOT NULL,
     name VARCHAR(255) NOT NULL DEFAULT '',
-    enabled INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
     mode VARCHAR(20) NOT NULL DEFAULT 'websocket',
     output_mode VARCHAR(20) NOT NULL DEFAULT 'stream',
     credentials TEXT NOT NULL DEFAULT '{}',
