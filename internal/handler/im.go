@@ -142,12 +142,12 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 //
 // UpdateIMChannel godoc
 // @Summary      更新 IM 渠道
-// @Description  更新系统级 IM 机器人的名称、模式、凭证或启用状态
+// @Description  更新系统级 IM 机器人的名称、模式或凭证
 // @Tags         IM 渠道
 // @Accept       json
 // @Produce      json
 // @Param        id       path      string                  true  "渠道 ID"
-// @Param        request  body      map[string]interface{}  true  "更新字段（name/mode/output_mode/credentials/enabled）"
+// @Param        request  body      map[string]interface{}  true  "更新字段（name/mode/output_mode/credentials）"
 // @Success      200      {object}  map[string]interface{}  "更新后的渠道"
 // @Failure      400      {object}  map[string]interface{}  "请求参数错误"
 // @Failure      404      {object}  map[string]interface{}  "渠道不存在"
@@ -171,7 +171,6 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 		Mode        *string    `json:"mode"`
 		OutputMode  *string    `json:"output_mode"`
 		Credentials types.JSON `json:"credentials"`
-		Enabled     *bool      `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -194,9 +193,6 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 			return
 		}
 		channel.Credentials = mergedCredentials
-	}
-	if req.Enabled != nil {
-		channel.Enabled = *req.Enabled
 	}
 	if channel.Platform == string(im.PlatformWeChat) {
 		channel.Mode = "longpoll"
@@ -267,6 +263,10 @@ func (h *IMHandler) DeleteIMChannel(c *gin.Context) {
 	}
 
 	if err := h.imService.DeleteChannel(channelID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete channel"})
 		return
 	}
@@ -296,6 +296,10 @@ func (h *IMHandler) ToggleIMChannel(c *gin.Context) {
 
 	channel, err := h.imService.ToggleChannel(channelID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
+			return
+		}
 		if errors.Is(err, im.ErrChannelIdentityMissing) || errors.Is(err, im.ErrChannelConfigurationInvalid) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

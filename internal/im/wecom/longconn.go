@@ -525,13 +525,14 @@ func (c *LongConnClient) handleCallback(ctx context.Context, conn *ws.Conn, fram
 		return
 	}
 
-	chatType := im.ChatTypeDirect
+	chatType := im.ChatTypeGroup
 	chatID := ""
-	isGroup := msg.ChatType == "group"
-	if isGroup {
-		chatType = im.ChatTypeGroup
+	if msg.ChatType == "single" {
+		chatType = im.ChatTypeDirect
+	} else {
 		chatID = msg.ChatID
 	}
+	isGroup := chatType == im.ChatTypeGroup
 
 	// Preserve req_id in Extra for reply routing
 	reqID := ""

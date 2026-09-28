@@ -2901,7 +2901,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "更新系统级 IM 机器人的名称、模式、凭证或启用状态",
+                "description": "更新系统级 IM 机器人的名称、模式或凭证",
                 "consumes": [
                     "application/json"
                 ],
@@ -2921,7 +2921,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "更新字段（name/mode/output_mode/credentials/enabled）",
+                        "description": "更新字段（name/mode/output_mode/credentials）",
                         "name": "request",
                         "in": "body",
                         "required": true,

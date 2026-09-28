@@ -30,7 +30,7 @@ type CommandResult struct {
 type CommandContext struct {
 	// Incoming is the raw IM message that triggered the command.
 	Incoming *IncomingMessage
-	// Session is the IM channel session for this user×chat combination.
+	// Session is the IM channel session for the current binding.
 	Session *ChannelSession
 	// TenantID is the workspace selected by the current binding.
 	TenantID uint64
@@ -39,8 +39,6 @@ type CommandContext struct {
 	// KnowledgeBaseIDs is the exact personal workspace scope used by both
 	// commands and the QA pipeline.
 	KnowledgeBaseIDs []string
-	// BindingID identifies the current user binding for clear/stop actions.
-	BindingID string
 	// ChannelOutputMode is the channel-level output mode configured by the admin
 	// ("stream" or "full").
 	ChannelOutputMode string

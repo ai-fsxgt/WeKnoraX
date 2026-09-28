@@ -8115,14 +8115,14 @@ paths:
     put:
       consumes:
       - application/json
-      description: 更新系统级 IM 机器人的名称、模式、凭证或启用状态
+      description: 更新系统级 IM 机器人的名称、模式或凭证
       parameters:
       - description: 渠道 ID
         in: path
         name: id
         required: true
         type: string
-      - description: 更新字段（name/mode/output_mode/credentials/enabled）
+      - description: 更新字段（name/mode/output_mode/credentials）
         in: body
         name: request
         required: true

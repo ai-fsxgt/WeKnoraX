@@ -1091,6 +1091,12 @@ func (s *Service) startChannelInternal(channel *IMChannel, factory AdapterFactor
 		s.releaseWSLeader(channel.ID) // release lock on failure
 		return fmt.Errorf("create adapter: %w", err)
 	}
+	cleanup := func() {
+		if cancelFn != nil {
+			cancelFn()
+		}
+		s.releaseWSLeader(channel.ID)
+	}
 
 	// Start leader renewal goroutine for WebSocket / long-poll channels.
 	var leaderCancel context.CancelFunc
@@ -1101,6 +1107,21 @@ func (s *Service) startChannelInternal(channel *IMChannel, factory AdapterFactor
 	}
 
 	s.mu.Lock()
+	fresh, stateErr := s.GetChannelByID(channel.ID)
+	if stateErr != nil || !fresh.Enabled || !sameChannelRuntimeConfig(channel, fresh) {
+		s.mu.Unlock()
+		if leaderCancel != nil {
+			leaderCancel()
+		}
+		cleanup()
+		if stateErr != nil {
+			return stateErr
+		}
+		if !fresh.Enabled {
+			return ErrChannelDisabled
+		}
+		return fmt.Errorf("channel configuration changed while starting")
+	}
 	// Stop() may have drained the channel map while the factory was connecting
 	// above, since the factory runs unlocked. Re-check under the lock, otherwise
 	// this adapter's long connection would outlive process shutdown.
@@ -1109,10 +1130,7 @@ func (s *Service) startChannelInternal(channel *IMChannel, factory AdapterFactor
 		if leaderCancel != nil {
 			leaderCancel()
 		}
-		if cancelFn != nil {
-			cancelFn()
-		}
-		s.releaseWSLeader(channel.ID)
+		cleanup()
 		return fmt.Errorf("im service is stopped")
 	}
 	// Idempotency: another goroutine may have started this channel while
@@ -1122,7 +1140,7 @@ func (s *Service) startChannelInternal(channel *IMChannel, factory AdapterFactor
 		s.stopChannelLocked(channel.ID, existing)
 	}
 	s.channels[channel.ID] = &channelState{
-		Channel:      channel,
+		Channel:      fresh,
 		Adapter:      adapter,
 		Cancel:       cancelFn,
 		leaderCancel: leaderCancel,
@@ -2052,7 +2070,6 @@ func (s *Service) handleCommand(
 		TenantID:          binding.TenantID,
 		TenantName:        tenantName,
 		KnowledgeBaseIDs:  append([]string(nil), kbIDs...),
-		BindingID:         binding.ID,
 		ChannelOutputMode: channel.OutputMode,
 	}
 
@@ -3050,9 +3067,6 @@ func (s *Service) CreateChannel(channel *IMChannel) error {
 // Returns a duplicate_bot error if the bot identity is already used by another channel.
 func (s *Service) UpdateChannel(channel *IMChannel) error {
 	newIdentity := channel.computeBotIdentity()
-	if err := validateChannel(channel); err != nil {
-		return err
-	}
 	if err := s.checkDuplicateBot(channel, channel.ID); err != nil {
 		return err
 	}
@@ -3062,6 +3076,12 @@ func (s *Service) UpdateChannel(channel *IMChannel) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ? AND deleted_at IS NULL", channel.ID).
 			First(&stored).Error; err != nil {
+			return err
+		}
+		// Enabled is changed only through ToggleChannel. Preserve the locked
+		// database value so a concurrent configuration edit cannot undo a toggle.
+		channel.Enabled = stored.Enabled
+		if err := validateChannel(channel); err != nil {
 			return err
 		}
 		identityChanged := stored.BotIdentity != newIdentity

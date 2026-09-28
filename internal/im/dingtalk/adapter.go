@@ -37,8 +37,8 @@ var apiBaseURL = "https://api.dingtalk.com"
 // minCardUpdateInterval is the minimum time between consecutive card streaming updates.
 const minCardUpdateInterval = 500 * time.Millisecond
 
-// dingtalkConvTypeGroup is the DingTalk conversation type value for group chats.
-const dingtalkConvTypeGroup = "2"
+// dingtalkConvTypeSingle is the DingTalk conversation type for one-to-one chats.
+const dingtalkConvTypeSingle = "1"
 
 // Compile-time checks.
 var (
@@ -352,10 +352,11 @@ func (a *Adapter) DownloadFile(ctx context.Context, msg *im.IncomingMessage) (io
 }
 
 func parseCallbackMessage(msg *callbackMessage) *im.IncomingMessage {
-	chatType := im.ChatTypeDirect
+	chatType := im.ChatTypeGroup
 	chatID := ""
-	if msg.ConversationType == dingtalkConvTypeGroup {
-		chatType = im.ChatTypeGroup
+	if msg.ConversationType == dingtalkConvTypeSingle {
+		chatType = im.ChatTypeDirect
+	} else {
 		chatID = msg.ConversationID
 	}
 
@@ -482,10 +483,11 @@ func isAllowedDingTalkDownloadHost(rawURL string) bool {
 // callback. The Stream SDK does not expose robotCode, so file messages fall back
 // to the app client ID (which is the robotCode for enterprise internal robots).
 func streamToIncoming(data *chatbot.BotCallbackDataModel, fallbackRobotCode string) *im.IncomingMessage {
-	chatType := im.ChatTypeDirect
+	chatType := im.ChatTypeGroup
 	chatID := ""
-	if data.ConversationType == dingtalkConvTypeGroup {
-		chatType = im.ChatTypeGroup
+	if data.ConversationType == dingtalkConvTypeSingle {
+		chatType = im.ChatTypeDirect
+	} else {
 		chatID = data.ConversationId
 	}
 

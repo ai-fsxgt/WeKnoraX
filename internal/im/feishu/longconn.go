@@ -139,14 +139,14 @@ func convertEvent(region Region, event *larkim.P2MessageReceiveV1) *im.IncomingM
 		openID = *event.Event.Sender.SenderId.OpenId
 	}
 
-	// Chat type
-	chatType := im.ChatTypeDirect
+	// Only the documented p2p value is a private conversation. Treat unknown
+	// values as group chats so they cannot enter the personal binding flow.
+	chatType := im.ChatTypeGroup
 	chatID := ""
-	if msg.ChatType != nil && *msg.ChatType == "group" {
-		chatType = im.ChatTypeGroup
-		if msg.ChatId != nil {
-			chatID = *msg.ChatId
-		}
+	if msg.ChatType != nil && *msg.ChatType == "p2p" {
+		chatType = im.ChatTypeDirect
+	} else if msg.ChatId != nil {
+		chatID = *msg.ChatId
 	}
 
 	// Message ID

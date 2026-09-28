@@ -51,13 +51,13 @@ curl $BASE/api/v1/system/admin/im-channels -H "Authorization: Bearer $TOKEN"
 
 ### PUT /api/v1/system/admin/im-channels/:id
 
-用途：更新机器人。`name`、`mode`、`output_mode`、`credentials` 和 `enabled` 均为可选字段；凭据按字段合并，空字符串会删除对应字段。
+用途：更新机器人。`name`、`mode`、`output_mode` 和 `credentials` 均为可选字段；凭据按字段合并，空字符串会删除对应字段。启用状态通过下方 toggle 接口修改。
 
 响应：200 `{"data":{IMChannel}}`
 
 ```bash
 curl -X PUT $BASE/api/v1/system/admin/im-channels/ch-1 -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"enabled":false}'
+  -H 'Content-Type: application/json' -d '{"name":"飞书客服"}'
 ```
 
 ### DELETE /api/v1/system/admin/im-channels/:id
