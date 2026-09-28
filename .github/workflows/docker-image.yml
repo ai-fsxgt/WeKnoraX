@@ -39,40 +39,53 @@ jobs:
           fetch-depth: 0
 
       - name: Find previous successful release
+        id: previous-release
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'docker-image.yml',
+              event: 'push',
+              status: 'success',
+              per_page: 100,
+            });
+            const baseline = runs
+              .filter(run => run.run_number < context.runNumber &&
+                run.head_branch !== process.env.GITHUB_REF_NAME &&
+                run.head_branch?.startsWith('v'))
+              .sort((a, b) => a.run_number - b.run_number)
+              .at(-1);
+            if (baseline) {
+              core.setOutput('tag', baseline.head_branch);
+              core.setOutput('sha', baseline.head_sha);
+            }
+
+      - name: Verify previous release tag
         id: baseline
         env:
-          GH_TOKEN: ${{ github.token }}
+          BASE_TAG: ${{ steps.previous-release.outputs.tag }}
+          BASE_SHA: ${{ steps.previous-release.outputs.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          gh api --paginate --slurp \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/docker-image.yml/runs?event=push&status=success&per_page=100" \
-            > "$RUNNER_TEMP/successful-releases.json"
-          baseline=$(jq -r --arg tag "$GITHUB_REF_NAME" --argjson run_number "$GITHUB_RUN_NUMBER" '
-            [.[].workflow_runs[]
-              | select(.run_number < $run_number and .head_branch != $tag)
-              | select(.head_branch | startswith("v"))]
-            | sort_by(.run_number) | last
-            | if . == null then empty else [.head_branch, .head_sha] | @tsv end
-          ' "$RUNNER_TEMP/successful-releases.json")
-
-          if [ -z "$baseline" ]; then
+          if [ -z "$BASE_TAG" ]; then
             echo "No previous successful release; building all images." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          IFS=$'\t' read -r base_tag base_sha <<< "$baseline"
           # Do not reuse a published tag whose Git reference has since moved.
-          tag_sha=$(git rev-parse --verify "refs/tags/$base_tag^{commit}")
-          if [ "$tag_sha" != "$base_sha" ]; then
-            echo "::error::Published tag $base_tag no longer points to $base_sha"
+          tag_sha=$(git rev-parse --verify "refs/tags/$BASE_TAG^{commit}")
+          if [ "$tag_sha" != "$BASE_SHA" ]; then
+            echo "::error::Published tag $BASE_TAG no longer points to $BASE_SHA"
             exit 1
           fi
           # Match docker/metadata-action's Docker tag normalization.
-          image_tag=$(printf '%s' "$base_tag" | sed -E 's/[^a-zA-Z0-9_.-]+/-/g')
+          image_tag=$(printf '%s' "$BASE_TAG" | sed -E 's/[^a-zA-Z0-9_.-]+/-/g')
           echo "tag=$image_tag" >> "$GITHUB_OUTPUT"
-          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
-          echo "Release baseline: $base_tag ($base_sha)" >> "$GITHUB_STEP_SUMMARY"
+          echo "sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Release baseline: $BASE_TAG ($BASE_SHA)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Detect image changes
         id: changes
