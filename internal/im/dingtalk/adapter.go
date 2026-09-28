@@ -935,6 +935,19 @@ func (a *Adapter) SendStreamChunk(ctx context.Context, incoming *im.IncomingMess
 	return a.UpdateStreamContent(ctx, incoming, streamID, content)
 }
 
+// AbortStream discards local stream state without delivering additional content.
+func (a *Adapter) AbortStream(ctx context.Context, _ *im.IncomingMessage, streamID string) error {
+	streamsMu.Lock()
+	_, ok := dStreams[streamID]
+	delete(dStreams, streamID)
+	streamsMu.Unlock()
+
+	if ok {
+		logger.Infof(ctx, "[DingTalk] Streaming aborted without delivery: stream_id=%s", streamID)
+	}
+	return nil
+}
+
 func (a *Adapter) EndStream(ctx context.Context, incoming *im.IncomingMessage, streamID string) error {
 	streamsMu.Lock()
 	state, ok := dStreams[streamID]

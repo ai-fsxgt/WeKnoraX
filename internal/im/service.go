@@ -2825,8 +2825,8 @@ loop:
 		}
 	}
 	if deliveryAuthErr != nil {
-		if err := streamer.EndStream(ctx, msg, streamID); err != nil {
-			logger.Warnf(ctx, "[IM] EndStream after binding validation failed: %v", err)
+		if err := abortStream(ctx, msg, streamer, streamID); err != nil {
+			logger.Warnf(ctx, "[IM] AbortStream after binding validation failed: %v", err)
 		}
 		if isInactiveBindingError(deliveryAuthErr) {
 			logger.Infof(ctx, "[IM] Stopped stream for inactive binding: binding=%s", bindingID)
@@ -2873,7 +2873,7 @@ loop:
 	}
 
 	if _, _, err := s.ValidateActiveBinding(ctx, bindingID); err != nil {
-		_ = streamer.EndStream(ctx, msg, streamID)
+		_ = abortStream(ctx, msg, streamer, streamID)
 		if isInactiveBindingError(err) {
 			logger.Infof(ctx, "[IM] Suppressing stream finalization for inactive binding: binding=%s", bindingID)
 			return nil
@@ -2901,6 +2901,13 @@ loop:
 
 	logger.Infof(ctx, "[IM] Stream reply sent: platform=%s user=%s answer_len=%d", msg.Platform, msg.UserID, len(answer))
 	return nil
+}
+
+func abortStream(ctx context.Context, msg *IncomingMessage, streamer StreamSender, streamID string) error {
+	if aborter, ok := streamer.(StreamAborter); ok {
+		return aborter.AbortStream(ctx, msg, streamID)
+	}
+	return streamer.EndStream(ctx, msg, streamID)
 }
 
 // fallbackNonStream is used when streaming initialization fails.
