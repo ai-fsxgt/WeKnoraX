@@ -12,7 +12,7 @@ import (
 var qrCodeService = wechat.NewQRCodeService()
 
 // WeChatGetQRCode generates a QR code for WeChat login.
-// POST /api/v1/wechat/qrcode
+// POST /api/v1/system/admin/im-channels/wechat/qrcode
 //
 // WeChatGetQRCode godoc
 // @Summary      获取微信扫码登录二维码
@@ -22,8 +22,7 @@ var qrCodeService = wechat.NewQRCodeService()
 // @Success      200  {object}  map[string]interface{}  "二维码信息（qrcode_url + qrcode 标识）"
 // @Failure      500  {object}  map[string]interface{}  "二维码生成失败"
 // @Security     Bearer
-// @Security     ApiKeyAuth
-// @Router       /wechat/qrcode [post]
+// @Router       /system/admin/im-channels/wechat/qrcode [post]
 func (h *IMHandler) WeChatGetQRCode(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -43,7 +42,7 @@ func (h *IMHandler) WeChatGetQRCode(c *gin.Context) {
 }
 
 // WeChatPollQRCodeStatus checks the scan status of a WeChat QR code.
-// POST /api/v1/wechat/qrcode/status
+// POST /api/v1/system/admin/im-channels/wechat/qrcode/status
 //
 // WeChatPollQRCodeStatus godoc
 // @Summary      轮询微信二维码状态
@@ -56,8 +55,7 @@ func (h *IMHandler) WeChatGetQRCode(c *gin.Context) {
 // @Failure      400      {object}  map[string]interface{}  "请求参数错误"
 // @Failure      500      {object}  map[string]interface{}  "服务器错误"
 // @Security     Bearer
-// @Security     ApiKeyAuth
-// @Router       /wechat/qrcode/status [post]
+// @Router       /system/admin/im-channels/wechat/qrcode/status [post]
 func (h *IMHandler) WeChatPollQRCodeStatus(c *gin.Context) {
 	ctx := c.Request.Context()
 

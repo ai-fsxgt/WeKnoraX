@@ -30,6 +30,13 @@ func NewSessionRepository(db *gorm.DB) interfaces.SessionRepository {
 	return &sessionRepository{db: db}
 }
 
+func imPlatformExpr(db *gorm.DB) string {
+	if db.Name() == "postgres" {
+		return "COALESCE(NULLIF(imc.platform, ''), ics.metadata ->> 'legacy_platform', '')"
+	}
+	return "COALESCE(NULLIF(imc.platform, ''), json_extract(ics.metadata, '$.legacy_platform'), '')"
+}
+
 // Create creates a new session
 func (r *sessionRepository) Create(ctx context.Context, session *types.Session) (*types.Session, error) {
 	session.CreatedAt = time.Now()
@@ -82,9 +89,11 @@ func (r *sessionRepository) GetIMPlatform(
 	err := r.db.WithContext(ctx).
 		Table("im_channel_sessions AS ics").
 		Joins("JOIN sessions AS s ON s.id = ics.session_id").
+		Joins("LEFT JOIN im_channels AS imc ON imc.id = ics.im_channel_id").
 		Where("ics.session_id = ? AND s.tenant_id = ?", sessionID, tenantID).
 		Limit(1).
-		Pluck("ics.platform", &platform).Error
+		Select(imPlatformExpr(r.db)).
+		Scan(&platform).Error
 	if err != nil {
 		return "", err
 	}
@@ -144,8 +153,13 @@ func (r *sessionRepository) QueryPaged(
 ) ([]*types.SessionListItem, int64, error) {
 	// Dialect-aware bits so the same query works on Postgres and SQLite (Lite build).
 	isPostgres := r.db.Dialector.Name() == "postgres"
+	platformExpr := imPlatformExpr(r.db)
+	imUserExpr := "COALESCE(NULLIF(imb.external_user_id, ''), " +
+		"json_extract(ics.metadata, '$.legacy_external_user_id'), '')"
 	titleLikeExpr := "LOWER(s.title) LIKE LOWER(?)"
 	if isPostgres {
+		imUserExpr = "COALESCE(NULLIF(imb.external_user_id, ''), " +
+			"ics.metadata ->> 'legacy_external_user_id', '')"
 		titleLikeExpr = "s.title ILIKE ?"
 	}
 	// SQLite (the driver used by Lite) does not support NULLS LAST; its default
@@ -179,7 +193,9 @@ func (r *sessionRepository) QueryPaged(
 	// for a new mapping (never re-maps an existing one), so a session has at most one
 	// mapping row. If that ever changes, this JOIN would need a one-row-per-session
 	// guard (the unique index only constrains active mappings).
-	joinClause := "LEFT JOIN im_channel_sessions ics ON ics.session_id = s.id"
+	joinClause := "LEFT JOIN im_channel_sessions ics ON ics.session_id = s.id " +
+		"LEFT JOIN im_channels imc ON imc.id = ics.im_channel_id " +
+		"LEFT JOIN im_user_bindings imb ON imb.id = ics.binding_id"
 
 	applySource := func(db *gorm.DB) *gorm.DB {
 		src := strings.TrimSpace(q.Source)
@@ -220,21 +236,14 @@ func (r *sessionRepository) QueryPaged(
 					return db.Where("ics.id IS NULL AND s.description = ?", embedPrefix+channelID)
 				}
 			}
-			return db.Where("ics.platform = ?", lower)
+			return db.Where(platformExpr+" = ?", lower)
 		}
 	}
-	applyAgent := func(db *gorm.DB) *gorm.DB {
-		if q.AgentID != "" {
-			return db.Where("ics.agent_id = ?", q.AgentID)
-		}
-		return db
-	}
-
 	// Count distinct sessions to guard against fan-out from the join.
 	var total int64
-	countQ := applyAgent(applySource(applyBase(
+	countQ := applySource(applyBase(
 		r.db.WithContext(ctx).Table("sessions AS s").Joins(joinClause),
-	)))
+	))
 	if err := countQ.Distinct("s.id").Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -249,16 +258,13 @@ func (r *sessionRepository) QueryPaged(
 	}
 
 	items := make([]*types.SessionListItem, 0)
-	rowsQ := applyAgent(applySource(applyBase(
+	rowsQ := applySource(applyBase(
 		r.db.WithContext(ctx).Table("sessions AS s").Joins(joinClause),
-	))).
+	)).
 		Select(`s.*,
-			ics.platform       AS im_platform,
-			ics.chat_id        AS im_chat_id,
-			ics.thread_id      AS im_thread_id,
-			ics.user_id        AS im_user_id,
-			ics.agent_id       AS im_agent_id,
-			ics.im_channel_id  AS im_channel_id`).
+			` + platformExpr + ` AS im_platform,
+			` + imUserExpr + ` AS im_user_id,
+			ics.im_channel_id    AS im_channel_id`).
 		Order(orderClause).
 		Offset((page - 1) * size).
 		Limit(size)

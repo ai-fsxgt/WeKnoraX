@@ -54,8 +54,8 @@ func newLifecycleTestDB(t *testing.T) *gorm.DB {
 	// lifecycle tests; IDs are assigned explicitly below.
 	if err := db.Exec(`CREATE TABLE im_channels (
 		id TEXT PRIMARY KEY,
-		tenant_id INTEGER NOT NULL,
-		agent_id TEXT NOT NULL,
+		tenant_id INTEGER NOT NULL DEFAULT 0,
+		agent_id TEXT NOT NULL DEFAULT '',
 		platform TEXT NOT NULL,
 		name TEXT NOT NULL DEFAULT '',
 		enabled NUMERIC NOT NULL DEFAULT 1,
@@ -65,6 +65,7 @@ func newLifecycleTestDB(t *testing.T) *gorm.DB {
 		bot_identity TEXT NOT NULL DEFAULT '',
 		session_mode TEXT NOT NULL DEFAULT 'user',
 		credentials TEXT NOT NULL DEFAULT '{}',
+		created_by TEXT NOT NULL DEFAULT '',
 		created_at DATETIME,
 		updated_at DATETIME,
 		deleted_at DATETIME
@@ -90,13 +91,11 @@ func createLifecycleChannel(t *testing.T, db *gorm.DB, id, agentID string) *IMCh
 	t.Helper()
 	channel := &IMChannel{
 		ID:          id,
-		TenantID:    1,
-		AgentID:     agentID,
 		Platform:    "test",
+		Name:        agentID,
 		Enabled:     true,
 		Mode:        "webhook",
 		OutputMode:  "full",
-		SessionMode: string(SessionModeUser),
 		Credentials: types.JSON(`{"token":"v1"}`),
 	}
 	if err := db.Create(channel).Error; err != nil {
@@ -116,8 +115,11 @@ func TestEnsureChannelAdapterRefreshesStaleConfig(t *testing.T) {
 	if err := svc.StartChannel(channel); err != nil {
 		t.Fatalf("start initial channel: %v", err)
 	}
+	updates := map[string]any{
+		"output_mode": "stream", "credentials": types.JSON(`{"token":"v2"}`),
+	}
 	if err := db.Model(&IMChannel{}).Where("id = ?", channel.ID).
-		Updates(map[string]any{"agent_id": "agent-new", "credentials": types.JSON(`{"token":"v2"}`)}).Error; err != nil {
+		Updates(updates).Error; err != nil {
 		t.Fatalf("update durable channel: %v", err)
 	}
 
@@ -125,8 +127,8 @@ func TestEnsureChannelAdapterRefreshesStaleConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensure channel adapter: %v", err)
 	}
-	if fresh.AgentID != "agent-new" || string(fresh.Credentials) != `{"token":"v2"}` {
-		t.Fatalf("stale runtime config returned: agent=%q credentials=%s", fresh.AgentID, fresh.Credentials)
+	if fresh.OutputMode != "stream" || string(fresh.Credentials) != `{"token":"v2"}` {
+		t.Fatalf("stale runtime config returned: output_mode=%q credentials=%s", fresh.OutputMode, fresh.Credentials)
 	}
 	if counters.starts.Load() != 2 || counters.stops.Load() != 1 {
 		t.Fatalf("runtime was not rebuilt exactly once: starts=%d stops=%d", counters.starts.Load(), counters.stops.Load())
@@ -223,7 +225,7 @@ func TestChannelConfigEventReloadsOtherReplica(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	updated := *channel
-	updated.AgentID = "agent-new"
+	updated.OutputMode = "stream"
 	updated.Credentials = types.JSON(`{"token":"v2"}`)
 	if err := svcOne.UpdateChannel(&updated); err != nil {
 		t.Fatalf("update channel: %v", err)
@@ -233,7 +235,7 @@ func TestChannelConfigEventReloadsOtherReplica(t *testing.T) {
 	reloaded := false
 	for time.Now().Before(deadline) {
 		_, runtimeChannel, ok := svcTwo.GetChannelAdapter(channel.ID)
-		if ok && runtimeChannel.AgentID == "agent-new" && string(runtimeChannel.Credentials) == `{"token":"v2"}` {
+		if ok && runtimeChannel.OutputMode == "stream" && string(runtimeChannel.Credentials) == `{"token":"v2"}` {
 			if countersTwo.starts.Load() < 2 || countersTwo.stops.Load() < 1 {
 				t.Fatalf("replica config changed without rebuilding runtime: starts=%d stops=%d", countersTwo.starts.Load(), countersTwo.stops.Load())
 			}
@@ -246,7 +248,7 @@ func TestChannelConfigEventReloadsOtherReplica(t *testing.T) {
 		t.Fatal("second replica did not reload the published channel change")
 	}
 
-	if _, err := svcOne.ToggleChannel(channel.ID, channel.TenantID); err != nil {
+	if _, err := svcOne.ToggleChannel(channel.ID); err != nil {
 		t.Fatalf("disable channel: %v", err)
 	}
 	deadline = time.Now().Add(2 * time.Second)
@@ -328,13 +330,10 @@ func TestSameChannelRuntimeConfigUsesSemanticCredentials(t *testing.T) {
 	now := time.Now()
 	cached := &IMChannel{
 		ID:          "channel",
-		TenantID:    1,
-		AgentID:     "agent",
 		Platform:    "test",
 		Enabled:     true,
 		Mode:        "webhook",
 		OutputMode:  "full",
-		SessionMode: string(SessionModeUser),
 		Credentials: types.JSON(`{"token":"secret","timeout":10}`),
 		UpdatedAt:   now,
 	}

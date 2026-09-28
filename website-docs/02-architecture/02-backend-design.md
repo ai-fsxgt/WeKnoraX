@@ -160,9 +160,10 @@ flowchart TD
 | `/system`、`/system/admin` | RegisterSystemRoutes / RegisterSystemAdminRoutes | admin 组强制 `g.SystemAdmin()` |
 | `/mcp-services`、`/agent`、`/web-search`、`/web-search-providers` | 对应 Register 函数 | `manage_mcp_services` / `manage_web_search` |
 | `/vector-stores`、`/storage-backends` | RegisterVectorStoreRoutes / RegisterStorageBackendRoutes | `manage_vector_stores` / `manage_storage_backends` |
-| `/agents`、`/agents/:id/shares|embed-channels|im-channels` | RegisterCustomAgentRoutes 等 | `full_access` / `manage_channels` |
+| `/agents`、`/agents/:id/shares|embed-channels` | RegisterCustomAgentRoutes 等 | `full_access` / `manage_channels` |
 | `/organizations`、`/user/favorites`、`/skills` | 对应 Register 函数 | `manage_spaces` 等 |
-| `/im-channels`、`/embed-channels`、`/wechat` | RegisterIMChannelRoutes / RegisterEmbedChannelRoutes | `manage_channels` |
+| `/system/admin/im-channels`、`/im` | RegisterIMChannelRoutes | 系统机器人仅 `SystemAdmin()`；个人绑定仅 Bearer 登录态 |
+| `/embed-channels` | RegisterEmbedChannelRoutes | `manage_channels` |
 | `/datasource`、`/knowledgebase/:kb_id/wiki`、`/chunker/preview` | RegisterDataSourceRoutes / RegisterWikiPageRoutes / RegisterChunkerDebugRoutes | `manage_datasources` / `ingest` |
 
 ### 4.3 rbacGuards：集中式权限矩阵

@@ -5560,6 +5560,45 @@ export default {
       editorOpened: 'Editor opened, please select a knowledge base and save'
     }
   },
+  imAdmin: {
+    navLabel: 'IM Bots',
+    title: 'IM Bot Management',
+    description: 'System administrators configure messaging bots centrally, so users do not need to create platform apps.',
+    scopeHint: 'Once enabled, users can bind their own account and workspace under Integrations.',
+    credentialsConfigured: 'Credentials configured',
+    credentialsMissing: 'Credentials missing',
+    personalBindingReady: 'Personal binding supported',
+    personalBindingUnavailable: 'Personal binding unavailable',
+    wechatFixedMode: 'WeChat uses fixed long polling and full response output.',
+    credentialsPreserved: 'Credentials are never displayed. Leave a field blank to keep its saved value.',
+    loadFailed: 'Failed to load IM bots'
+  },
+  imBinding: {
+    title: 'Bind an IM Account',
+    description: 'After binding, the bot answers private messages using knowledge bases from your selected workspace.',
+    createTitle: 'Create Binding',
+    workspace: 'Knowledge Workspace',
+    channel: 'IM Bot',
+    channelPlaceholder: 'Select a bot',
+    generate: 'Generate Binding Code',
+    codeTitle: 'One-time Binding Code',
+    codeHint: 'Open a private chat with {channel} and send this code directly. No command is required.',
+    codeExpires: 'Valid until {time}',
+    privateChatOnly: 'Private chats only. Do not send the binding code in a group chat.',
+    currentBindings: 'Current Bindings',
+    noBindings: 'No IM accounts are bound yet',
+    noChannelsTitle: 'No Bots Available',
+    noChannels: 'Ask a system administrator to configure and enable a bot that supports personal binding.',
+    externalAccount: 'IM account',
+    workspaceLabel: 'Knowledge workspace',
+    revoke: 'Unbind',
+    revokeConfirm: 'Unbind “{channel}”? Any answer currently being generated will stop.',
+    revoked: 'Binding removed',
+    success: 'IM account bound successfully',
+    expired: 'The binding code has expired. Generate a new one.',
+    failed: 'Binding operation failed',
+    loadFailed: 'Failed to load IM bindings'
+  },
   agentEditor: {
     builtinHint: 'This is a built-in agent. Name and description cannot be modified, but configuration parameters can be adjusted.',
     navGroups: {

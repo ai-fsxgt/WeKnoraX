@@ -8,127 +8,45 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestValidateSessionMode(t *testing.T) {
+func TestSupportsPersonalBinding(t *testing.T) {
 	tests := []struct {
-		name        string
-		sessionMode string
-		wantErr     bool
+		platform string
+		want     bool
 	}{
-		{"user mode", "user", false},
-		{"thread mode", "thread", false},
-		{"empty defaults to user in BeforeCreate", "", false},
-		{"invalid mode", "invalid", true},
-		{"random string", "foo", true},
+		{"wecom", true},
+		{"feishu", true},
+		{"lark", true},
+		{"slack", true},
+		{"telegram", true},
+		{"dingtalk", true},
+		{"qqbot", false},
+		{"wechat", false},
+		{"mattermost", false},
+		{"yunzhijia", false},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ch := &IMChannel{SessionMode: tt.sessionMode}
-			err := ch.validateSessionMode()
-
-			if tt.sessionMode == "" {
-				// empty is handled by BeforeCreate, not validateSessionMode
-				// validateSessionMode treats empty as invalid
-				if err == nil {
-					t.Error("expected error for empty session_mode in validateSessionMode")
-				}
-				return
-			}
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateSessionMode(%q) error = %v, wantErr %v", tt.sessionMode, err, tt.wantErr)
+		t.Run(tt.platform, func(t *testing.T) {
+			if got := SupportsPersonalBinding(tt.platform); got != tt.want {
+				t.Errorf("SupportsPersonalBinding(%q) = %v, want %v", tt.platform, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestIMChannelBeforeCreate_SessionModeDefault(t *testing.T) {
-	tests := []struct {
-		name         string
-		inputMode    string
-		expectedMode string
-	}{
-		{"empty defaults to user", "", "user"},
-		{"user preserved", "user", "user"},
-		{"thread preserved", "thread", "thread"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ch := &IMChannel{
-				TenantID:    1,
-				AgentID:     "agent-1",
-				Platform:    "slack",
-				SessionMode: tt.inputMode,
-				Credentials: []byte("{}"),
-			}
-			err := ch.BeforeCreate(&gorm.DB{})
-			if err != nil {
-				t.Fatalf("BeforeCreate error: %v", err)
-			}
-			if ch.SessionMode != tt.expectedMode {
-				t.Errorf("SessionMode = %q, want %q", ch.SessionMode, tt.expectedMode)
-			}
-		})
-	}
-}
-
-func TestIMChannelBeforeCreate_InvalidSessionMode(t *testing.T) {
+func TestIMChannelBeforeCreate_SystemDefaults(t *testing.T) {
 	ch := &IMChannel{
-		TenantID:    1,
-		AgentID:     "agent-1",
 		Platform:    "slack",
-		SessionMode: "invalid",
-		Credentials: []byte("{}"),
+		Credentials: []byte(`{"bot_token":"token"}`),
 	}
-	err := ch.BeforeCreate(&gorm.DB{})
-	if err == nil {
-		t.Error("expected error for invalid session_mode")
+	if err := ch.BeforeCreate(&gorm.DB{}); err != nil {
+		t.Fatalf("BeforeCreate error: %v", err)
 	}
-}
-
-func TestIMChannelBeforeSave_SessionModeValidation(t *testing.T) {
-	tests := []struct {
-		name        string
-		sessionMode string
-		wantMode    string
-		wantErr     bool
-	}{
-		{"empty defaults to user", "", "user", false},
-		{"user preserved", "user", "user", false},
-		{"thread preserved", "thread", "thread", false},
-		{"invalid rejected", "invalid", "", true},
+	if ch.Mode != "websocket" {
+		t.Errorf("Mode = %q, want websocket", ch.Mode)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ch := &IMChannel{
-				SessionMode: tt.sessionMode,
-				Credentials: []byte("{}"),
-			}
-			err := ch.BeforeSave(&gorm.DB{})
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if ch.SessionMode != tt.wantMode {
-				t.Errorf("SessionMode = %q, want %q", ch.SessionMode, tt.wantMode)
-			}
-		})
-	}
-}
-
-func TestSessionModeConstants(t *testing.T) {
-	if SessionModeUser != "user" {
-		t.Errorf("SessionModeUser = %q, want %q", SessionModeUser, "user")
-	}
-	if SessionModeThread != "thread" {
-		t.Errorf("SessionModeThread = %q, want %q", SessionModeThread, "thread")
+	if ch.OutputMode != "stream" {
+		t.Errorf("OutputMode = %q, want stream", ch.OutputMode)
 	}
 }
 
@@ -200,24 +118,20 @@ func TestIMChannelComputeBotIdentity_YunzhijiaUsesYZJToken(t *testing.T) {
 	}
 }
 
-func TestChannelSessionThreadIDField(t *testing.T) {
-	cs := ChannelSession{
-		Platform: "slack",
-		UserID:   "U123",
-		ChatID:   "C456",
-		ThreadID: "1234567890.123456",
+func TestBindingModelsBeforeCreate(t *testing.T) {
+	binding := &UserBinding{}
+	if err := binding.BeforeCreate(&gorm.DB{}); err != nil {
+		t.Fatalf("binding BeforeCreate error: %v", err)
 	}
-	if cs.ThreadID != "1234567890.123456" {
-		t.Errorf("ThreadID = %q, want %q", cs.ThreadID, "1234567890.123456")
+	if binding.ID == "" || binding.Status != IMBindingStatusActive {
+		t.Fatalf("binding defaults not applied: %#v", binding)
 	}
 
-	// empty ThreadID for user-mode sessions
-	csUser := ChannelSession{
-		Platform: "slack",
-		UserID:   "U123",
-		ChatID:   "C456",
+	request := &BindingRequest{}
+	if err := request.BeforeCreate(&gorm.DB{}); err != nil {
+		t.Fatalf("request BeforeCreate error: %v", err)
 	}
-	if csUser.ThreadID != "" {
-		t.Errorf("ThreadID = %q, want empty", csUser.ThreadID)
+	if request.ID == "" || request.Status != IMBindingRequestPending {
+		t.Fatalf("request defaults not applied: %#v", request)
 	}
 }

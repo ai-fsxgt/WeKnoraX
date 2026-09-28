@@ -844,6 +844,45 @@ export default {
       noFailedRecords: '暂无失败记录可下载'
     }
   },
+  imAdmin: {
+    navLabel: 'IM 机器人',
+    title: 'IM 机器人管理',
+    description: '由系统管理员统一配置各即时通讯平台的机器人，用户无需自行创建应用。',
+    scopeHint: '启用后，用户可在发布集成中绑定自己的账号和空间。',
+    credentialsConfigured: '凭据已配置',
+    credentialsMissing: '凭据未配置',
+    personalBindingReady: '支持个人绑定',
+    personalBindingUnavailable: '暂不开放个人绑定',
+    wechatFixedMode: '微信使用固定的长轮询接入和完整输出模式。',
+    credentialsPreserved: '凭据不会回显；留空将保留已保存的值。',
+    loadFailed: '加载 IM 机器人失败'
+  },
+  imBinding: {
+    title: '绑定 IM 账号',
+    description: '绑定后，机器人会使用你所选空间中的知识库回答私聊消息。',
+    createTitle: '创建绑定',
+    workspace: '知识库空间',
+    channel: 'IM 机器人',
+    channelPlaceholder: '选择要绑定的机器人',
+    generate: '生成绑定码',
+    codeTitle: '一次性绑定码',
+    codeHint: '在 {channel} 中与机器人私聊，直接发送下面的绑定码，无需输入命令。',
+    codeExpires: '{time} 前有效',
+    privateChatOnly: '仅支持与机器人私聊；请勿在群聊中发送绑定码。',
+    currentBindings: '当前绑定',
+    noBindings: '尚未绑定任何 IM 账号',
+    noChannelsTitle: '暂无可绑定机器人',
+    noChannels: '请联系系统管理员配置并启用支持个人绑定的 IM 机器人。',
+    externalAccount: 'IM 账号',
+    workspaceLabel: '知识库空间',
+    revoke: '解除绑定',
+    revokeConfirm: '确定解除“{channel}”的绑定吗？正在生成的回答会被停止。',
+    revoked: '绑定已解除',
+    success: 'IM 账号绑定成功',
+    expired: '绑定码已过期，请重新生成。',
+    failed: '绑定操作失败',
+    loadFailed: '加载 IM 绑定信息失败'
+  },
   agentEditor: {
     builtinHint: '这是内置智能体，名称和描述不可修改，但可以调整配置参数',
     fileTypes: {

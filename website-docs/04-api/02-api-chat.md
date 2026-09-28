@@ -31,7 +31,6 @@ curl -X POST $BASE/api/v1/sessions -H "X-API-Key: $API_KEY" \
 | `page` / `page_size` | int | 否 | 分页 |
 | `keyword` | string | 否 | 标题模糊搜索 |
 | `source` | string | 否 | 来源过滤（web/embed/api/feishu/wechat/slack/...） |
-| `agent_id` | string | 否 | 按 Agent 过滤（IM 会话） |
 
 响应：200 `{"success":true,"data":[SessionListItem],"total","page","page_size"}`
 

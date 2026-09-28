@@ -22,22 +22,12 @@ func TestShortID(t *testing.T) {
 	}
 }
 
-func TestBuildUserSessionTitle(t *testing.T) {
+func TestBuildBindingSessionTitle(t *testing.T) {
 	tests := []struct {
 		name string
 		msg  *IncomingMessage
 		want string
 	}{
-		{
-			name: "group with username",
-			msg: &IncomingMessage{
-				Platform: "feishu",
-				UserName: "李四",
-				ChatType: ChatTypeGroup,
-				ChatID:   "oc_aaaaaaaaaaaaaaaa",
-			},
-			want: "李四 · group aaaaaaaa",
-		},
 		{
 			name: "direct message with username",
 			msg: &IncomingMessage{
@@ -46,16 +36,6 @@ func TestBuildUserSessionTitle(t *testing.T) {
 				ChatType: ChatTypeDirect,
 			},
 			want: "李四 · dm",
-		},
-		{
-			name: "group without username falls back to user id",
-			msg: &IncomingMessage{
-				Platform: "wecom",
-				UserID:   "WeCom_ZhangSan",
-				ChatType: ChatTypeGroup,
-				ChatID:   "wc_group_1234",
-			},
-			want: "user ZhangSan · group oup_1234",
 		},
 		{
 			name: "no user identity at all",
@@ -68,41 +48,8 @@ func TestBuildUserSessionTitle(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := buildUserSessionTitle(tt.msg); got != tt.want {
-				t.Errorf("buildUserSessionTitle() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestBuildThreadSessionTitle(t *testing.T) {
-	tests := []struct {
-		name string
-		msg  *IncomingMessage
-		want string
-	}{
-		{
-			name: "chat + thread",
-			msg: &IncomingMessage{
-				Platform: "slack",
-				ChatID:   "C0123456789",
-				ThreadID: "1700000000.111000",
-			},
-			want: "chat 23456789 · thread 0.111000",
-		},
-		{
-			name: "thread without chat id",
-			msg: &IncomingMessage{
-				Platform: "feishu",
-				ThreadID: "om_thread_abcdefgh",
-			},
-			want: "thread abcdefgh",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := buildThreadSessionTitle(tt.msg); got != tt.want {
-				t.Errorf("buildThreadSessionTitle() = %q, want %q", got, tt.want)
+			if got := buildBindingSessionTitle(tt.msg); got != tt.want {
+				t.Errorf("buildBindingSessionTitle() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -139,15 +86,14 @@ func TestIMInitialSessionTitle(t *testing.T) {
 			msg: &IncomingMessage{
 				Platform: "wecom",
 				UserID:   "WeCom_ZhangSan",
-				ChatType: ChatTypeGroup,
-				ChatID:   "wc_group_1234",
+				ChatType: ChatTypeDirect,
 			},
-			want: "user ZhangSan · group oup_1234",
+			want: "user ZhangSan · dm",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := imInitialSessionTitle(tt.msg, buildUserSessionTitle); got != tt.want {
+			if got := imInitialSessionTitle(tt.msg); got != tt.want {
 				t.Errorf("imInitialSessionTitle() = %q, want %q", got, tt.want)
 			}
 		})

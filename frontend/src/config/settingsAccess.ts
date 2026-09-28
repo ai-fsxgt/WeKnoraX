@@ -45,4 +45,5 @@ export const SYSTEM_ADMIN_SETTINGS_SECTIONS = new Set([
   'platform-api-keys',
   'system-audit-log',
   'third-party-applications',
+  'im-channels',
 ])

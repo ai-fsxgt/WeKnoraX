@@ -62,7 +62,7 @@ func (a *Adapter) HandleURLVerification(c *gin.Context) bool {
 
 func (a *Adapter) VerifyCallback(c *gin.Context) error {
 	if a.secretToken == "" {
-		return nil
+		return fmt.Errorf("secret token is not configured")
 	}
 	token := c.GetHeader("X-Telegram-Bot-Api-Secret-Token")
 	if subtle.ConstantTimeCompare([]byte(token), []byte(a.secretToken)) != 1 {
@@ -140,11 +140,11 @@ func parseTelegramMessage(msg *telegramMsg) *im.IncomingMessage {
 		return nil
 	}
 
-	chatType := im.ChatTypeDirect
-	chatID := ""
-	if msg.Chat.Type == "group" || msg.Chat.Type == "supergroup" {
-		chatType = im.ChatTypeGroup
-		chatID = fmt.Sprintf("%d", msg.Chat.ID)
+	chatType := im.ChatTypeGroup
+	chatID := fmt.Sprintf("%d", msg.Chat.ID)
+	if msg.Chat.Type == "private" {
+		chatType = im.ChatTypeDirect
+		chatID = ""
 	}
 
 	userID := ""

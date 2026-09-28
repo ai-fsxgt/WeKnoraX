@@ -25,16 +25,6 @@ const (
 	PlatformYunzhijia  Platform = "yunzhijia"
 )
 
-// SessionMode determines how IM sessions are resolved.
-type SessionMode string
-
-const (
-	// SessionModeUser resolves sessions by (platform, user_id, chat_id, tenant_id).
-	SessionModeUser SessionMode = "user"
-	// SessionModeThread resolves sessions by (platform, thread_id, chat_id, tenant_id).
-	SessionModeThread SessionMode = "thread"
-)
-
 // MessageType identifies the kind of IM message.
 type MessageType string
 
@@ -164,8 +154,7 @@ type StreamSender interface {
 
 // FileDownloader is an optional interface that adapters can implement to support
 // downloading file attachments from the IM platform. It allows file/image
-// messages to be supplied to QA as attachments; when a knowledge_base_id is
-// configured, the same capability also enables asynchronous knowledge-base save.
+// messages to be supplied to QA as per-question context.
 type FileDownloader interface {
 	// DownloadFile downloads a file resource from the IM platform.
 	// Returns the file content reader, the resolved file name, and any error.

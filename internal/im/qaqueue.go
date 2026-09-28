@@ -42,13 +42,16 @@ type qaRequest struct {
 	adapter   Adapter
 	channel   *IMChannel
 	channelID string
+	bindingID string
+	kbIDs     []string
 
 	// tenant is used to resolve provider:// URLs in outbound replies (scheme-aware).
 	tenant *types.Tenant
 
-	// userKey is "channelID:userID:chatID", used for per-user limits and /stop.
-	userKey    string
-	enqueuedAt time.Time
+	// userKey is the binding ID, used for per-user limits and /stop.
+	userKey       string
+	enqueuedAt    time.Time
+	queueTimedOut bool
 }
 
 // QueueMetrics exposes observable queue state.
@@ -233,13 +236,10 @@ func (q *qaQueue) runWorker(id int) {
 		waitDuration := time.Since(req.enqueuedAt)
 		if waitDuration > queueTimeout {
 			q.totalTimeout.Add(1)
-			q.redisDecrUser(context.Background(), req.userKey)
 			logger.Warnf(req.ctx, "[IM] Queue timeout: user=%s waited=%s, discarding", req.msg.UserID, waitDuration)
-			_ = req.adapter.SendReply(req.ctx, req.msg, &ReplyMessage{
-				Content: "您的消息等待超时，请重新发送。",
-				IsFinal: true,
-			})
-			req.cancel()
+			req.queueTimedOut = true
+			q.handler(req)
+			q.redisDecrUser(context.Background(), req.userKey)
 			continue
 		}
 

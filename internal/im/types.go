@@ -13,24 +13,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// IMChannel represents an IM channel configuration stored in the database.
-// Each channel binds to an agent and contains platform-specific credentials.
+// IMChannel represents one system-managed bot installation. User and workspace
+// access are resolved from UserBinding for every incoming message.
 type IMChannel struct {
-	ID              string         `json:"id"          gorm:"type:varchar(36);primaryKey;default:uuid_generate_v4()"`
-	TenantID        uint64         `json:"tenant_id"   gorm:"not null;index:idx_im_channels_tenant"`
-	AgentID         string         `json:"agent_id"    gorm:"type:varchar(36);not null;index:idx_im_channels_agent"`
-	Platform        string         `json:"platform"    gorm:"type:varchar(20);not null"`
-	Name            string         `json:"name"        gorm:"type:varchar(255);not null;default:''"`
-	Enabled         bool           `json:"enabled"     gorm:"not null;default:true"`
-	Mode            string         `json:"mode"        gorm:"type:varchar(20);not null;default:'websocket'"`
-	OutputMode      string         `json:"output_mode"       gorm:"type:varchar(20);not null;default:'stream'"`
-	KnowledgeBaseID string         `json:"knowledge_base_id" gorm:"type:varchar(36);default:''"`
-	BotIdentity     string         `json:"bot_identity"      gorm:"type:varchar(255);not null;default:'';uniqueIndex:idx_im_channels_bot_identity,where:deleted_at IS NULL AND bot_identity != ''"`
-	SessionMode     string         `json:"session_mode"      gorm:"type:varchar(20);not null;default:'user'"`
-	Credentials     types.JSON     `json:"credentials"       gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	DeletedAt       gorm.DeletedAt `json:"deleted_at"  gorm:"index"`
+	ID         string `json:"id"           gorm:"type:varchar(36);primaryKey;default:uuid_generate_v4()"`
+	Platform   string `json:"platform"     gorm:"type:varchar(20);not null"`
+	Name       string `json:"name"         gorm:"type:varchar(255);not null;default:''"`
+	Enabled    bool   `json:"enabled"      gorm:"not null;default:false"`
+	Mode       string `json:"mode"         gorm:"type:varchar(20);not null;default:'websocket'"`
+	OutputMode string `json:"output_mode"  gorm:"type:varchar(20);not null;default:'stream'"`
+	// The partial unique index predicate is intentionally kept beside the field it protects.
+	//nolint:lll
+	BotIdentity string         `json:"bot_identity" gorm:"type:varchar(255);not null;default:'';uniqueIndex:idx_im_channels_bot_identity,where:deleted_at IS NULL AND bot_identity != ''"`
+	Credentials types.JSON     `json:"credentials"  gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedBy   string         `json:"created_by"   gorm:"type:varchar(36);not null;default:''"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"deleted_at" gorm:"index"`
 }
 
 func (IMChannel) TableName() string {
@@ -38,21 +37,18 @@ func (IMChannel) TableName() string {
 }
 
 // IMChannelSummary is the HTTP-safe list shape for IM channels. Credentials
-// are never included — use Admin+ Create/Update responses to read back
-// values immediately after a mutation.
+// are never included in list or mutation responses.
 type IMChannelSummary struct {
 	ID                    string    `json:"id"`
-	TenantID              uint64    `json:"tenant_id"`
-	AgentID               string    `json:"agent_id"`
 	Platform              string    `json:"platform"`
 	Name                  string    `json:"name"`
 	Enabled               bool      `json:"enabled"`
 	Mode                  string    `json:"mode"`
 	OutputMode            string    `json:"output_mode"`
-	KnowledgeBaseID       string    `json:"knowledge_base_id"`
 	BotIdentity           string    `json:"bot_identity"`
-	SessionMode           string    `json:"session_mode"`
+	PersonalBinding       bool      `json:"personal_binding"`
 	CredentialsConfigured bool      `json:"credentials_configured"`
+	CreatedBy             string    `json:"created_by"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
 }
@@ -61,17 +57,15 @@ type IMChannelSummary struct {
 func SummarizeIMChannel(ch IMChannel) IMChannelSummary {
 	return IMChannelSummary{
 		ID:                    ch.ID,
-		TenantID:              ch.TenantID,
-		AgentID:               ch.AgentID,
 		Platform:              ch.Platform,
 		Name:                  ch.Name,
 		Enabled:               ch.Enabled,
 		Mode:                  ch.Mode,
 		OutputMode:            ch.OutputMode,
-		KnowledgeBaseID:       ch.KnowledgeBaseID,
 		BotIdentity:           ch.BotIdentity,
-		SessionMode:           ch.SessionMode,
+		PersonalBinding:       SupportsPersonalBinding(ch.Platform),
 		CredentialsConfigured: imCredentialsConfigured(ch.Credentials),
+		CreatedBy:             ch.CreatedBy,
 		CreatedAt:             ch.CreatedAt,
 		UpdatedAt:             ch.UpdatedAt,
 	}
@@ -91,6 +85,33 @@ func imCredentialsConfigured(cred types.JSON) bool {
 	return s != "" && s != "{}"
 }
 
+// SupportsSystemChannel reports whether administrators can create and enable
+// a system-managed bot installation for the platform.
+func SupportsSystemChannel(platform string) bool {
+	switch platform {
+	case string(PlatformWeCom), string(PlatformFeishu), string(PlatformLark),
+		string(PlatformSlack), string(PlatformTelegram), string(PlatformDingtalk),
+		string(PlatformWeChat), string(PlatformQQBot):
+		return true
+	default:
+		return false
+	}
+}
+
+// SupportsPersonalBinding reports whether a platform is allowed to enter the
+// shared per-user binding flow. QQ and WeChat stay closed until their required
+// multi-user private-chat checks have passed. Mattermost and Yunzhijia are not
+// part of this adaptation.
+func SupportsPersonalBinding(platform string) bool {
+	switch platform {
+	case string(PlatformWeCom), string(PlatformFeishu), string(PlatformLark),
+		string(PlatformSlack), string(PlatformTelegram), string(PlatformDingtalk):
+		return true
+	default:
+		return false
+	}
+}
+
 func (ch *IMChannel) BeforeCreate(tx *gorm.DB) error {
 	if ch.ID == "" {
 		ch.ID = uuid.New().String()
@@ -105,37 +126,14 @@ func (ch *IMChannel) BeforeCreate(tx *gorm.DB) error {
 	if ch.OutputMode == "" {
 		ch.OutputMode = "stream"
 	}
-	if ch.SessionMode == "" {
-		ch.SessionMode = string(SessionModeUser)
-	}
-	if err := ch.validateSessionMode(); err != nil {
-		return err
-	}
 	ch.BotIdentity = ch.computeBotIdentity()
 	return nil
 }
 
-// BeforeSave ensures bot_identity is recomputed and session_mode is validated
-// on every save (create + update).
+// BeforeSave ensures bot_identity is recomputed on every save.
 func (ch *IMChannel) BeforeSave(tx *gorm.DB) error {
-	if ch.SessionMode == "" {
-		ch.SessionMode = string(SessionModeUser)
-	}
-	if err := ch.validateSessionMode(); err != nil {
-		return err
-	}
 	ch.BotIdentity = ch.computeBotIdentity()
 	return nil
-}
-
-// validateSessionMode checks that SessionMode holds a supported value.
-func (ch *IMChannel) validateSessionMode() error {
-	switch SessionMode(ch.SessionMode) {
-	case SessionModeUser, SessionModeThread:
-		return nil
-	default:
-		return fmt.Errorf("invalid session_mode: %s", ch.SessionMode)
-	}
 }
 
 // computeBotIdentity derives a unique bot identity string from the channel's
@@ -190,6 +188,10 @@ func (ch *IMChannel) computeBotIdentity() string {
 		if clientID := str("client_id"); clientID != "" {
 			return "dingtalk:" + clientID
 		}
+	case "slack":
+		if botToken := str("bot_token"); botToken != "" {
+			return fmt.Sprintf("slack:%x", sha256.Sum256([]byte(botToken)))
+		}
 	case "mattermost":
 		if tok := str("outgoing_token"); tok != "" {
 			return "mattermost:wh:" + tok
@@ -216,18 +218,89 @@ func (ch *IMChannel) computeBotIdentity() string {
 	return ""
 }
 
-// ChannelSession maps an IM channel (user+chat combination) to a WeKnora session.
-// This allows the IM integration to maintain conversation continuity.
+const (
+	// IMBindingStatusActive identifies a usable account binding.
+	IMBindingStatusActive = "active"
+	// IMBindingStatusRevoked identifies a binding that can no longer be used.
+	IMBindingStatusRevoked = "revoked"
+
+	// IMBindingRequestPending identifies a binding code that can still be consumed.
+	IMBindingRequestPending = "pending"
+	// IMBindingRequestConsumed identifies a binding code that completed successfully.
+	IMBindingRequestConsumed = "consumed"
+	// IMBindingRequestCancelled identifies a binding code replaced before use.
+	IMBindingRequestCancelled = "cancelled"
+)
+
+// UserBinding maps one verified platform identity to a WeKnora user and an
+// explicitly selected workspace.
+type UserBinding struct {
+	ID               string     `json:"id"               gorm:"type:varchar(36);primaryKey"`
+	IMChannelID      string     `json:"im_channel_id"    gorm:"type:varchar(36);not null;index"`
+	ExternalUserID   string     `json:"external_user_id" gorm:"type:varchar(255);not null"`
+	ExternalUserName string     `json:"external_user_name" gorm:"type:varchar(255);not null;default:''"`
+	UserID           string     `json:"user_id"          gorm:"type:varchar(36);not null;index"`
+	TenantID         uint64     `json:"tenant_id"        gorm:"not null;index"`
+	Status           string     `json:"status"           gorm:"type:varchar(20);not null;default:'active'"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	RevokedAt        *time.Time `json:"revoked_at,omitempty" gorm:"index"`
+}
+
+// TableName returns the binding table name.
+func (UserBinding) TableName() string { return "im_user_bindings" }
+
+// BeforeCreate assigns application defaults before inserting a binding.
+func (b *UserBinding) BeforeCreate(_ *gorm.DB) error {
+	if b.ID == "" {
+		b.ID = uuid.New().String()
+	}
+	if b.Status == "" {
+		b.Status = IMBindingStatusActive
+	}
+	return nil
+}
+
+// BindingRequest is a short-lived, single-use proof initiated by an
+// authenticated web user and completed by a private message to the bot.
+type BindingRequest struct {
+	ID          string `json:"id"                     gorm:"type:varchar(36);primaryKey"`
+	CodeHash    string `json:"-"                      gorm:"type:varchar(64);not null;uniqueIndex"`
+	IMChannelID string `json:"im_channel_id"         gorm:"type:varchar(36);not null;index"`
+	UserID      string `json:"user_id"                gorm:"type:varchar(36);not null;index"`
+	TenantID    uint64 `json:"tenant_id"              gorm:"not null;index"`
+	Status      string `json:"status"                 gorm:"type:varchar(20);not null;default:'pending'"`
+	//nolint:lll // JSON and database names intentionally mirror the external identity column.
+	ClaimedExternalUserID string     `json:"claimed_external_user_id,omitempty" gorm:"type:varchar(255);not null;default:''"`
+	BindingID             *string    `json:"binding_id,omitempty"    gorm:"type:varchar(36)"`
+	ExpiresAt             time.Time  `json:"expires_at"`
+	ConsumedAt            *time.Time `json:"consumed_at,omitempty"`
+	CancelledAt           *time.Time `json:"cancelled_at,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+}
+
+// TableName returns the binding request table name.
+func (BindingRequest) TableName() string { return "im_binding_requests" }
+
+// BeforeCreate assigns application defaults before inserting a request.
+func (r *BindingRequest) BeforeCreate(_ *gorm.DB) error {
+	if r.ID == "" {
+		r.ID = uuid.New().String()
+	}
+	if r.Status == "" {
+		r.Status = IMBindingRequestPending
+	}
+	return nil
+}
+
+// ChannelSession maps one binding to its current WeKnora conversation.
 type ChannelSession struct {
 	ID          string         `json:"id"            gorm:"type:varchar(36);primaryKey;default:uuid_generate_v4()"`
-	Platform    string         `json:"platform"      gorm:"type:varchar(20);not null"`
-	UserID      string         `json:"user_id"       gorm:"type:varchar(128);not null"`
-	ChatID      string         `json:"chat_id"       gorm:"type:varchar(128);not null;default:''"`
-	ThreadID    string         `json:"thread_id"     gorm:"type:varchar(128);not null;default:''"`
+	BindingID   string         `json:"binding_id"    gorm:"type:varchar(36);not null;index"`
 	SessionID   string         `json:"session_id"    gorm:"type:varchar(36);not null;index"`
 	TenantID    uint64         `json:"tenant_id"     gorm:"not null;index"`
-	AgentID     string         `json:"agent_id"      gorm:"type:varchar(36);default:''"`
-	IMChannelID string         `json:"im_channel_id" gorm:"type:varchar(36);default:''"`
+	IMChannelID string         `json:"im_channel_id" gorm:"type:varchar(36);not null;index"`
 	Status      string         `json:"status"        gorm:"type:varchar(20);not null;default:'active'"`
 	Metadata    types.JSON     `json:"metadata"      gorm:"type:jsonb;default:'{}'"`
 	CreatedAt   time.Time      `json:"created_at"`

@@ -40,6 +40,7 @@ export function isDeploymentCapabilitySupported(
 }
 
 export const SETTINGS_SECTION_CAPABILITY: Partial<Record<string, DeploymentCapabilityKey>> = {
+  'im-channels': 'integrations.im',
   websearch: 'settings.websearch',
   vectorstore: 'settings.vectorstore',
   storage: 'settings.storage',

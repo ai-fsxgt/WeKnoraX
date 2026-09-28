@@ -172,6 +172,10 @@
                     <ThirdPartyApplications />
                   </div>
 
+                  <div v-if="currentSection === 'im-channels'" class="section">
+                    <IMChannelPanel />
+                  </div>
+
                   <!-- 用户信息（账户基础信息：ID / 用户名 / 邮箱 / 注册时间）。
                      用户的基本信息不该跟 owner 权限绑定。 -->
                   <div v-if="currentSection === 'userprofile'" class="section">
@@ -243,6 +247,7 @@ import SystemAuditLog from '@/views/system/SystemAuditLog.vue'
 import SystemUsers from '@/views/system/SystemUsers.vue'
 import SystemTenants from '@/views/system/SystemTenants.vue'
 import ThirdPartyApplications from '@/views/system/ThirdPartyApplications.vue'
+import IMChannelPanel from '@/components/IMChannelPanel.vue'
 import ThirdPartyIntegrationSettings from './ThirdPartyIntegrationSettings.vue'
 import IntegrationSettingsSection from '@/views/integrations/IntegrationSettingsSection.vue'
 import {
@@ -401,6 +406,7 @@ const navItems = computed(() => {
     { key: 'members', icon: 'usergroup', label: t('tenantMember.title') },
     { key: 'third-party-integrations', icon: 'link', label: t('thirdPartyIntegration.tenant.navLabel') },
     { key: 'third-party-applications', icon: 'link', label: t('thirdPartyIntegration.system.navLabel') },
+    { key: 'im-channels', icon: 'chat-message', label: t('imAdmin.navLabel') },
     ...integrationItems,
   ]
   return all.filter((it) => canSeeSection(it.key) && isSectionSupported(it.key))
@@ -455,6 +461,7 @@ const navGroups = computed<NavGroup[]>(() => {
         'platform-api-keys',
         'system-audit-log',
         'third-party-applications',
+        'im-channels',
       ]),
     },
   ].filter((group) => group.items.length > 0)

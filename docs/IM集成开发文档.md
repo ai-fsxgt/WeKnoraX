@@ -1,8 +1,10 @@
 # IM 集成开发文档
 
-WeKnora 的 IM 集成模块将企业即时通讯平台（企业微信、飞书、Lark、Slack、Telegram、钉钉、Mattermost）接入 WeKnora 知识问答管道，支持在 IM 中直接向 AI 提问并获得实时流式回答。
+WeKnora 的 IM 集成模块将企业微信、飞书、Lark、Slack、Telegram 和钉钉接入知识问答管道，支持用户在私聊中使用自己所选工作空间的知识库进行问答。
 
-IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置通过前端 Agent 编辑器管理，存储在数据库中。
+IM 机器人由系统管理员统一配置。普通用户不需要创建第三方应用，只需在 WeKnora 中选择机器人和工作空间，生成一次性绑定码并直接发送给机器人，即可建立个人账号绑定。
+
+> 当前个人绑定支持企业微信、飞书、Lark、Slack、Telegram 和钉钉，仅支持私聊。微信、QQ 机器人尚未开放个人绑定；Mattermost 和云之家不在本次适配范围内。
 
 ## 目录
 
@@ -13,7 +15,6 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
   - [Slack 接入](#slack-接入)
   - [Telegram 接入](#telegram-接入)
   - [钉钉接入](#钉钉接入)
-  - [Mattermost 接入](#mattermost-接入)
 - [前端管理](#前端管理)
 - [架构总览](#架构总览)
 - [数据模型](#数据模型)
@@ -27,7 +28,6 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
   - [Slack](#slack)
   - [Telegram](#telegram)
   - [钉钉 (DingTalk)](#钉钉-dingtalk)
-  - [Mattermost](#mattermost)
 - [斜杠指令系统](#斜杠指令系统)
 - [QA 队列与限流](#qa-队列与限流)
 - [流式输出机制](#流式输出机制)
@@ -43,8 +43,9 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
 ### 前置条件
 
 - WeKnora 已部署并运行
-- 已创建至少一个 Agent（自定义智能体）
-- Agent 已配置好模型和知识库
+- 系统管理员可创建第三方 IM 应用并取得机器人凭据
+- 普通用户已有可登录的 WeKnora 账号，并且至少加入一个有效工作空间
+- 用户选择的工作空间中至少有一个支持快速问答的非临时知识库
 
 > **回复图片需公网可达**：IM 显示知识库图片需让 IM 端拿到公网 http 图片 URL，二选一——
 > (A) 存储后端本身公网可达（对象存储公网 endpoint / `MINIO_ENDPOINT` 设为公网）；
@@ -68,7 +69,7 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
 
 **第二步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → 左侧导航选择 **IM 集成** 标签页
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**
 2. 点击 **添加渠道**
 3. 填写配置：
    - **平台**：选择「企业微信」
@@ -87,7 +88,7 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
 [IM] WeCom WebSocket connecting (bot_id=xxx)...
 ```
 
-此时在企业微信中给机器人发消息即可收到 AI 回复。
+连接成功后，普通用户还需完成个人绑定，随后即可在企业微信私聊中获得回答。
 
 ---
 
@@ -105,7 +106,7 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
 
 **第二步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** 标签页 → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「企业微信」
    - **接入模式**：选择「Webhook」
@@ -126,10 +127,6 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
    - **Token**：填入在 WeKnora 中设置的 Token
    - **EncodingAESKey**：填入在 WeKnora 中设置的 EncodingAESKey
 3. 点击保存，企业微信会发送 GET 验证请求，WeKnora 会自动响应
-
-**第四步：配置可信域名（可选）**
-
-如需在群聊中使用，在应用详情页 → **网页授权及 JS-SDK** 中添加可信域名。
 
 ---
 
@@ -197,7 +194,7 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
 
 **第四步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「飞书」
    - **接入模式**：选择「WebSocket」
@@ -222,7 +219,7 @@ IM 渠道绑定到 Agent，一个 Agent 可接入多个 IM 渠道，所有配置
 
 **第一步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「飞书」
    - **接入模式**：选择「Webhook」
@@ -468,31 +465,22 @@ Slack 提供两种接入模式，推荐使用 WebSocket (Socket Mode) 模式，�
 
 1. 在左侧导航栏选择 **Event Subscriptions**。
 2. 开启 **Enable Events** 开关。
-3. 展开 **Subscribe to bot events**，添加以下事件：
-   - `app_mention` (在频道中 @ 机器人)
-   - `message.channels` (频道消息)
-   - `message.groups` (私有频道消息)
-   - `message.im` (私聊消息)
-   - `message.mpim` (多人私聊消息)
+3. 展开 **Subscribe to bot events**，添加 `message.im`（私聊消息）。
 4. 点击 **Save Changes**。
 
 **第五步：配置权限 (OAuth & Permissions)**
 
 1. 在左侧导航栏选择 **OAuth & Permissions**。
 2. 滚动到 **Scopes** -> **Bot Token Scopes**，确保包含以下权限（添加事件时通常会自动添加）：
-   - `app_mentions:read`
-   - `channels:history`
    - `chat:write`
-   - `groups:history`
    - `im:history`
-   - `mpim:history`
    - `files:read` (用于接收文件)
 3. 滚动到顶部，点击 **Install to Workspace**。
 4. 授权后，复制 **Bot User OAuth Token**（以 `xoxb-` 开头），这就是 **Bot Token**。
 
 **第六步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「Slack」
    - **接入模式**：选择「WebSocket」
@@ -521,7 +509,7 @@ Slack 提供两种接入模式，推荐使用 WebSocket (Socket Mode) 模式，�
 
 **第二步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「Slack」
    - **接入模式**：选择「Webhook」
@@ -555,7 +543,7 @@ Telegram 提供两种接入模式，推荐使用 WebSocket（长轮询）模式�
 
 **第二步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「Telegram」
    - **接入模式**：选择「WebSocket」
@@ -569,7 +557,7 @@ Telegram 提供两种接入模式，推荐使用 WebSocket（长轮询）模式�
 [IM] Telegram long polling connecting...
 ```
 
-此时在 Telegram 中给 Bot 发送消息即可收到 AI 回复。
+连接成功后，普通用户还需完成个人绑定，随后即可在 Telegram 私聊中获得回答。
 
 ---
 
@@ -583,12 +571,12 @@ Telegram 提供两种接入模式，推荐使用 WebSocket（长轮询）模式�
 
 **第二步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「Telegram」
    - **接入模式**：选择「Webhook」
    - **Bot Token**：填入 Bot Token
-   - **Secret Token**（可选）：自定义密钥，用于验证回调请求的 `X-Telegram-Bot-Api-Secret-Token` 头
+   - **Secret Token**：自定义密钥，用于验证回调请求的 `X-Telegram-Bot-Api-Secret-Token` 头
 3. 保存后，复制渠道卡片上显示的**回调地址**
 
 **第三步：配置 Webhook**
@@ -628,7 +616,7 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
 
 **第三步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「钉钉」
    - **接入模式**：选择「WebSocket」
@@ -658,7 +646,7 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
 
 **第二步：在 WeKnora 中添加 IM 渠道**
 
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**
+1. 系统管理员进入 **设置 → 系统管理 → IM 机器人**，点击 **添加渠道**
 2. 填写配置：
    - **平台**：选择「钉钉」
    - **接入模式**：选择「Webhook」
@@ -675,126 +663,59 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
 
 ---
 
-### Mattermost 接入
-
-Mattermost 为**自建部署**，当前仅支持 **Webhook** 模式：**出站 Webhook（Outgoing Webhook）** 将用户消息 POST 到 WeKnora，Bot 通过 **REST API v4** 发回频道/线程回复。与 Slack Events API 类似，回调需快速返回 `200`，实际回答由 Bot Token 异步调用接口完成。
-
-> 需要公网或内网可达的回调 URL（Mattermost 服务器能访问 WeKnora 的 `/api/v1/im/callback/{channel_id}`）。若 WeKnora 在内网，请在 Mattermost 中配置 [Trusted Internal Connections](https://docs.mattermost.com/configure/environment-configuration-settings.html) 或将回调地址加入允许列表。
-
-#### 第一步：创建 Bot 账户并获取 Token
-
-1. 在 Mattermost 中创建专用 Bot 账户（或使用个人账户的 **Personal Access Token**，不推荐生产环境）。
-2. 为 Bot 授予在目标频道/团队发消息、读取文件等所需权限（若需将用户上传的文件写入知识库，需能下载附件）。
-3. 在 **Profile → Security → Personal Access Tokens**（或 Bot 设置）生成 Token，复制保存为 **Bot Token**。
-
-#### 第二步：创建 Outgoing Webhook
-
-1. 打开 **产品菜单 → 集成 → 出站 Webhook**（若不可见，需系统管理员在 **系统控制台 → 集成** 中启用出站 Webhook）。
-2. 点击 **Add Outgoing Webhook**，填写标题与描述。
-3. **Content Type** 建议选择 **application/json**（也支持 `application/x-www-form-urlencoded`，WeKnora 两种均可解析）。
-4. 选择触发频道，或配置**触发词**（与频道组合规则以 Mattermost 说明为准）。
-5. **Callback URLs** 先留空或填占位；保存后在 WeKnora 创建渠道后会得到正式地址。
-6. 保存后复制页面上的 **Token**（出站 Webhook 密钥），即 **Outgoing Webhook Token**。
-
-#### 第三步：在 WeKnora 中添加 IM 渠道
-
-1. 进入 Agent 编辑器 → **IM 集成** → **添加渠道**。
-2. 填写配置：
-   - **平台**：选择「Mattermost」
-   - **接入模式**：固定为 **Webhook**（选择 Mattermost 后界面会禁用 WebSocket）
-   - **输出模式**：流式输出 / 完整输出（流式通过编辑帖子实现）
-   - **Site URL**：Mattermost 站点根地址，如 `https://mattermost.example.com`（无尾部 `/`）
-   - **Bot Token**：上一步生成的 Token
-   - **Outgoing Webhook Token**：出站 Webhook 页面复制的 Token（用于校验回调，且参与 `bot_identity` 去重）
-   - **Bot User ID**（可选）：Bot 在 Mattermost 中的用户 ID；填写后可忽略 Bot 自身触发的回调，避免自回复循环
-3. 保存后，复制渠道卡片上的 **回调地址**，回到 Mattermost 出站 Webhook 配置，将 **Callback URLs** 设为该地址并保存。
-
-#### 第四步：验证
-
-在绑定频道发送触发出站 Webhook 的消息，应收到 WeKnora 的回复；回复默认出现在**触发帖所在线程**（使用 Mattermost 的 `root_id` 与触发 `post_id` 对齐）。
-
-**参考文档：** [Outgoing webhooks](https://developers.mattermost.com/integrate/webhooks/outgoing/)
-
-
----
-
 ## 前端管理
 
-IM 渠道在 Agent 编辑器的 **IM 集成** 标签页中管理（仅编辑模式可见，创建 Agent 时不显示）。
+IM 管理分为系统机器人配置和个人账号绑定，两者权限与职责独立。
 
-### 渠道列表
+### 系统机器人配置
 
-每个渠道以卡片形式展示，包含：
-- **平台标识**：企业微信（绿色）/ 飞书（青色）/ Lark（蓝色）/ Slack（紫色）/ Telegram（蓝色）/ 钉钉（蓝色）/ Mattermost（蓝色）
-- **渠道名称**：用户自定义
-- **接入模式**：WebSocket / Webhook
-- **输出模式**：流式输出 / 完整输出
-- **启用开关**：可即时启用/停用渠道
-- **回调地址**：Webhook 模式下显示，可一键复制
-- **编辑/删除**：管理渠道配置
+系统管理员在 **设置 → 系统管理 → IM 机器人** 中统一维护机器人。每个机器人卡片展示平台、接入模式、输出模式、启用状态、凭据状态、个人绑定能力和 Webhook 回调地址。
 
-### 渠道操作
+- **添加机器人**：选择平台，配置模式、输出方式和平台凭据，保存后按需启用。
+- **编辑机器人**：平台不可更改；未填写的凭据字段保留原值，凭据不会通过管理接口回显。
+- **启用或停用**：只有启用且配置完整的机器人会接收个人绑定和问答消息。
+- **替换机器人身份**：修改决定 `bot_identity` 的凭据时，已有用户绑定和未消费绑定码同时失效。
+- **删除机器人**：删除后停止运行，并撤销该机器人下的用户绑定。
 
-- **添加渠道**：选择平台 → 填写凭证 → 选择模式 → 保存
-- **编辑渠道**：可修改名称、模式、输出模式和凭证（平台不可更改）
-- **启用/停用**：通过开关即时切换，停用的渠道不会处理消息
-- **删除渠道**：删除后不可恢复
+企业微信、飞书、Lark、Slack、Telegram 和钉钉支持个人绑定。微信和 QQ 机器人可以由系统管理员配置，但暂不向普通用户开放个人绑定。
+
+### 个人账号绑定
+
+普通用户在 **设置 → 发布集成 → IM** 中完成绑定：
+
+1. 选择自己的知识库工作空间和一个已启用的 IM 机器人。
+2. 生成有效期为 5 分钟的一次性绑定码。
+3. 在对应客户端中与机器人私聊，直接发送绑定码，不需要输入 `/bind` 等命令。
+4. 页面确认绑定成功后，后续私聊会使用所选工作空间内支持快速问答的非临时知识库。
+
+一个 WeKnora 用户在同一机器人下只能绑定一个 IM 身份，一个 IM 身份也只能绑定一个 WeKnora 用户。用户可在同一页面解除绑定，解除后排队中和正在生成的回答会被停止。
 
 ---
 
 ## 架构总览
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                              IM 集成架构                                     │
-│                                                                              │
-│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│   │ 企业微信  │  │   飞书    │  │  Slack   │  │ Telegram │  │   钉钉   │  IM层│
-│   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
-│        │ WH/WS       │ WH/WS      │ WH/WS       │ WH/LP       │ WH/Stream  │
-│   ─────┼─────────────┼────────────┼─────────────┼─────────────┼──────────   │
-│        ▼             ▼            ▼             ▼             ▼              │
-│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│   │  WeCom   │  │  Feishu  │  │  Slack   │  │ Telegram │  │ DingTalk │ 适配 │
-│   │ Adapter  │  │ Adapter  │  │ Adapter  │  │ Adapter  │  │ Adapter  │ 器层 │
-│   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
-│        │             │             │              │             │             │
-│   ─────┼─────────────┼─────────────┼──────────────┼─────────────┼────────   │
-│        └─────────────┼─────────────┼──────────────┘─────────────┘            │
-│                      │                                                       │
-│                 ┌────┴────────────┐                                            │
-│                 │ Mattermost      │ Webhook-only                               │
-│                 └────────┬────────┘                                            │
-│                          ▼                                                    │
-│                 ┌────────────────┐                                             │
-│                 │ Mattermost     │                                             │
-│                 │ Adapter        │                                             │
-│                 └────────┬────────┘                                             │
-│                          │                                                     │
-│        ──────────────────┴────────────────────────────────────────────────────│
-│                        ▼                                                     │
-│   ┌──────────────────────────────────┐                                       │
-│   │         im.Service               │     服务编排层                        │
-│   │                                  │     · IM 渠道管理 (CRUD)              │
-│   │  ┌────────────────────────────┐  │     · Adapter Factory (动态创建)      │
-│   │  │ CommandRegistry            │  │     · 斜杠指令分发                    │
-│   │  │ qaQueue (Worker Pool)      │  │     · QA 队列调度 (有界, 异步)        │
-│   │  │ rateLimiter (滑动窗口)      │  │     · 滑动窗口限流                    │
-│   │  │ processedMsgs (去重)       │  │     · 消息去重 (MessageID + TTL)      │
-│   │  │ inflight (取消跟踪)         │  │     · 会话映射 (ChannelSession)       │
-│   │  └────────────────────────────┘  │     · 流式/全量路由                    │
-│   └──────────────┬───────────────────┘                                       │
-│                  │                                                           │
-│   ───────────────┼───────────────────────────────────────────────────────    │
-│                  ▼                                                           │
-│   ┌──────────────────────────────────────┐                                   │
-│   │     WeKnora Core (QA Pipeline)       │     核心层                       │
-│   │   SessionService · MessageService    │                                   │
-│   │   TenantService  · AgentService      │                                   │
-│   │   KnowledgeService (文件保存)         │                                   │
-│   └──────────────────────────────────────┘                                   │
-└──────────────────────────────────────────────────────────────────────────────┘
+系统管理员
+    │ 配置平台应用和机器人凭据
+    ▼
+IMChannel（系统级机器人） ──▶ Adapter ──▶ 已验证的私聊消息
+                                           │
+普通用户                                    │ 外部用户 ID
+    │ 选择工作空间并生成一次性绑定码          ▼
+    └──────────────────────────────▶ UserBinding
+                                           │
+                         WeKnora 用户 + 工作空间成员资格
+                                           │
+                         非临时且支持快速问答的知识库
+                                           │
+                                           ▼
+                         ChannelSession ──▶ QA Pipeline
+                                           │
+                                           ▼
+                                      IM 私聊回复
 ```
+
+`IMChannel` 只保存系统级机器人配置，不携带用户、工作空间、Agent 或知识库范围。每条消息都通过 `UserBinding` 解析 WeKnora 用户和工作空间，并在执行前和投递前重新校验绑定、账号、成员资格及渠道状态。
 
 **设计模式：**
 
@@ -811,109 +732,143 @@ IM 渠道在 Agent 编辑器的 **IM 集成** 标签页中管理（仅编辑模�
 
 ## 数据模型
 
-### im_channels 表
+### im_channels
 
-IM 渠道配置存储在 `im_channels` 表中，绑定到 Agent：
+`im_channels` 表示系统级机器人安装，不再保存 `tenant_id`、`agent_id` 或 `knowledge_base_id`。
 
 ```sql
 CREATE TABLE im_channels (
-    id                VARCHAR(36) PRIMARY KEY,
-    tenant_id         BIGINT NOT NULL,
-    agent_id          VARCHAR(36) NOT NULL,       -- 绑定的 Agent ID
-    platform          VARCHAR(20) NOT NULL,       -- 'wecom' | 'feishu' | 'lark' | 'slack' | 'telegram' | 'dingtalk' | 'mattermost'
-    name              VARCHAR(255) NOT NULL DEFAULT '',
-    enabled           BOOLEAN NOT NULL DEFAULT true,
-    mode              VARCHAR(20) NOT NULL DEFAULT 'websocket',  -- 'webhook' | 'websocket'
-    output_mode       VARCHAR(20) NOT NULL DEFAULT 'stream',     -- 'stream' | 'full'
-    knowledge_base_id VARCHAR(36),                -- 可选，绑定知识库以接收文件消息
-    bot_identity      VARCHAR(255),               -- 计算字段，防止重复机器人
-    credentials       JSONB NOT NULL DEFAULT '{}',               -- 平台凭证
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_at        TIMESTAMPTZ
+    id           VARCHAR(36) PRIMARY KEY,
+    platform     VARCHAR(20) NOT NULL,
+    name         VARCHAR(255) NOT NULL DEFAULT '',
+    enabled      BOOLEAN NOT NULL DEFAULT FALSE,
+    mode         VARCHAR(20) NOT NULL DEFAULT 'websocket',
+    output_mode  VARCHAR(20) NOT NULL DEFAULT 'stream',
+    bot_identity VARCHAR(255) NOT NULL DEFAULT '',
+    credentials  JSONB NOT NULL DEFAULT '{}',
+    created_by   VARCHAR(36) NOT NULL DEFAULT '',
+    created_at   TIMESTAMPTZ NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL,
+    deleted_at   TIMESTAMPTZ
 );
 ```
 
-**credentials 字段结构：**
+`bot_identity` 根据平台及核心凭据计算，同一平台机器人只能存在一条未删除记录。管理接口只返回 `credentials_configured`，不返回 `credentials`。
 
-| 平台 | 模式 | 字段 |
-|------|------|------|
+启用机器人时必须配置以下字段：
+
+| 平台 | 模式 | 必填字段 |
+|------|------|----------|
 | 企业微信 | WebSocket | `bot_id`, `bot_secret` |
-| 企业微信 | Webhook | `corp_id`, `agent_secret`, `token`, `encoding_aes_key`, `corp_agent_id` |
+| 企业微信 | Webhook | `corp_id`, `corp_agent_id`, `agent_secret`, `token`, `encoding_aes_key` |
 | 飞书 / Lark | WebSocket | `app_id`, `app_secret` |
-| 飞书 / Lark | Webhook | `app_id`, `app_secret`, `verification_token`, `encrypt_key` |
-| Slack | WebSocket | `app_token`, `bot_token` |
+| 飞书 / Lark | Webhook | `app_id`, `app_secret`, `verification_token` |
+| Slack | WebSocket | `bot_token`, `app_token` |
 | Slack | Webhook | `bot_token`, `signing_secret` |
 | Telegram | WebSocket | `bot_token` |
-| Telegram | Webhook | `bot_token`, `secret_token`（可选） |
-| 钉钉 | WebSocket | `client_id`, `client_secret`, `card_template_id`（可选） |
-| 钉钉 | Webhook | `client_id`, `client_secret`, `card_template_id`（可选） |
-| Mattermost | Webhook（唯一支持） | `site_url`, `bot_token`, `outgoing_token`（必填）；`bot_user_id`（可选，过滤机器人自身消息） |
+| Telegram | Webhook | `bot_token`, `secret_token` |
+| 钉钉 | WebSocket / Webhook | `client_id`, `client_secret` |
 
-`mattermost` 渠道的 `mode` 在数据库中固定为 `webhook`（创建时若未指定，服务端与模型钩子会默认 `webhook`）。`bot_identity` 形如 `mattermost:wh:{outgoing_token}`，用于防止同一出站 Webhook 重复绑定多个渠道。
+### im_user_bindings
 
-### im_channel_sessions 表
+`im_user_bindings` 保存已经验证的 IM 身份与 WeKnora 用户、工作空间之间的关系，核心字段如下：
 
-将 IM 渠道中的用户会话映射到 WeKnora 会话：
-
-```
-(im_channel_id, Platform, UserID, ChatID, TenantID)  →  SessionID
+```text
+id, im_channel_id, external_user_id, external_user_name,
+user_id, tenant_id, status, created_at, updated_at, revoked_at
 ```
 
-首次交互自动创建，后续消息复用同一会话。`/clear` 指令会软删除会话记录，下次消息重新创建。
+未撤销记录满足两个唯一约束：
+
+- 同一机器人下，一个 `external_user_id` 只能绑定一个 WeKnora 用户。
+- 同一机器人下，一个 `user_id` 只能绑定一个 IM 身份。
+
+### im_binding_requests
+
+`im_binding_requests` 保存短期、一次性的绑定请求。数据库只保存绑定码的 SHA-256 哈希；状态为 `pending`、`consumed` 或 `cancelled`，有效期为 5 分钟。机器人身份变化时，该机器人的待消费请求会被取消。
+
+### im_channel_sessions
+
+`im_channel_sessions` 将一个有效绑定映射到当前 WeKnora 会话：
+
+```text
+binding_id → session_id
+```
+
+每个有效绑定最多有一条未删除映射。`/clear` 会软删除映射，下次私聊创建新会话；解绑或机器人身份变化也会软删除对应映射。
 
 ---
 
 ## API 端点
 
-### IM 渠道管理 API（需认证）
+### 系统机器人管理 API
+
+以下接口仅系统管理员可访问：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/agents/:id/im-channels` | 创建 IM 渠道 |
-| GET | `/api/v1/agents/:id/im-channels` | 列出 Agent 的所有 IM 渠道 |
-| PUT | `/api/v1/im-channels/:id` | 更新 IM 渠道 |
-| DELETE | `/api/v1/im-channels/:id` | 删除 IM 渠道 |
-| POST | `/api/v1/im-channels/:id/toggle` | 启用/停用 IM 渠道 |
+| GET | `/api/v1/system/admin/im-channels` | 列出系统机器人，不返回凭据 |
+| POST | `/api/v1/system/admin/im-channels` | 创建系统机器人 |
+| PUT | `/api/v1/system/admin/im-channels/:id` | 更新机器人配置 |
+| DELETE | `/api/v1/system/admin/im-channels/:id` | 删除机器人并撤销相关绑定 |
+| POST | `/api/v1/system/admin/im-channels/:id/toggle` | 启用或停用机器人 |
+| POST | `/api/v1/system/admin/im-channels/wechat/qrcode` | 获取微信登录二维码 |
+| POST | `/api/v1/system/admin/im-channels/wechat/qrcode/status` | 查询微信登录状态 |
 
-### IM 回调端点（无需认证，平台签名验证）
+### 用户绑定 API
+
+以下接口要求当前用户至少具有有效的 Viewer 工作空间成员身份：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET/POST | `/api/v1/im/callback/:channel_id` | 通用回调（根据 channel_id 自动路由到对应 Adapter） |
+| GET | `/api/v1/im/channels` | 列出已启用且支持个人绑定的机器人 |
+| POST | `/api/v1/im/binding-requests` | 为指定机器人和工作空间生成一次性绑定码 |
+| GET | `/api/v1/im/binding-requests/:id` | 查询当前用户创建的绑定请求 |
+| GET | `/api/v1/im/bindings` | 列出当前用户的有效绑定 |
+| DELETE | `/api/v1/im/bindings/:id` | 解除当前用户拥有的绑定 |
 
-> Webhook 模式下，每个渠道有唯一的回调地址 `/api/v1/im/callback/{channel_id}`，在前端渠道卡片上可一键复制。回调路由注册在认证中间件**之前**，由平台签名验证保护。
+### IM 回调端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET/POST | `/api/v1/im/callback/:channel_id` | 根据机器人 ID 路由到对应 Adapter |
+
+回调端点不使用 WeKnora 登录态，由平台签名或 Token 验证保护。Webhook 模式下，每个机器人具有独立回调地址，系统管理员可在机器人卡片中复制。
 
 ---
 
 ## 核心概念
 
-### IMChannel — IM 渠道
+### IMChannel — 系统机器人
 
-每个 IM 渠道代表一个 IM 平台机器人与 WeKnora Agent 的绑定关系。一个 Agent 可以绑定多个渠道（如同时接入企业微信、飞书、Slack 与 Mattermost），同一平台也可以创建多个渠道（如不同的企业微信机器人）。
+每条 `IMChannel` 代表一个由系统管理员维护的平台机器人。`BotIdentity` 由平台、模式和核心凭据计算，用于阻止同一机器人被重复配置。Service 通过 `AdapterFactory` 启动对应 Adapter。
 
-渠道有一个计算字段 `BotIdentity`，由平台类型、模式和核心凭证推导，用于防止同一机器人被重复创建。
+### UserBinding — 用户绑定
 
-渠道启动时，Service 通过 `AdapterFactory` 根据平台类型和凭证动态创建对应的 Adapter 实例。
+`UserBinding` 将机器人验证过的外部用户 ID 绑定到一个 WeKnora 用户和一个工作空间。收到消息后，系统会实时确认用户、工作空间成员资格、机器人和绑定均有效，不依赖客户端自行声明身份。
+
+### BindingRequest — 一次性绑定请求
+
+登录用户先在网页创建 `BindingRequest`，再把页面显示的 `WK-...` 绑定码直接发送给机器人。机器人使用已验证的消息发送者 ID 消费绑定码，客户端不需要支持斜杠命令或网页回调。
 
 ### IncomingMessage — 统一入站消息
 
-所有平台的消息在解密、解析后被归一化为 `IncomingMessage`，抹平平台差异：
+平台消息完成验签、解密后被归一化为统一结构：
 
 ```go
 type IncomingMessage struct {
-    Platform    Platform          // "wecom" | "feishu" | "lark" | "slack" | "telegram" | "dingtalk" | "mattermost"
-    MessageType MessageType       // "text" | "file" | "image"
-    UserID      string            // 平台用户标识
-    UserName    string            // 显示名 (可选)
-    ChatID      string            // 群聊 ID (私聊为空)
-    ChatType    ChatType          // "direct" | "group"
-    Content     string            // 纯文本内容
-    MessageID   string            // 平台消息 ID (用于去重)
-    FileKey     string            // 文件标识 (文件/图片消息)
-    FileName    string            // 文件名 (文件/图片消息)
-    FileSize    int64             // 文件大小 (字节)
-    Extra       map[string]string // 平台特有字段 (如 req_id、aes_key)
+    Platform    Platform
+    MessageType MessageType
+    UserID      string            // 平台验证后的用户标识
+    UserName    string
+    ChatID      string            // 平台会话标识
+    ChatType    ChatType          // 当前个人绑定只接受 direct
+    Content     string
+    MessageID   string
+    FileKey     string
+    FileName    string
+    FileSize    int64
+    Extra       map[string]string
 }
 ```
 
@@ -921,16 +876,16 @@ type IncomingMessage struct {
 
 ```go
 type ReplyMessage struct {
-    Content    string            // Markdown 文本
-    IsStreaming bool             // 是否为流式块
-    IsFinal    bool             // 是否为最后一块
-    Extra      map[string]string // 平台特有字段
+    Content     string
+    IsStreaming bool
+    IsFinal     bool
+    Extra       map[string]string
 }
 ```
 
 ### ChannelSession — 会话映射
 
-将 IM 渠道 (渠道 ID + 用户 + 群聊) 映射到 WeKnora 会话，实现对话上下文持续性。首次交互自动创建，后续消息复用同一会话。并发创建通过唯一约束 + fallback 查询处理。存储于 `im_channel_sessions` 表。
+`ChannelSession` 为每个有效绑定保存一个当前 WeKnora 会话。绑定不再按群聊、Agent 或渠道配置选择会话；解绑后映射失效，重新绑定会创建新会话。
 
 ---
 
@@ -939,52 +894,35 @@ type ReplyMessage struct {
 ### 完整消息处理流程
 
 ```
-用户在 IM 中发送消息
+用户与机器人私聊
         │
         ▼
-┌─ HTTP Handler / WebSocket 回调 ─────────────────┐
-│  1. 根据 channel_id 查找渠道配置                   │
-│  2. 获取对应 Adapter                              │
-│  3. 签名验证 (VerifyCallback)                     │
-│  4. URL 验证处理 (HandleURLVerification)           │
-│  5. 解密 + 解析 → IncomingMessage (ParseCallback)  │
-│  6. 立即返回 HTTP 200 (异步处理)                    │
-└──────────────────────────┬──────────────────────-┘
-                           │ goroutine
-                           ▼
-┌─ im.Service.HandleMessage ──────────────────────┐
-│  1. 去重检查 (MessageID, 5 分钟 TTL)             │
-│  2. 内容长度校验 (≤ 4096 rune，超出截断)           │
-│  3. 斜杠指令检测 → 命中则分发到 CommandRegistry   │
-│  4. 限流检查 (滑动窗口, 10次/60s)                 │
-│  5. 从渠道配置获取 agent_id、tenant_id            │
-│  6. 解析/创建 ChannelSession                     │
-│  7. 获取 WeKnora Session                         │
-│  8. 加载 Agent 配置（获取知识库、模型等信息）       │
-│  9. 所有消息提交到 qaQueue (有界队列, 异步执行)     │
-└───────────┬─────────────────────────────────────┘
-            │
-            ▼
-┌─ qaQueue Worker ────────────────────────────────┐
-│  从队列取出请求，记录 inflight，判断流式/全量模式   │
-└───────────┬─────────────────────┬───────────────┘
-            │                     │
-     流式模式 ▼              全量模式 ▼
-┌────────────────────┐  ┌─────────────────────┐
-│ handleMessageStream│  │ runQA (阻塞收集完整  │
-│                    │  │ 回答后一次性发送)     │
-│ · StartStream      │  └─────────────────────┘
-│ · EventBus 订阅    │
-│ · 300ms 批量刷新   │
-│ · 工具事件展示     │
-│ · UpdateStreamContent │
-│ · FinalizeStream      │
-│ · EndStream           │
-└────────────────────┘
-            │
-            ▼
-    消息持久化 (user + assistant)
+┌─ HTTP Handler / 长连接回调 ────────────────────┐
+│  1. 加载已启用的系统机器人和 Adapter             │
+│  2. 完成平台 URL 验证、签名校验、解密与解析        │
+│  3. Webhook 立即确认，异步处理标准化消息           │
+└──────────────────────┬─────────────────────────┘
+                       ▼
+┌─ im.Service.HandleMessage ─────────────────────┐
+│  1. 消息去重和按机器人、用户限流                  │
+│  2. 拒绝群聊以及未开放个人绑定的平台               │
+│  3. 绑定码消息：校验发送者并消费一次性请求          │
+│  4. 普通消息：解析有效 UserBinding                 │
+│  5. 校验账号、工作空间成员资格和机器人状态          │
+│  6. 加载工作空间内支持快速问答的非临时知识库        │
+│  7. 解析或创建该绑定唯一的 ChannelSession          │
+│  8. 命令进入 CommandRegistry，普通消息进入 qaQueue │
+└──────────────────────┬─────────────────────────┘
+                       ▼
+┌─ 命令或 qaQueue Worker ─────────────────────────┐
+│  执行前以及结果投递前重新验证绑定权限              │
+│  根据 output_mode 选择流式输出或完整输出           │
+└──────────────────────┬─────────────────────────┘
+                       ▼
+                 IM 私聊回复并持久化会话
 ```
+
+绑定码必须在私聊中作为普通文本直接发送。任何 `WK-` 开头的文本都只进入绑定流程，不会作为问题发送给模型。
 
 ### 渠道生命周期
 
@@ -1057,7 +995,7 @@ type FileDownloader interface {
 }
 ```
 
-实现此接口后，文件和图片可作为 QA 附件供模型理解。配置 `knowledge_base_id` 时，附件还会在后台保存到指定知识库；未配置时仅跳过保存。
+实现此接口后，文件和图片可作为当前问题的附件供模型理解，不会自动写入知识库。
 
 ### im.AdapterFactory — 适配器工厂
 
@@ -1092,7 +1030,6 @@ type AdapterFactory func(ctx context.Context, channel *IMChannel, msgHandler fun
 - **消息格式：** `random(16) + msg_len(4) + message + corp_id`，PKCS#7 填充
 - **签名验证：** SHA-1(`sort([token, timestamp, nonce, encrypt])`)，常量时间比较
 - **消息类型：** 支持 `text`（文本）和 `image`（图片，PicUrl 直接下载或 MediaId 临时素材 API）
-- **群聊回复：** 优先尝试 `appchat/send` 群聊 API，失败时降级到私聊直发
 - **回复方式：** 通过 `/cgi-bin/message/send` 接口发送 Markdown 消息
 
 #### WebSocket 模式 (`WSAdapter` + `LongConnClient`)
@@ -1119,7 +1056,7 @@ LongConnClient ══WebSocket══▶ wss://openws.work.weixin.qq.com
 
 | 文件 | 职责 |
 |------|------|
-| `internal/im/wecom/webhook_adapter.go` | Webhook 模式：回调解密、签名验证、REST API 回复、群聊发送、Token 缓存、文件下载 |
+| `internal/im/wecom/webhook_adapter.go` | Webhook 模式：回调解密、签名验证、REST API 回复、Token 缓存、文件下载 |
 | `internal/im/wecom/ws_adapter.go` | WebSocket 模式适配器壳，代理到 `LongConnClient` |
 | `internal/im/wecom/longconn.go` | WebSocket 客户端：连接管理、心跳、帧协议、自动重连、多消息类型解析、文件解密 |
 
@@ -1185,10 +1122,9 @@ imService.RegisterAdapterFactory("lark", feishu.NewFactory(feishu.RegionLark))
 | `POST /im/v1/images` | 上传图片以取得 `image_key` | `im:resource` 或 `im:resource:upload` |
 | `POST /cardkit/v1/cards`<br>`PUT /cardkit/v1/cards/{id}/elements/{eid}/content`<br>`PATCH /cardkit/v1/cards/{id}/settings` | 流式卡片（仅流式输出模式需要） | `cardkit:card:write` |
 | 订阅事件 `im.message.receive_v1`（单聊） | 接收私聊消息 | `im:message.p2p_msg` 或 `im:message.p2p_msg:readonly` |
-| 订阅事件 `im.message.receive_v1`（群聊 @） | 接收群内 @机器人 消息 | `im:message.group_at_msg` 或 `im:message.group_at_msg:readonly` |
 
-因此 IM 功能全开（私聊 + 群聊 @ + 文件 + 图片 + 流式卡片）最少需要 5 类权限：收私聊、收群 @、
-发消息、读写资源、写卡片。若关闭流式输出（输出模式选「完整输出」），`cardkit:card:write` 可省略。
+个人绑定需要接收私聊、发送消息和读取附件；流式输出还需要写卡片权限。若输出模式选择
+「完整输出」，`cardkit:card:write` 可省略。
 
 #### Webhook 模式
 
@@ -1241,7 +1177,7 @@ EndStream:
 
 > **已知限制**：`Region.ThinkingText` 只本地化了卡片的初始占位文案（Lark 显示 `Thinking...`）。
 > 一旦开始流式输出，think 块标题来自共享的 `MarkdownThinkStyle`，目前对所有平台
-> （Lark、Slack、Telegram、Mattermost 等）都是中文。本地化它需要把 locale 贯穿到
+> （Lark、Slack、Telegram 等）都是中文。本地化它需要把 locale 贯穿到
 > `FormatIMDisplayContent`，属于跨平台改动，不在 Lark 接入范围内。
 
 **孤立流清理：** 后台协程每 1 分钟扫描超过 5 分钟未关闭的流式卡片，自动调用 `EndStream` 关闭（防止内存泄漏）。
@@ -1273,7 +1209,7 @@ Slack 服务器 ──HTTP POST──▶ /api/v1/im/callback/{channel_id}
 ```
 
 - **签名验证：** 使用 `signing_secret` 对请求体进行 HMAC-SHA256 签名验证，防止伪造请求。
-- **事件过滤：** 仅处理 `message` 和 `app_mention` 事件，忽略机器人自己发送的消息。
+- **事件过滤：** Adapter 可解析 `message` 和 `app_mention` 事件并忽略机器人自己的消息；个人绑定服务只接受私聊。
 - **URL 验证：** 自动处理 Slack 的 `url_verification` challenge 请求。
 
 #### WebSocket 模式 (Socket Mode)
@@ -1327,7 +1263,7 @@ EndStream:
 ```
 Telegram 服务器 ──HTTP POST──▶ /api/v1/im/callback/{channel_id}
                                    │
-                           Secret Token 验证（可选）
+                           Secret Token 验证
                            解析 JSON → IncomingMessage
                                    │
                            通过 Telegram Bot API 回复
@@ -1335,7 +1271,6 @@ Telegram 服务器 ──HTTP POST──▶ /api/v1/im/callback/{channel_id}
 
 - **签名验证：** 通过 `X-Telegram-Bot-Api-Secret-Token` 请求头与配置的 `secret_token` 进行常量时间比较
 - **消息类型：** `text`（文本）、`document`（文件，通过 file_id 下载）、`photo`（图片，自动选择最大尺寸）
-- **群消息处理：** 自动去除 `@bot` 提及前缀
 
 #### 长轮询模式 (Long Polling)
 
@@ -1415,9 +1350,7 @@ Telegram 支持文件和图片消息的下载，流程：
 ```
 
 - **签名验证：** 使用 `client_secret` 对 `timestamp + "\n" + secret` 进行 HmacSHA256 签名，Base64 编码后与请求头 `Sign` 比较，时间戳 1 小时内有效
-- **回复方式：** 优先使用回调消息体中的 `sessionWebhook` 回复（适用于群聊场景），失败或不可用时降级到 OpenAPI
-  - 群聊：`/v1.0/robot/groupMessages/send`
-  - 私聊：`/v1.0/robot/oToMessages/batchSend`
+- **回复方式：** 优先使用回调消息体中的 `sessionWebhook`；不可用时使用私聊接口 `/v1.0/robot/oToMessages/batchSend`
 - **消息格式：** Markdown 格式（`sampleMarkdown`）
 - **认证：** 通过 `/v1.0/oauth2/accessToken` 获取 Access Token，带缓存（提前 5 分钟刷新）
 
@@ -1475,61 +1408,6 @@ EndStream:
 
 ---
 
-### Mattermost
-
-仅支持 **Webhook** 模式：Mattermost **Outgoing Webhook** 将请求体 POST 到 WeKnora 统一回调地址；适配器实现 `Adapter`、`StreamSender`、`FileDownloader`（标准库 HTTP 调用 REST API，无第三方 SDK）。
-
-#### Webhook 模式（Outgoing Webhook）
-
-```
-Mattermost 服务器 ──HTTP POST──▶ /api/v1/im/callback/{channel_id}
-                                        │
-                                校验 body 中 token = outgoing_token
-                                解析 JSON 或 x-www-form-urlencoded
-                                        │
-                                通过 REST API v4 回复（Bearer Bot Token）
-```
-
-- **安全校验：** 请求体中的 `token` 必须与渠道凭证中的 `outgoing_token` 一致（创建渠道时工厂会校验 `outgoing_token` 非空）。
-- **载荷格式：** 支持 `application/json` 与 `application/x-www-form-urlencoded`（与 [官方文档](https://developers.mattermost.com/integrate/webhooks/outgoing/) 一致）。
-- **机器人过滤：** 若配置了 `bot_user_id`，且 `user_id` 与之相同，则返回 `nil` 消息，避免自激。
-- **线程回复：** `IncomingMessage.Extra` 中保存 `thread_root_id`（有 `root_id` 时用其值，否则用触发帖 `post_id`）；`SendReply` / `CreatePost` 时设置 `root_id`，使回复出现在同一线程。
-- **消息去重：** `MessageID` 使用触发帖的 `post_id`。
-- **文件消息：** 若载荷含 `file_ids`，取首个文件 ID 作为 `FileKey`；`DownloadFile` 先 `GET /api/v4/files/{id}/info` 再 `GET /api/v4/files/{id}` 下载内容。
-
-#### 流式回复
-
-与 Slack 类似，通过**编辑同一条帖子**展示累积全文：
-
-```
-StartStream:
-  1. POST /api/v4/posts                    → 创建占位帖（如「正在思考...」），得到 post id
-
-UpdateStreamContent:
-  2. PUT /api/v4/posts/{post_id}/patch     → Patch message 字段（累积全文）
-
-FinalizeStream:
-  3. PUT /api/v4/posts/{post_id}/patch     → 最终可见内容替换
-
-EndStream:
-  4. 清理流状态
-```
-
-流式刷新间隔由 Service 侧 `streamFlushInterval`（300ms）批量合并，以降低编辑频率、减轻 API 压力。
-
-#### URL 验证
-
-Mattermost 出站 Webhook 无 Slack/Feishu 类 challenge 流程，`HandleURLVerification` 恒为 `false`。
-
-#### 源码文件
-
-| 文件 | 职责 |
-|------|------|
-| `internal/im/mattermost/adapter.go` | 出站 Webhook 解析、Token 校验、发帖/补丁流式、文件下载 |
-| `internal/im/mattermost/client.go` | REST v4：`CreatePost`、`PatchPostMessage`、文件 info/下载 |
-| `internal/im/mattermost/form_parse.go` | 表单编码 body 与 `file_ids` 辅助解析 |
-
----
 
 ## 斜杠指令系统
 
@@ -1540,7 +1418,7 @@ IM 渠道支持斜杠指令（Slash Commands），用户在聊天中输入 `/指
 | 指令 | 参数 | 说明 |
 |------|------|------|
 | `/help` | `[指令名]` | 显示所有可用指令列表；带参数时显示指定指令的详细用法 |
-| `/info` | — | 查看当前绑定智能体的名称、角色设定、知识库列表等信息 |
+| `/info` | — | 查看当前绑定的工作空间、知识库范围和输出模式 |
 | `/search` | `<关键词>` | 对绑定的知识库执行混合检索（向量 + 关键词），返回最多 5 条原文片段，不经过 AI 总结 |
 | `/stop` | — | 取消当前排队中或正在执行的 QA 请求 |
 | `/clear` | — | 清空当前对话记忆（软删除 ChannelSession），下次消息开始全新会话 |
@@ -1592,7 +1470,7 @@ type Command interface {
 | `internal/im/command.go` | Command 接口、CommandAction、CommandContext 定义 |
 | `internal/im/command_registry.go` | CommandRegistry：指令注册、解析、分发、LooksLikeCommand |
 | `internal/im/cmd_help.go` | `/help` 指令实现 |
-| `internal/im/cmd_info.go` | `/info` 指令实现（展示 Agent 信息、知识库列表） |
+| `internal/im/cmd_info.go` | `/info` 指令实现（展示工作空间、知识库范围和输出模式） |
 | `internal/im/cmd_search.go` | `/search` 指令实现（混合检索，最多 5 条，内容截断 200 rune） |
 | `internal/im/cmd_stop.go` | `/stop` 指令实现 |
 | `internal/im/cmd_clear.go` | `/clear` 指令实现 |
@@ -1624,7 +1502,7 @@ type Command interface {
 
 ### 滑动窗口限流 (rateLimiter)
 
-在消息进入 QA 队列之前，按 `channelID:userID:chatID` 维度进行滑动窗口限流：
+在消息进入 QA 队列之前，按 `channelID:userID` 维度进行滑动窗口限流：
 
 | 参数 | 值 | 说明 |
 |------|------|------|
@@ -1661,7 +1539,7 @@ QA 管道 ──chunk──chunk──chunk──▶ EventBus
 ### 内容处理
 
 - **Think 块过滤/转换**：`<think>...</think>` 块在飞书和钉钉中转换为 Markdown 引用块展示，在 Telegram 中转换为引用块（斜体标题），在其他平台中过滤
-- **工具事件展示**：Agent 工具调用实时展示调用状态
+- **工具事件展示**：QA 工具调用实时展示调用状态
   - 调用中：`⏳ [工具名]`（包裹在 think 块内）
   - 调用成功：`✅ [工具名] · [摘要]`
   - 调用失败：`⚠️ [工具名] 失败`
@@ -1679,7 +1557,7 @@ QA 管道 ──chunk──chunk──chunk──▶ EventBus
 
 ## 文件消息处理
 
-文件和图片会作为 QA 附件供模型理解，用户只收到该消息对应的 QA 回复。`knowledge_base_id` 配置后会额外触发后台入库；未配置时不入库、不报错。入库结果和后续解析不再产生额外 IM 通知。解析出的附件文本最多保留前 500 行且不超过 32 KiB；发生任一限制时，模型会收到通用的截断提示。
+文件和图片只作为当前问题的附件供模型理解，不会自动写入知识库。用户只收到该消息对应的 QA 回复；解析出的附件文本最多保留前 500 行且不超过 32 KiB，发生任一限制时模型会收到通用的截断提示。
 
 **各平台文件下载方式：**
 
@@ -1689,7 +1567,6 @@ QA 管道 ──chunk──chunk──chunk──▶ EventBus
 | 企业微信 Webhook | PicUrl 直接下载 或 MediaId 临时素材 API |
 | 企业微信 WebSocket | 加密附件 URL + per-message AES 密钥解密 |
 | Telegram | getFile API 获取文件路径 + HTTPS 下载（支持文档和图片） |
-| Mattermost | `GET /api/v4/files/{file_id}/info` + `GET /api/v4/files/{file_id}`（Bearer Bot Token） |
 
 ---
 
@@ -1697,7 +1574,6 @@ QA 管道 ──chunk──chunk──chunk──▶ EventBus
 
 | 参数 | 值 | 说明 |
 |------|------|------|
-| `qaTimeout` | 120s | QA 管道最大执行时间 |
 | `dedupTTL` | 5 min | 消息去重 ID 保留时长 |
 | `dedupCleanupInterval` | 1 min | 去重清理周期 |
 | `maxContentLength` | 4096 | 消息最大长度 (rune)，超出截断 |
@@ -1741,9 +1617,8 @@ QA 管道 ──chunk──chunk──chunk──▶ EventBus
 | 消息限流 | 滑动窗口内超过 10 次，回复限流提示 |
 | 飞书孤立流 | 每分钟扫描，超过 5 分钟未关闭的自动结束 |
 | Telegram/钉钉孤立流 | 同飞书，每分钟扫描并自动清理 |
-| 企业微信群聊回复失败 | appchat API 失败时降级到用户私聊 |
 | 钉钉 AI 卡片创建失败 | 降级到 sessionWebhook 或 OpenAPI 回复 |
-| 钉钉 sessionWebhook 不可用 | 降级到 OpenAPI（群聊/私聊分别调用不同端点） |
+| 钉钉 sessionWebhook 不可用 | 使用私聊 OpenAPI 回复 |
 
 ---
 
@@ -1769,7 +1644,7 @@ func (a *Adapter) HandleURLVerification(c *gin.Context) bool { /* URL 验证 */ 
 
 可选接口：
 - 实现 `im.StreamSender` 以支持流式输出
-- 实现 `im.FileDownloader` 以支持文件消息自动保存到知识库
+- 实现 `im.FileDownloader` 以支持把文件消息作为当前问题的附件
 
 > 可参考已有的 Telegram（纯 HTTP API）和 DingTalk（SDK + AI 卡片）适配器作为实现参考。
 

@@ -6,7 +6,7 @@
 
 ### GET|POST /api/v1/im/callback/:channel_id
 
-用途：IM 平台（WeChat/Feishu/Slack/Telegram/DingTalk/QQBot/云之家等）事件回调与 URL 验证。注册在认证中间件之前，使用各平台自身的签名验证；验签失败 403，渠道不存在 404。收到消息立即 ACK，异步处理。Handler: `internal/handler/im.go`
+用途：IM 平台的事件回调与 URL 验证。注册在认证中间件之前，使用各平台自身的签名验证；验签失败 403，渠道不存在 404。收到消息立即 ACK，异步处理。Handler: `internal/handler/im.go`
 
 响应：200 `{"success":true}` 或平台要求的 ACK 格式。
 
@@ -14,102 +14,128 @@
 curl -X POST $BASE/api/v1/im/callback/ch-1 -H 'Content-Type: application/json' -d '{"event":"..."}'
 ```
 
-## IM 渠道管理（需认证）
+## 系统 IM 机器人管理（需认证）
 
-API key：`manage_channels`/full。IM 渠道携带外部 bot 凭证：列表 Viewer+，变更/开关/扫码登录 Admin+。
+以下接口仅系统管理员可访问，使用 Bearer 登录态，不接受 API Key。列表响应不包含机器人凭据。
 
-### POST /api/v1/agents/:id/im-channels
+### POST /api/v1/system/admin/im-channels
 
-用途：为 Agent 创建 IM 渠道。权限：Admin+。
+用途：创建一个全局 IM 机器人。
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `platform` | string | 是 | `wecom/feishu/lark/slack/telegram/dingtalk/mattermost/wechat/qqbot/yunzhijia` |
+| `platform` | string | 是 | `wecom/feishu/lark/slack/telegram/dingtalk/wechat/qqbot` |
 | `name` | string | 否 | 显示名 |
 | `mode` | string | 否 | `websocket`（默认）/`webhook`/`longpoll`（wechat 强制 longpoll） |
 | `output_mode` | string | 否 | `stream`（默认）/`full`（wechat 强制 full） |
-| `knowledge_base_id` | string | 否 | 关联 KB |
 | `credentials` | object | 否 | 平台凭证 |
-| `enabled` | bool | 否 | 默认 true |
+| `enabled` | bool | 否 | 默认 false |
 
 响应：200 `{"data":{IMChannel}}`；同渠道 bot 已存在返回 409。
 
 ```bash
-curl -X POST $BASE/api/v1/agents/agent-1/im-channels -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"platform":"feishu","name":"飞书客服"}'
+curl -X POST $BASE/api/v1/system/admin/im-channels -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"platform":"feishu","name":"飞书客服","credentials":{"app_id":"cli_xxx","app_secret":"xxx"}}'
 ```
 
-### GET /api/v1/agents/:id/im-channels
+### GET /api/v1/system/admin/im-channels
 
-用途：某 Agent 的 IM 渠道列表（摘要）。权限：Viewer+。
+用途：列出全部系统机器人摘要，不返回凭据内容。
 
 响应：200 `{"data":[IMChannel]}`
 
 ```bash
-curl $BASE/api/v1/agents/agent-1/im-channels -H "Authorization: Bearer $TOKEN"
+curl $BASE/api/v1/system/admin/im-channels -H "Authorization: Bearer $TOKEN"
 ```
 
-### GET /api/v1/im-channels
+### PUT /api/v1/system/admin/im-channels/:id
 
-用途：全空间 IM 渠道总览（不含凭证）。权限：Viewer+。
-
-响应：200 `{"data":[IMChannel]}`
-
-```bash
-curl $BASE/api/v1/im-channels -H "Authorization: Bearer $TOKEN"
-```
-
-### PUT /api/v1/im-channels/:id
-
-用途：更新渠道（局部更新：`name/mode/output_mode/knowledge_base_id/credentials/enabled/agent_id` 均可选）。权限：Admin+。
+用途：更新机器人。`name`、`mode`、`output_mode` 和 `credentials` 均为可选字段；凭据按字段合并，空字符串会保留已保存值。启用状态通过下方 toggle 接口修改。
 
 响应：200 `{"data":{IMChannel}}`
 
 ```bash
-curl -X PUT $BASE/api/v1/im-channels/ch-1 -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"enabled":false}'
+curl -X PUT $BASE/api/v1/system/admin/im-channels/ch-1 -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"name":"飞书客服"}'
 ```
 
-### DELETE /api/v1/im-channels/:id
+### DELETE /api/v1/system/admin/im-channels/:id
 
-用途：删除渠道。权限：Admin+。
+用途：删除机器人，并撤销相关个人绑定和待消费绑定请求。
 
 响应：200 `{"success":true}`
 
 ```bash
-curl -X DELETE $BASE/api/v1/im-channels/ch-1 -H "Authorization: Bearer $TOKEN"
+curl -X DELETE $BASE/api/v1/system/admin/im-channels/ch-1 -H "Authorization: Bearer $TOKEN"
 ```
 
-### POST /api/v1/im-channels/:id/toggle
+### POST /api/v1/system/admin/im-channels/:id/toggle
 
-用途：启停切换。权限：Admin+。无请求体。
+用途：切换机器人启用状态。停用后个人绑定暂不可用，重新启用后恢复。无请求体。
 
 响应：200 `{"data":{IMChannel}}`
 
 ```bash
-curl -X POST $BASE/api/v1/im-channels/ch-1/toggle -H "Authorization: Bearer $TOKEN"
+curl -X POST $BASE/api/v1/system/admin/im-channels/ch-1/toggle -H "Authorization: Bearer $TOKEN"
 ```
 
-### POST /api/v1/wechat/qrcode
+### POST /api/v1/system/admin/im-channels/wechat/qrcode
 
-用途：生成 WeChat 登录二维码（绑定个人微信到空间）。权限：Admin+。无请求体。Handler: `internal/handler/wechat_qrcode.go`
+用途：为系统微信机器人生成登录二维码。无请求体。Handler: `internal/handler/wechat_qrcode.go`
 
 响应：200 `{"data":{"qrcode_url","qrcode"}}`
 
 ```bash
-curl -X POST $BASE/api/v1/wechat/qrcode -H "Authorization: Bearer $TOKEN"
+curl -X POST $BASE/api/v1/system/admin/im-channels/wechat/qrcode -H "Authorization: Bearer $TOKEN"
 ```
 
-### POST /api/v1/wechat/qrcode/status
+### POST /api/v1/system/admin/im-channels/wechat/qrcode/status
 
-用途：轮询扫码状态；确认后返回凭证。权限：Admin+。请求体：`{"qrcode":"<标识>"}`（必填）。
+用途：轮询扫码状态；确认后返回凭证。请求体：`{"qrcode":"<标识>"}`（必填）。
 
-响应：200 `{"data":{"status":"pending|scanned|confirmed|expired","credentials":{bot_token,ilink_bot_id,ilink_user_id,baseurl}}}`
+响应：200 `{"data":{"status":"wait|scaned|confirmed|expired","credentials":{bot_token,ilink_bot_id,ilink_user_id},"baseurl":"..."}}`。`credentials` 仅在确认后返回，`baseurl` 仅在平台提供时返回。
 
 ```bash
-curl -X POST $BASE/api/v1/wechat/qrcode/status -H "Authorization: Bearer $TOKEN" \
+curl -X POST $BASE/api/v1/system/admin/im-channels/wechat/qrcode/status -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"qrcode":"qr-1"}'
 ```
+
+## IM 个人绑定（需认证）
+
+以下接口要求 Bearer 登录态和 Viewer+ 权限，不接受 API Key。绑定只支持企业微信、飞书、Lark、Slack、Telegram 和钉钉的私聊。
+
+### GET /api/v1/im/channels
+
+用途：列出已启用且支持个人绑定的机器人，不返回凭据。
+
+响应：200 `{"data":[{"id":"ch-1","platform":"feishu","name":"飞书客服"}]}`
+
+### POST /api/v1/im/binding-requests
+
+用途：为当前用户、指定机器人和工作空间生成有效期为 5 分钟的一次性绑定码。
+
+请求体：`{"im_channel_id":"ch-1","tenant_id":1}`。
+
+响应：200 `{"data":{"id":"br-1","code":"WK-...","im_channel_id":"ch-1","platform":"feishu","channel_name":"飞书客服","tenant_id":1,"status":"pending","expires_at":"..."}}`
+
+用户需要在对应客户端中私聊机器人，直接发送完整绑定码，不需要 `/bind` 命令。
+
+### GET /api/v1/im/binding-requests/:id
+
+用途：查询当前用户创建的绑定请求。`status` 可能为 `pending`、`consumed`、`cancelled` 或 `expired`；查询响应不再返回绑定码。
+
+### GET /api/v1/im/bindings
+
+用途：列出当前用户的有效绑定。
+
+响应：200 `{"data":[{"id":"b-1","im_channel_id":"ch-1","platform":"feishu","channel_name":"飞书客服","external_user_id":"ou_xxx","external_user_name":"张三","tenant_id":1,"tenant_name":"研发空间","created_at":"..."}]}`
+
+### DELETE /api/v1/im/bindings/:id
+
+用途：解除当前用户拥有的绑定，并终止该绑定仍在排队或执行中的任务。
+
+响应：200 `{"success":true}`
 
 ## Embed 渠道管理（需认证）
 

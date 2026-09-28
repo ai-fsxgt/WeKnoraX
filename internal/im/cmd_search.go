@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Tencent/WeKnora/internal/agent/tools"
-	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
@@ -17,17 +15,16 @@ const (
 
 // SearchCommand implements /search <query>.
 //
-// It runs a hybrid search (vector + keywords) against the user's selected
-// knowledge bases—or the bot-level defaults when no override is active—and
+// It runs a hybrid search (vector + keywords) against the knowledge bases in
+// the workspace selected by the current user's binding and
 // returns the raw matching passages without AI summarisation. This is useful
 // when the user needs to inspect source text directly.
 type SearchCommand struct {
 	sessionService interfaces.SessionService
-	kbService      interfaces.KnowledgeBaseService
 }
 
-func newSearchCommand(sessionService interfaces.SessionService, kbService interfaces.KnowledgeBaseService) *SearchCommand {
-	return &SearchCommand{sessionService: sessionService, kbService: kbService}
+func newSearchCommand(sessionService interfaces.SessionService) *SearchCommand {
+	return &SearchCommand{sessionService: sessionService}
 }
 
 func (c *SearchCommand) Name() string { return "search" }
@@ -43,48 +40,11 @@ func (c *SearchCommand) Execute(ctx context.Context, cmdCtx *CommandContext, arg
 	}
 
 	query := strings.Join(args, " ")
-
-	// Resolve which KBs to search, mirroring the logic in the QA pipeline's
-	// resolveKnowledgeBasesFromAgent so that /search covers the same scope.
-	var kbIDs []string
-	if cmdCtx.CustomAgent != nil {
-		switch cmdCtx.CustomAgent.Config.KBSelectionMode {
-		case "all":
-			allKBs, err := c.kbService.ListKnowledgeBases(ctx)
-			if err == nil {
-				// Same capability filter as the QA pipeline's
-				// resolveKnowledgeBasesFromAgent (`all` branch) so `/search`
-				// agrees with what the agent's tools can actually reach.
-				// Agent-mode aware: quick-answer enforces RAG-only KBs.
-				agentMode := cmdCtx.CustomAgent.Config.AgentMode
-				allowed := cmdCtx.CustomAgent.Config.AllowedTools
-				filter := tools.DeriveKBFilterForAgent(agentMode, allowed)
-				skipped := 0
-				for _, kb := range allKBs {
-					if !filter.IsEmpty() &&
-						!tools.KBSatisfiesAgentRequirements(kb.Capabilities(), agentMode, allowed) {
-						skipped++
-						continue
-					}
-					kbIDs = append(kbIDs, kb.ID)
-				}
-				if skipped > 0 {
-					logger.Infof(ctx,
-						"/search(agent=%s, mode=all): capability filter removed %d of %d KBs",
-						cmdCtx.CustomAgent.ID, skipped, len(allKBs))
-				}
-			}
-		case "none":
-			// No knowledge bases configured — will return empty results.
-		case "selected":
-			kbIDs = cmdCtx.CustomAgent.Config.KnowledgeBases
-		default:
-			// Backward compatibility: fall back to configured list.
-			kbIDs = cmdCtx.CustomAgent.Config.KnowledgeBases
-		}
+	if len(cmdCtx.KnowledgeBaseIDs) == 0 {
+		return &CommandResult{Content: "当前工作空间没有可用于检索的知识库。"}, nil
 	}
 
-	results, err := c.sessionService.SearchKnowledge(ctx, kbIDs, nil, nil, query)
+	results, err := c.sessionService.SearchKnowledge(ctx, cmdCtx.KnowledgeBaseIDs, nil, nil, query)
 	if err != nil {
 		return nil, fmt.Errorf("search knowledge: %w", err)
 	}

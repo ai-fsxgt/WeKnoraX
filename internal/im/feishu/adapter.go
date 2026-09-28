@@ -157,10 +157,9 @@ func (a *Adapter) Platform() im.Platform {
 }
 
 // VerifyCallback verifies the Feishu event callback by checking the verification token.
-// If no verification token is configured (e.g., WebSocket mode), skip verification.
 func (a *Adapter) VerifyCallback(c *gin.Context) error {
 	if a.verificationToken == "" {
-		return nil
+		return fmt.Errorf("verification token is not configured")
 	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -325,11 +324,13 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 		threadID = msg.MessageID
 	}
 
-	// Determine chat type
-	chatType := im.ChatTypeDirect
+	// Only the documented p2p value is a private conversation. Treat unknown
+	// values as group chats so they cannot enter the personal binding flow.
+	chatType := im.ChatTypeGroup
 	chatID := ""
-	if msg.ChatType == "group" {
-		chatType = im.ChatTypeGroup
+	if msg.ChatType == "p2p" {
+		chatType = im.ChatTypeDirect
+	} else {
 		chatID = msg.ChatID
 	}
 

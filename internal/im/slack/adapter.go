@@ -99,7 +99,7 @@ func (a *Adapter) Platform() im.Platform {
 
 func (a *Adapter) VerifyCallback(c *gin.Context) error {
 	if a.signingSecret == "" {
-		return nil
+		return fmt.Errorf("signing secret is not configured")
 	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -155,10 +155,7 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 			if ev.BotID != "" || (ev.SubType != "" && ev.SubType != "file_share") {
 				return nil, nil
 			}
-			chatType := im.ChatTypeDirect
-			if ev.ChannelType == "channel" || ev.ChannelType == "group" {
-				chatType = im.ChatTypeGroup
-			}
+			chatType := slackChatType(ev.ChannelType)
 			threadTs := ev.ThreadTimeStamp
 			if threadTs == "" {
 				threadTs = ev.TimeStamp
@@ -168,6 +165,13 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 	}
 
 	return nil, nil
+}
+
+func slackChatType(channelType string) im.ChatType {
+	if channelType == "im" {
+		return im.ChatTypeDirect
+	}
+	return im.ChatTypeGroup
 }
 
 func (a *Adapter) HandleURLVerification(c *gin.Context) bool {

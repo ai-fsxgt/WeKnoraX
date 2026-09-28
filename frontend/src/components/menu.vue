@@ -212,7 +212,6 @@ import { onMounted, onUnmounted, watch, computed, ref, h, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { getSessionsList, batchDelSessions, deleteAllSessions, getSession } from "@/api/chat/index";
 import { useChatResourcesStore } from '@/stores/chatResources';
-import { listAllIMChannels } from '@/api/agent/index';
 import SessionSidebarRow from './SessionSidebarRow.vue';
 import {
     clearSession,
@@ -242,7 +241,6 @@ import type { SessionForGrouping } from './sessionGrouping';
 import { listAllEmbedChannels } from '@/api/embed/index';
 import {
     classifyDateBucket,
-    configuredPlatforms,
     groupSessionsByDate,
     originGroupKey,
     resolveSessionOrigin,
@@ -319,7 +317,13 @@ let bucketRequestToken = 0;
 const sessionListBooting = ref(false);
 const currentSecondpath = ref('');
 const scrollContainer = ref<HTMLElement | null>(null);
-const imPlatforms = ref<string[]>([]);
+// Keep every historical platform here so tenant admins can still open legacy
+// session folders after bot configuration moved to the system level. Empty
+// folders are hidden by the count probe below.
+const imPlatforms = ref([
+    'wecom', 'feishu', 'lark', 'slack', 'telegram', 'dingtalk',
+    'wechat', 'qqbot', 'mattermost', 'yunzhijia',
+]);
 const embedChannelNames = ref<Record<string, string>>({});
 const activeSessionBucketKey = ref(DEFAULT_SESSION_BUCKET_KEY);
 const sessionListCanScroll = ref(false);
@@ -943,12 +947,6 @@ async function loadCurrentKbInfo(kbId: string) {
 }
 
 const loadSessionOriginMeta = async () => {
-    try {
-        const res: any = await listAllIMChannels();
-        imPlatforms.value = configuredPlatforms(res?.data || []);
-    } catch {
-        imPlatforms.value = [];
-    }
     try {
         const res: any = await listAllEmbedChannels();
         const names: Record<string, string> = {};

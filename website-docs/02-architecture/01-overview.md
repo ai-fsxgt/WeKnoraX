@@ -82,7 +82,7 @@ WeKnora 采用"主服务 + 前端 + 文档解析微服务"的三进程核心架�
 | `app` → `searxng` / Web 搜索 provider | HTTP | SSRF 白名单校验（`SSRF_WHITELIST_EXTRA` 默认放行 compose 内 `searxng,qdrant,milvus,weaviate,doris-fe,doris-be`） |
 | `app` → 向量库/对象存储/LLM 提供商 | 各自 SDK（HTTP/gRPC/MySQL 协议） | Doris 走 MySQL 协议 + Stream Load HTTP |
 | `app` → `sandbox` | 本地 `docker run` | Skills 代码执行隔离 |
-| `app` ↔ IM 平台 | HTTP webhook / 长连接 SDK | 微信、企业微信、飞书、钉钉、Slack、Telegram、QQ、Mattermost、云之家（`internal/im/`） |
+| `app` ↔ IM 平台 | HTTP webhook / 长连接 SDK | 企业微信、飞书、Lark、钉钉、Slack、Telegram；微信与 QQ 机器人支持系统配置（`internal/im/`） |
 
 ## 4. 总体架构图
 

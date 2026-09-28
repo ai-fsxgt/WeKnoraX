@@ -358,7 +358,6 @@ func (s *sessionService) ListSessions(
 			"user_id":   query.UserID,
 			"keyword":   query.Keyword,
 			"source":    query.Source,
-			"agent_id":  query.AgentID,
 		})
 		return nil, err
 	}

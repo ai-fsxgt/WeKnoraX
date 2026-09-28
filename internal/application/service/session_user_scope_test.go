@@ -45,7 +45,13 @@ func newTestSessionService(t *testing.T) (*sessionService, *gorm.DB) {
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&types.Session{}))
+	require.NoError(t, db.AutoMigrate(
+		&types.Session{},
+		&testListSessionsIMChannel{},
+		&testListSessionsIMUserBinding{},
+		&testListSessionsIMChannelSession{},
+	))
+	require.NoError(t, db.Create(&testListSessionsIMChannel{ID: "test-channel", Platform: "feishu"}).Error)
 
 	return &sessionService{
 		sessionRepo: repository.NewSessionRepository(db),
@@ -377,7 +383,7 @@ func TestGetSessionAllowsIMRuntimeToReadIMSession(t *testing.T) {
 	svc, db := newTestSessionService(t)
 	require.NoError(t, db.AutoMigrate(&testListSessionsIMChannelSession{}))
 
-	imSession := &types.Session{TenantID: 1, Title: "feishu chat"}
+	imSession := &types.Session{TenantID: 1, UserID: "user-1", Title: "feishu chat"}
 	require.NoError(t, db.Create(imSession).Error)
 	require.NoError(t, db.Create(&testListSessionsIMChannelSession{
 		SessionID: imSession.ID,
@@ -385,13 +391,13 @@ func TestGetSessionAllowsIMRuntimeToReadIMSession(t *testing.T) {
 	}).Error)
 
 	ctx := context.WithValue(
-		testSessionScopeContext(1, "system-1"),
+		testSessionScopeContext(1, "user-1"),
 		types.TenantRoleContextKey,
 		types.TenantRoleViewer,
 	)
 	ctx = types.WithPrincipal(ctx, types.Principal{
 		Type: types.PrincipalIMUser,
-		ID:   "1:channel-1:feishu:open-id-1",
+		ID:   "binding-1",
 	})
 
 	got, err := svc.GetSession(ctx, imSession.ID)
@@ -457,17 +463,36 @@ func TestGetSessionDeniesEmbedRuntimeFromReadingForeignEmbedSession(t *testing.T
 	require.ErrorIs(t, err, apperrors.ErrSessionNotFound)
 }
 
-// testListSessionsIMChannelSession lets QueryPaged's LEFT JOIN resolve against a
-// real table in the in-memory SQLite database.
+type testListSessionsIMChannel struct {
+	ID       string `gorm:"primaryKey"`
+	Platform string
+}
+
+func (testListSessionsIMChannel) TableName() string { return "im_channels" }
+
+type testListSessionsIMUserBinding struct {
+	ID             string `gorm:"primaryKey"`
+	ExternalUserID string
+}
+
+func (testListSessionsIMUserBinding) TableName() string { return "im_user_bindings" }
+
+// testListSessionsIMChannelSession lets QueryPaged's LEFT JOIN resolve against
+// the binding-owned IM tables in the in-memory SQLite database.
 type testListSessionsIMChannelSession struct {
 	ID          uint64 `gorm:"primaryKey;autoIncrement"`
 	SessionID   string `gorm:"column:session_id"`
-	Platform    string `gorm:"column:platform"`
-	ChatID      string `gorm:"column:chat_id"`
-	ThreadID    string `gorm:"column:thread_id"`
-	UserID      string `gorm:"column:user_id"`
-	AgentID     string `gorm:"column:agent_id"`
+	BindingID   string `gorm:"column:binding_id"`
 	IMChannelID string `gorm:"column:im_channel_id"`
+	Metadata    types.JSON
+	Platform    string `gorm:"-"`
 }
 
 func (testListSessionsIMChannelSession) TableName() string { return "im_channel_sessions" }
+
+func (s *testListSessionsIMChannelSession) BeforeCreate(_ *gorm.DB) error {
+	if s.IMChannelID == "" {
+		s.IMChannelID = "test-channel"
+	}
+	return nil
+}
