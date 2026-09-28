@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -111,21 +112,40 @@ func (s *Service) validateBindingAccess(
 	tenantID uint64,
 ) (*types.TenantMember, error) {
 	if s.userService == nil || s.memberService == nil || s.tenantService == nil {
-		return nil, ErrBindingMembershipInvalid
+		return nil, errors.New("binding access services are unavailable")
 	}
 	user, err := s.userService.GetUserByID(ctx, userID)
-	if err != nil || user == nil || !user.IsActive {
+	if err != nil {
+		if errors.Is(err, apprepo.ErrUserNotFound) {
+			return nil, ErrBindingMembershipInvalid
+		}
+		return nil, fmt.Errorf("get binding user: %w", err)
+	}
+	if user == nil || !user.IsActive {
 		return nil, ErrBindingMembershipInvalid
 	}
 	member, err := s.memberService.GetMembership(ctx, userID, tenantID)
-	if err != nil || member == nil || member.Status != types.TenantMemberStatusActive {
+	if err != nil {
+		return nil, fmt.Errorf("get binding membership: %w", err)
+	}
+	if member == nil || member.Status != types.TenantMemberStatusActive {
 		return nil, ErrBindingMembershipInvalid
 	}
 	tenant, err := s.tenantService.GetTenantByID(ctx, tenantID)
-	if err != nil || tenant == nil || !strings.EqualFold(strings.TrimSpace(tenant.Status), "active") {
+	if err != nil {
+		if errors.Is(err, apprepo.ErrTenantNotFound) {
+			return nil, ErrBindingMembershipInvalid
+		}
+		return nil, fmt.Errorf("get binding workspace: %w", err)
+	}
+	if tenant == nil || !strings.EqualFold(strings.TrimSpace(tenant.Status), "active") {
 		return nil, ErrBindingMembershipInvalid
 	}
 	return member, nil
+}
+
+func isInactiveBindingError(err error) bool {
+	return errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, ErrBindingMembershipInvalid)
 }
 
 func (s *Service) getBindableChannel(channelID string) (*IMChannel, error) {

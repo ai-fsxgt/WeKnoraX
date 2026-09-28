@@ -1950,7 +1950,12 @@ func (s *Service) executeQARequest(req *qaRequest) {
 	ctx := req.ctx
 	defer req.cancel()
 	if _, _, err := s.ValidateActiveBinding(ctx, req.bindingID); err != nil {
-		logger.Infof(ctx, "[IM] Dropping queued request for inactive binding: binding=%s", req.bindingID)
+		if isInactiveBindingError(err) {
+			logger.Infof(ctx, "[IM] Dropping queued request for inactive binding: binding=%s", req.bindingID)
+		} else {
+			logger.Errorf(ctx, "[IM] Failed to validate binding before queued request: binding=%s: %v",
+				req.bindingID, err)
+		}
 		return
 	}
 
@@ -2003,7 +2008,12 @@ func (s *Service) executeQARequest(req *qaRequest) {
 	}
 
 	if _, _, err := s.ValidateActiveBinding(ctx, req.bindingID); err != nil {
-		logger.Infof(ctx, "[IM] Suppressing reply for inactive binding: binding=%s", req.bindingID)
+		if isInactiveBindingError(err) {
+			logger.Infof(ctx, "[IM] Suppressing reply for inactive binding: binding=%s", req.bindingID)
+		} else {
+			logger.Errorf(ctx, "[IM] Failed to validate binding before reply: binding=%s: %v",
+				req.bindingID, err)
+		}
 		return
 	}
 	reply := &ReplyMessage{
@@ -2653,7 +2663,9 @@ func (s *Service) handleMessageStream(
 	ticker := time.NewTicker(streamFlushInterval)
 	defer ticker.Stop()
 
-	flush := func() {
+	lastDisplay := ""
+	var deliveryAuthErr error
+	flush := func() bool {
 		bufMu.Lock()
 		parts := getStreamParts()
 		agentRunning := useAgent && !agentDone
@@ -2661,7 +2673,7 @@ func (s *Service) handleMessageStream(
 
 		displaySource := FormatIMIntermediateFromParts(parts, agentRunning)
 		if displaySource == "" {
-			return
+			return true
 		}
 
 		if cut := holdbackCutoff(displaySource); cut < len(displaySource) {
@@ -2669,21 +2681,44 @@ func (s *Service) handleMessageStream(
 		}
 
 		display := cleanIMContent(ctx, displaySource, tenant, s.defaultFileSvc, s.storageResolver)
+		if display == lastDisplay {
+			return true
+		}
+		if _, _, err := s.ValidateActiveBinding(ctx, bindingID); err != nil {
+			deliveryAuthErr = err
+			qaCancel()
+			return false
+		}
 		if err := streamer.UpdateStreamContent(ctx, msg, streamID, display); err != nil {
 			logger.Warnf(ctx, "[IM] UpdateStreamContent failed: %v", err)
+			return true
 		}
+		lastDisplay = display
+		return true
 	}
 
 loop:
 	for {
 		select {
 		case <-ticker.C:
-			flush()
+			if !flush() {
+				break loop
+			}
 		case <-done:
 			break loop
 		case <-qaCtx.Done():
 			break loop
 		}
+	}
+	if deliveryAuthErr != nil {
+		if err := streamer.EndStream(ctx, msg, streamID); err != nil {
+			logger.Warnf(ctx, "[IM] EndStream after binding validation failed: %v", err)
+		}
+		if isInactiveBindingError(deliveryAuthErr) {
+			logger.Infof(ctx, "[IM] Stopped stream for inactive binding: binding=%s", bindingID)
+			return nil
+		}
+		return fmt.Errorf("validate binding before stream update: %w", deliveryAuthErr)
 	}
 
 	if useAgent {
@@ -2724,9 +2759,12 @@ loop:
 	}
 
 	if _, _, err := s.ValidateActiveBinding(ctx, bindingID); err != nil {
-		logger.Infof(ctx, "[IM] Suppressing stream finalization for inactive binding: binding=%s", bindingID)
 		_ = streamer.EndStream(ctx, msg, streamID)
-		return nil
+		if isInactiveBindingError(err) {
+			logger.Infof(ctx, "[IM] Suppressing stream finalization for inactive binding: binding=%s", bindingID)
+			return nil
+		}
+		return fmt.Errorf("validate binding before stream finalization: %w", err)
 	}
 	if err := streamer.FinalizeStream(ctx, msg, streamID, finalDisplay); err != nil {
 		logger.Warnf(ctx, "[IM] FinalizeStream failed: %v", err)
@@ -2771,8 +2809,11 @@ func (s *Service) fallbackNonStream(
 		answer = "抱歉，处理您的问题时出现了异常，请稍后再试。"
 	}
 	if _, _, err := s.ValidateActiveBinding(ctx, bindingID); err != nil {
-		logger.Infof(ctx, "[IM] Suppressing fallback reply for inactive binding: binding=%s", bindingID)
-		return nil
+		if isInactiveBindingError(err) {
+			logger.Infof(ctx, "[IM] Suppressing fallback reply for inactive binding: binding=%s", bindingID)
+			return nil
+		}
+		return fmt.Errorf("validate binding before fallback reply: %w", err)
 	}
 
 	return adapter.SendReply(ctx, msg, &ReplyMessage{Content: formatIMOutboundAnswer(ctx, answer, tenant, s.defaultFileSvc, s.storageResolver), IsFinal: true})
@@ -3060,12 +3101,28 @@ func (s *Service) UpdateChannel(channel *IMChannel) error {
 func (s *Service) DeleteChannel(channelID string) error {
 	var revokedBindingIDs []string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var channel IMChannel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND deleted_at IS NULL", channelID).
+			First(&channel).Error; err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		if err := tx.Model(&BindingRequest{}).
+			Where("im_channel_id = ? AND status = ?", channelID, IMBindingRequestPending).
+			Updates(map[string]any{
+				"status":       IMBindingRequestCancelled,
+				"cancelled_at": now,
+				"updated_at":   now,
+			}).Error; err != nil {
+			return err
+		}
 		var err error
-		revokedBindingIDs, err = revokeChannelBindingsInTx(tx, channelID, time.Now().UTC())
+		revokedBindingIDs, err = revokeChannelBindingsInTx(tx, channelID, now)
 		if err != nil {
 			return err
 		}
-		result := tx.Where("id = ?", channelID).Delete(&IMChannel{})
+		result := tx.Delete(&channel)
 		if result.Error != nil {
 			return result.Error
 		}
