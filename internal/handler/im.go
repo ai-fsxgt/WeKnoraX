@@ -233,7 +233,6 @@ func mergeIMCredentials(current, update types.JSON) (types.JSON, error) {
 	}
 	for key, value := range updateValues {
 		if text, ok := value.(string); ok && strings.TrimSpace(text) == "" {
-			delete(currentValues, key)
 			continue
 		}
 		currentValues[key] = value
