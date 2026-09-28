@@ -25,6 +25,7 @@ test('system administration settings stay explicitly system-admin-only', () => {
       'platform-api-keys',
       'system-audit-log',
       'third-party-applications',
+      'im-channels',
     ],
   )
 })

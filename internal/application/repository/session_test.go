@@ -17,7 +17,12 @@ func newSessionRepositoryForTest(t *testing.T) (interfaces.SessionRepository, *g
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&types.Session{}))
+	require.NoError(t, db.AutoMigrate(
+		&types.Session{},
+		&testIMChannel{},
+		&testIMUserBinding{},
+		&testIMChannelSession{},
+	))
 
 	return NewSessionRepository(db), db
 }
@@ -162,22 +167,38 @@ func TestSessionRepositoryDeleteAllHonorsUserScope(t *testing.T) {
 	require.EqualValues(t, 1, countActiveSessionsForTest(t, db, otherTenantSession.ID))
 }
 
-// im_channel_sessions row for QueryPaged source-filter tests. Mirrors the columns
-// the LEFT JOIN projects; kept local to avoid importing internal/im.
+type testIMChannel struct {
+	ID        string `gorm:"primaryKey"`
+	Platform  string
+	DeletedAt gorm.DeletedAt
+}
+
+func (testIMChannel) TableName() string { return "im_channels" }
+
+type testIMUserBinding struct {
+	ID             string `gorm:"primaryKey"`
+	ExternalUserID string
+}
+
+func (testIMUserBinding) TableName() string { return "im_user_bindings" }
+
+// im_channel_sessions row for QueryPaged source-filter tests. Mirrors the new
+// binding-owned mapping used by the repository joins.
 type testIMChannelSession struct {
 	ID          string `gorm:"primaryKey"`
 	SessionID   string
-	Platform    string
-	ChatID      string
-	ThreadID    string
-	UserID      string
-	AgentID     string
+	BindingID   string
 	IMChannelID string `gorm:"column:im_channel_id"`
 	TenantID    uint64
 	DeletedAt   gorm.DeletedAt
 }
 
 func (testIMChannelSession) TableName() string { return "im_channel_sessions" }
+
+func createTestIMChannel(t *testing.T, db *gorm.DB, id, platform string) {
+	t.Helper()
+	require.NoError(t, db.Create(&testIMChannel{ID: id, Platform: platform}).Error)
+}
 
 func listItemIDsForTest(items []*types.SessionListItem) []string {
 	ids := make([]string, 0, len(items))
@@ -192,18 +213,18 @@ func listItemIDsForTest(items []*types.SessionListItem) []string {
 // (which would happen if the source-filter join excluded soft-deleted mappings).
 func TestSessionRepositoryQueryPagedKeepsClearedIMSessionsOutOfWeb(t *testing.T) {
 	repo, db := newSessionRepositoryForTest(t)
-	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
 	ctx := context.Background()
+	createTestIMChannel(t, db, "channel-wecom", "wecom")
 
 	web := createSessionForTest(t, db, 1, "alice")     // never bound to IM -> web
 	active := createSessionForTest(t, db, 1, "alice")  // active IM mapping
 	cleared := createSessionForTest(t, db, 1, "alice") // IM mapping soft-deleted by /clear
 
 	require.NoError(t, db.Create(&testIMChannelSession{
-		ID: "m-active", SessionID: active.ID, Platform: "wecom", TenantID: 1,
+		ID: "m-active", SessionID: active.ID, IMChannelID: "channel-wecom", TenantID: 1,
 	}).Error)
 	clearedMapping := &testIMChannelSession{
-		ID: "m-cleared", SessionID: cleared.ID, Platform: "wecom", TenantID: 1,
+		ID: "m-cleared", SessionID: cleared.ID, IMChannelID: "channel-wecom", TenantID: 1,
 	}
 	require.NoError(t, db.Create(clearedMapping).Error)
 	require.NoError(t, db.Delete(clearedMapping).Error) // soft-delete, as /clear does
@@ -225,7 +246,6 @@ func TestSessionRepositoryQueryPagedKeepsClearedIMSessionsOutOfWeb(t *testing.T)
 
 func TestSessionRepositoryQueryPagedSplitsWebAndEmbedSessions(t *testing.T) {
 	repo, db := newSessionRepositoryForTest(t)
-	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
 	ctx := context.Background()
 
 	web := createSessionForTest(t, db, 1, "alice")
@@ -251,7 +271,6 @@ func TestSessionRepositoryQueryPagedSplitsWebAndEmbedSessions(t *testing.T) {
 // Legacy tenant-level rows (user_id "") must still show up in web.
 func TestSessionRepositoryQueryPagedWebExcludesAPIKeySessions(t *testing.T) {
 	repo, db := newSessionRepositoryForTest(t)
-	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
 	ctx := context.Background()
 
 	legacy := createSessionForTest(t, db, 1, "") // legacy tenant web row
@@ -268,12 +287,12 @@ func TestSessionRepositoryQueryPagedWebExcludesAPIKeySessions(t *testing.T) {
 
 func TestSessionRepositoryGetIMPlatform(t *testing.T) {
 	repo, db := newSessionRepositoryForTest(t)
-	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
 	ctx := context.Background()
+	createTestIMChannel(t, db, "channel-feishu", "feishu")
 
 	imSession := createSessionForTest(t, db, 1, "alice")
 	require.NoError(t, db.Create(&testIMChannelSession{
-		ID: "ics-1", SessionID: imSession.ID, Platform: "feishu",
+		ID: "ics-1", SessionID: imSession.ID, IMChannelID: "channel-feishu",
 	}).Error)
 	webSession := createSessionForTest(t, db, 1, "alice")
 
@@ -293,7 +312,6 @@ func TestSessionRepositoryGetIMPlatform(t *testing.T) {
 
 func TestSessionRepositoryQueryPagedAPISourceReturnsAllTenantAPIKeySessions(t *testing.T) {
 	repo, db := newSessionRepositoryForTest(t)
-	require.NoError(t, db.AutoMigrate(&testIMChannelSession{}))
 	ctx := context.Background()
 
 	// API requests without and with external-user identity, plus a web user and

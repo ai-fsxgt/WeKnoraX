@@ -277,34 +277,34 @@ func RegisterIMRoutes(r *gin.Engine, imHandler *handler.IMHandler) {
 	}
 }
 
-// RegisterIMChannelRoutes registers IM channel CRUD routes (requires authentication).
-//
-// IM channels carry external bot credentials (WeChat/Feishu/Slack/...);
-// listing is Viewer+ but any mutation, toggle, or QR-code login flow
-// (which can hijack a personal WeChat session) is Admin+.
+// RegisterIMChannelRoutes registers system bot administration and per-user
+// binding routes. Bot credentials are platform-wide and therefore system-admin
+// only; binding routes always use the authenticated web user.
 func RegisterIMChannelRoutes(r *gin.RouterGroup, imHandler *handler.IMHandler, g *rbacGuards) {
-	// Channel CRUD under agents
-	agentChannels := g.apiKeyGroup(r.Group("/agents/:id/im-channels"), apiKeyManageChannels(apiKeyFullAccess()))
+	adminChannels := r.Group("/system/admin/im-channels", g.SystemAdmin())
 	{
-		agentChannels.POST("", g.Admin(), imHandler.CreateIMChannel)
-		agentChannels.GET("", g.Viewer(), imHandler.ListIMChannels)
+		adminChannels.GET("", imHandler.ListIMChannels)
+		adminChannels.POST("", imHandler.CreateIMChannel)
+		adminChannels.PUT("/:id", imHandler.UpdateIMChannel)
+		adminChannels.DELETE("/:id", imHandler.DeleteIMChannel)
+		adminChannels.POST("/:id/toggle", imHandler.ToggleIMChannel)
 	}
 
-	// Channel operations by channel ID
-	channels := g.apiKeyGroup(r.Group("/im-channels"), apiKeyManageChannels(apiKeyFullAccess()))
+	bindings := r.Group("/im", g.Viewer())
 	{
-		channels.GET("", g.Viewer(), imHandler.ListAllIMChannels)
-		channels.PUT("/:id", g.Admin(), imHandler.UpdateIMChannel)
-		channels.DELETE("/:id", g.Admin(), imHandler.DeleteIMChannel)
-		channels.POST("/:id/toggle", g.Admin(), imHandler.ToggleIMChannel)
+		bindings.GET("/channels", imHandler.ListBindableIMChannels)
+		bindings.POST("/binding-requests", imHandler.CreateIMBindingRequest)
+		bindings.GET("/binding-requests/:id", imHandler.GetIMBindingRequest)
+		bindings.GET("/bindings", imHandler.ListIMBindings)
+		bindings.DELETE("/bindings/:id", imHandler.DeleteIMBinding)
 	}
 
-	// WeChat QR code login (requires authentication) — Admin+: a successful
-	// scan binds a personal WeChat account to the tenant.
-	wechatGroup := g.apiKeyGroup(r.Group("/wechat"), apiKeyManageChannels(apiKeyFullAccess()))
+	// WeChat QR login configures the system-managed bot account. Personal
+	// binding remains unavailable until multi-user private chat is verified.
+	wechatGroup := r.Group("/system/admin/im-channels/wechat", g.SystemAdmin())
 	{
-		wechatGroup.POST("/qrcode", g.Admin(), imHandler.WeChatGetQRCode)
-		wechatGroup.POST("/qrcode/status", g.Admin(), imHandler.WeChatPollQRCodeStatus)
+		wechatGroup.POST("/qrcode", imHandler.WeChatGetQRCode)
+		wechatGroup.POST("/qrcode/status", imHandler.WeChatPollQRCodeStatus)
 	}
 }
 

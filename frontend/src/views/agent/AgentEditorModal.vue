@@ -79,12 +79,7 @@
                       </div>
                       <div class="setting-control">
                         <div class="integration-inline">
-                          <button type="button" class="integration-inline__stat integration-inline__link" @click="gotoIntegrations('im')">
-                            <span>{{ $t('integrations.tabs.im') }} · {{ agentIMChannelCount }}</span>
-                            <t-icon name="chevron-right" size="14px" />
-                          </button>
-                          <span class="integration-inline__sep" aria-hidden="true">|</span>
-                          <button type="button" class="integration-inline__stat integration-inline__link" @click="gotoIntegrations('embed')">
+                          <button type="button" class="integration-inline__stat integration-inline__link" @click="gotoIntegrations">
                             <span>{{ $t('integrations.tabs.embed') }} · {{ agentEmbedChannelCount }}</span>
                             <t-icon name="chevron-right" size="14px" />
                           </button>
@@ -1741,7 +1736,6 @@ import { MessagePlugin } from 'tdesign-vue-next';
 import {
   createAgent,
   updateAgent,
-  listIMChannels,
   type CustomAgent,
   type PlaceholderDefinition,
   type AgentTypePreset,
@@ -2628,28 +2622,22 @@ watch(currentSection, (section) => {
   }
 });
 
-const agentIMChannelCount = ref(0);
 const agentEmbedChannelCount = ref(0);
 
 async function loadAgentIntegrationCounts(agentId: string) {
   try {
-    const [imResp, embedResp] = await Promise.all([
-      listIMChannels(agentId),
-      listEmbedChannels(agentId),
-    ]);
-    agentIMChannelCount.value = imResp?.data?.length ?? 0;
+    const embedResp = await listEmbedChannels(agentId);
     agentEmbedChannelCount.value = embedResp?.data?.length ?? 0;
   } catch {
-    agentIMChannelCount.value = 0;
     agentEmbedChannelCount.value = 0;
   }
 }
 
-function gotoIntegrations(tab: 'im' | 'embed') {
+function gotoIntegrations() {
   const agentId = editorAgent.value?.id;
   if (!agentId) return;
   handleClose();
-  router.push({ path: '/platform/settings', query: { section: 'integrations', agentId, tab } });
+  router.push({ path: '/platform/settings', query: { section: 'integrations', agentId, tab: 'embed' } });
 }
 
 const filteredIntentPlaceholders = computed(() => {
@@ -3160,7 +3148,6 @@ watch(() => props.visible, async (val) => {
     }
   } else {
     clearFieldHighlight();
-    agentIMChannelCount.value = 0;
     agentEmbedChannelCount.value = 0;
   }
 });

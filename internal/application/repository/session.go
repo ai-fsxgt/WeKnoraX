@@ -82,9 +82,10 @@ func (r *sessionRepository) GetIMPlatform(
 	err := r.db.WithContext(ctx).
 		Table("im_channel_sessions AS ics").
 		Joins("JOIN sessions AS s ON s.id = ics.session_id").
+		Joins("JOIN im_channels AS imc ON imc.id = ics.im_channel_id").
 		Where("ics.session_id = ? AND s.tenant_id = ?", sessionID, tenantID).
 		Limit(1).
-		Pluck("ics.platform", &platform).Error
+		Pluck("imc.platform", &platform).Error
 	if err != nil {
 		return "", err
 	}
@@ -179,7 +180,9 @@ func (r *sessionRepository) QueryPaged(
 	// for a new mapping (never re-maps an existing one), so a session has at most one
 	// mapping row. If that ever changes, this JOIN would need a one-row-per-session
 	// guard (the unique index only constrains active mappings).
-	joinClause := "LEFT JOIN im_channel_sessions ics ON ics.session_id = s.id"
+	joinClause := "LEFT JOIN im_channel_sessions ics ON ics.session_id = s.id " +
+		"LEFT JOIN im_channels imc ON imc.id = ics.im_channel_id " +
+		"LEFT JOIN im_user_bindings imb ON imb.id = ics.binding_id"
 
 	applySource := func(db *gorm.DB) *gorm.DB {
 		src := strings.TrimSpace(q.Source)
@@ -220,12 +223,12 @@ func (r *sessionRepository) QueryPaged(
 					return db.Where("ics.id IS NULL AND s.description = ?", embedPrefix+channelID)
 				}
 			}
-			return db.Where("ics.platform = ?", lower)
+			return db.Where("imc.platform = ?", lower)
 		}
 	}
 	applyAgent := func(db *gorm.DB) *gorm.DB {
 		if q.AgentID != "" {
-			return db.Where("ics.agent_id = ?", q.AgentID)
+			return db.Where("1 = 0")
 		}
 		return db
 	}
@@ -253,11 +256,11 @@ func (r *sessionRepository) QueryPaged(
 		r.db.WithContext(ctx).Table("sessions AS s").Joins(joinClause),
 	))).
 		Select(`s.*,
-			ics.platform       AS im_platform,
-			ics.chat_id        AS im_chat_id,
-			ics.thread_id      AS im_thread_id,
-			ics.user_id        AS im_user_id,
-			ics.agent_id       AS im_agent_id,
+			imc.platform         AS im_platform,
+			''                   AS im_chat_id,
+			''                   AS im_thread_id,
+			imb.external_user_id AS im_user_id,
+			''                   AS im_agent_id,
 			ics.im_channel_id  AS im_channel_id`).
 		Order(orderClause).
 		Offset((page - 1) * size).

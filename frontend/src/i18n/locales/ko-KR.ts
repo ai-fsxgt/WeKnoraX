@@ -842,6 +842,45 @@ export default {
       noFailedRecords: '다운로드할 실패 기록이 없습니다'
     }
   },
+  imAdmin: {
+    navLabel: 'IM 봇',
+    title: 'IM 봇 관리',
+    description: '시스템 관리자가 메신저 봇을 중앙에서 구성하므로 사용자가 직접 앱을 만들 필요가 없습니다.',
+    scopeHint: '활성화하면 사용자가 통합 설정에서 자신의 계정과 작업 공간을 바인딩할 수 있습니다.',
+    credentialsConfigured: '자격 증명 구성됨',
+    credentialsMissing: '자격 증명 없음',
+    personalBindingReady: '개인 바인딩 지원',
+    personalBindingUnavailable: '개인 바인딩 미지원',
+    wechatFixedMode: 'WeChat은 고정된 롱 폴링과 전체 응답 출력 모드를 사용합니다.',
+    credentialsPreserved: '자격 증명은 표시되지 않습니다. 비워 두면 저장된 값이 유지됩니다.',
+    loadFailed: 'IM 봇을 불러오지 못했습니다'
+  },
+  imBinding: {
+    title: 'IM 계정 바인딩',
+    description: '바인딩하면 선택한 작업 공간의 지식 베이스로 비공개 메시지에 답변합니다.',
+    createTitle: '바인딩 만들기',
+    workspace: '지식 작업 공간',
+    channel: 'IM 봇',
+    channelPlaceholder: '바인딩할 봇 선택',
+    generate: '바인딩 코드 생성',
+    codeTitle: '일회용 바인딩 코드',
+    codeHint: '{channel} 봇과 비공개 채팅을 열고 아래 코드를 그대로 보내세요. 명령어는 필요하지 않습니다.',
+    codeExpires: '{time}까지 유효',
+    privateChatOnly: '비공개 채팅에서만 지원됩니다. 그룹 채팅에 바인딩 코드를 보내지 마세요.',
+    currentBindings: '현재 바인딩',
+    noBindings: '바인딩된 IM 계정이 없습니다',
+    noChannelsTitle: '사용 가능한 봇 없음',
+    noChannels: '시스템 관리자에게 개인 바인딩을 지원하는 IM 봇 구성을 요청하세요.',
+    externalAccount: 'IM 계정',
+    workspaceLabel: '지식 작업 공간',
+    revoke: '바인딩 해제',
+    revokeConfirm: '“{channel}” 바인딩을 해제하시겠습니까? 생성 중인 답변이 중지됩니다.',
+    revoked: '바인딩이 해제되었습니다',
+    success: 'IM 계정이 바인딩되었습니다',
+    expired: '바인딩 코드가 만료되었습니다. 다시 생성하세요.',
+    failed: '바인딩 작업에 실패했습니다',
+    loadFailed: 'IM 바인딩 정보를 불러오지 못했습니다'
+  },
   agentEditor: {
     builtinHint: '내장 에이전트입니다. 이름과 설명은 수정할 수 없지만, 설정 매개변수는 조정할 수 있습니다.',
     fileTypes: {

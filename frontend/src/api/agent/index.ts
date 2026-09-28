@@ -296,67 +296,6 @@ export function getAgentTypePresets() {
   return get<{ data: AgentTypePreset[] }>('/api/v1/agents/type-presets');
 }
 
-// ===== IM渠道 =====
-
-export interface IMChannel {
-  id: string;
-  tenant_id?: number;
-  agent_id: string;
-  // 'lark' is Feishu's international edition; it shares Feishu's credentials and modes.
-  platform: 'wecom' | 'feishu' | 'lark' | 'slack' | 'telegram' | 'dingtalk' | 'mattermost' | 'wechat' | 'qqbot' | 'yunzhijia';
-  name: string;
-  enabled: boolean;
-  mode: 'webhook' | 'websocket' | 'longpoll';
-  output_mode: 'stream' | 'full';
-  session_mode?: 'user' | 'thread';
-  knowledge_base_id?: string;
-  credentials: Record<string, any>;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export function listIMChannels(agentId: string) {
-  return get<{ data: IMChannel[] }>(`/api/v1/agents/${agentId}/im-channels`);
-}
-
-// Tenant-wide overview row. Credentials are intentionally omitted — use
-// listIMChannels(agentId) when you need to edit a specific channel.
-export interface IMChannelOverview {
-  id: string;
-  tenant_id: number;
-  agent_id: string;
-  agent_name: string; // empty string for built-in agents
-  platform: IMChannel['platform'];
-  name: string;
-  enabled: boolean;
-  mode: IMChannel['mode'];
-  output_mode: IMChannel['output_mode'];
-  session_mode?: IMChannel['session_mode'];
-  bot_identity: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export function listAllIMChannels() {
-  return get<{ data: IMChannelOverview[] }>('/api/v1/im-channels');
-}
-
-export function createIMChannel(agentId: string, data: Partial<IMChannel>) {
-  return post<{ data: IMChannel }>(`/api/v1/agents/${agentId}/im-channels`, data);
-}
-
-export function updateIMChannel(id: string, data: Partial<IMChannel>) {
-  return put<{ data: IMChannel }>(`/api/v1/im-channels/${id}`, data);
-}
-
-export function deleteIMChannel(id: string) {
-  return del<{ success: boolean }>(`/api/v1/im-channels/${id}`);
-}
-
-export function toggleIMChannel(id: string) {
-  return post<{ data: IMChannel }>(`/api/v1/im-channels/${id}/toggle`);
-}
-
 // ===== 推荐问题 =====
 
 // 推荐问题
@@ -384,28 +323,4 @@ export function getSuggestedQuestions(
   if (params?.limit) query.set('limit', String(params.limit));
   const qs = query.toString();
   return get<{ data: { questions: SuggestedQuestion[] } }>(`/api/v1/agents/${agentId}/suggested-questions${qs ? '?' + qs : ''}`);
-}
-// ===== WeChat QR Code Login =====
-
-export interface WeChatQRCodeResult {
-  qrcode_url: string;
-  qrcode: string;
-}
-
-export interface WeChatQRCodeStatus {
-  status: 'wait' | 'scaned' | 'confirmed' | 'expired';
-  credentials?: {
-    bot_token: string;
-    ilink_bot_id: string;
-    ilink_user_id: string;
-  };
-  baseurl?: string;
-}
-
-export function getWeChatQRCode() {
-  return post<{ data: WeChatQRCodeResult }>('/api/v1/wechat/qrcode');
-}
-
-export function pollWeChatQRCodeStatus(qrcode: string) {
-  return post<{ data: WeChatQRCodeStatus }>('/api/v1/wechat/qrcode/status', { qrcode });
 }

@@ -2,9 +2,9 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/Tencent/WeKnora/internal/im"
@@ -14,23 +14,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// validIMPlatforms is the set of supported IM platforms.
+// validIMPlatforms is the set of system-managed platforms. Mattermost and
+// Yunzhijia remain in the adapter tree but are excluded from the new setup.
 var validIMPlatforms = map[string]bool{
 	"wecom": true, "feishu": true, "lark": true, "slack": true, "telegram": true, "dingtalk": true,
-	"mattermost": true, "wechat": true, "qqbot": true, "yunzhijia": true,
+	"wechat": true, "qqbot": true,
 }
 
-// invalidIMPlatformError is the 400 message listing the accepted platforms. It
-// is derived from validIMPlatforms so the two cannot drift apart as platforms
-// are added.
-var invalidIMPlatformError = func() string {
-	names := make([]string, 0, len(validIMPlatforms))
-	for p := range validIMPlatforms {
-		names = append(names, "'"+p+"'")
-	}
-	sort.Strings(names)
-	return "platform must be one of: " + strings.Join(names, ", ")
-}()
+const invalidIMPlatformError = "platform must be one of: 'dingtalk', 'feishu', 'lark', 'qqbot', " +
+	"'slack', 'telegram', 'wechat', 'wecom'"
 
 // IMHandler handles IM platform callback requests and channel CRUD.
 type IMHandler struct {
@@ -44,31 +36,21 @@ func NewIMHandler(imService *im.Service) *IMHandler {
 	}
 }
 
-// ── Channel CRUD handlers ──
-
-// CreateIMChannel creates a new IM channel for an agent.
+// CreateIMChannel creates a system-managed bot installation.
 func (h *IMHandler) CreateIMChannel(c *gin.Context) {
-	agentID := c.Param("id")
-	if agentID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "agent_id is required"})
-		return
-	}
-
-	tenantID, ok := c.Request.Context().Value(types.TenantIDContextKey).(uint64)
+	userID, ok := types.UserIDFromContext(c.Request.Context())
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
 	var req struct {
-		Platform        string     `json:"platform" binding:"required"`
-		Name            string     `json:"name"`
-		Mode            string     `json:"mode"`
-		OutputMode      string     `json:"output_mode"`
-		SessionMode     string     `json:"session_mode"`
-		KnowledgeBaseID string     `json:"knowledge_base_id"`
-		Credentials     types.JSON `json:"credentials"`
-		Enabled         *bool      `json:"enabled"`
+		Platform    string     `json:"platform" binding:"required"`
+		Name        string     `json:"name"`
+		Mode        string     `json:"mode"`
+		OutputMode  string     `json:"output_mode"`
+		Credentials types.JSON `json:"credentials"`
+		Enabled     *bool      `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -81,16 +63,13 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 	}
 
 	channel := &im.IMChannel{
-		TenantID:        tenantID,
-		AgentID:         agentID,
-		Platform:        req.Platform,
-		Name:            req.Name,
-		Mode:            req.Mode,
-		OutputMode:      req.OutputMode,
-		SessionMode:     req.SessionMode,
-		KnowledgeBaseID: req.KnowledgeBaseID,
-		Credentials:     req.Credentials,
-		Enabled:         true,
+		Platform:    req.Platform,
+		Name:        strings.TrimSpace(req.Name),
+		Mode:        req.Mode,
+		OutputMode:  req.OutputMode,
+		Credentials: req.Credentials,
+		CreatedBy:   userID,
+		Enabled:     false,
 	}
 	if req.Enabled != nil {
 		channel.Enabled = *req.Enabled
@@ -99,14 +78,8 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 	if req.Platform == "wechat" {
 		channel.Mode = "longpoll"
 		channel.OutputMode = "full"
-	} else {
-		if channel.Mode == "" {
-			if channel.Platform == "mattermost" || channel.Platform == "yunzhijia" {
-				channel.Mode = "webhook"
-			} else {
-				channel.Mode = "websocket"
-			}
-		}
+	} else if channel.Mode == "" {
+		channel.Mode = "websocket"
 		if channel.OutputMode == "" {
 			channel.OutputMode = "stream"
 		}
@@ -117,6 +90,10 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 
 	if err := h.imService.CreateChannel(channel); err != nil {
 		logger.Errorf(c.Request.Context(), "[IM] Create channel failed: %v", err)
+		if errors.Is(err, im.ErrChannelIdentityMissing) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		if strings.HasPrefix(err.Error(), "duplicate_bot:") {
 			c.JSON(http.StatusConflict, gin.H{"error": strings.TrimPrefix(err.Error(), "duplicate_bot: ")})
 			return
@@ -125,24 +102,12 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": channel})
+	c.JSON(http.StatusOK, gin.H{"data": im.SummarizeIMChannel(*channel)})
 }
 
-// ListIMChannels lists all IM channels for an agent.
+// ListIMChannels lists all system-managed bot installations.
 func (h *IMHandler) ListIMChannels(c *gin.Context) {
-	agentID := c.Param("id")
-	if agentID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "agent_id is required"})
-		return
-	}
-
-	tenantID, ok := c.Request.Context().Value(types.TenantIDContextKey).(uint64)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	channels, err := h.imService.ListChannelsByAgent(agentID, tenantID)
+	channels, err := h.imService.ListChannels()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list channels"})
 		return
@@ -151,35 +116,16 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": im.SummarizeIMChannels(channels)})
 }
 
-// ListAllIMChannels lists every IM channel in the current tenant, across
-// agents, for the cross-agent overview page. Credentials are intentionally
-// NOT included in the response.
-func (h *IMHandler) ListAllIMChannels(c *gin.Context) {
-	tenantID, ok := c.Request.Context().Value(types.TenantIDContextKey).(uint64)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	channels, err := h.imService.ListChannelsByTenant(tenantID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list channels"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": channels})
-}
-
 // UpdateIMChannel updates an IM channel.
 //
 // UpdateIMChannel godoc
 // @Summary      更新 IM 渠道
-// @Description  更新指定 IM 渠道的名称、模式、知识库、凭证或启用状态
+// @Description  更新系统级 IM 机器人的名称、模式、凭证或启用状态
 // @Tags         IM 渠道
 // @Accept       json
 // @Produce      json
 // @Param        id       path      string                  true  "渠道 ID"
-// @Param        request  body      map[string]interface{}  true  "更新字段（name/mode/output_mode/knowledge_base_id/credentials/enabled）"
+// @Param        request  body      map[string]interface{}  true  "更新字段（name/mode/output_mode/credentials/enabled）"
 // @Success      200      {object}  map[string]interface{}  "更新后的渠道"
 // @Failure      400      {object}  map[string]interface{}  "请求参数错误"
 // @Failure      404      {object}  map[string]interface{}  "渠道不存在"
@@ -193,27 +139,18 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 		return
 	}
 
-	tenantID, ok := c.Request.Context().Value(types.TenantIDContextKey).(uint64)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	channel, err := h.imService.GetChannelByIDAndTenant(channelID, tenantID)
+	channel, err := h.imService.GetChannelByID(channelID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
 		return
 	}
 
 	var req struct {
-		Name            *string    `json:"name"`
-		Mode            *string    `json:"mode"`
-		OutputMode      *string    `json:"output_mode"`
-		SessionMode     *string    `json:"session_mode"`
-		KnowledgeBaseID *string    `json:"knowledge_base_id"`
-		Credentials     types.JSON `json:"credentials"`
-		Enabled         *bool      `json:"enabled"`
-		AgentID         *string    `json:"agent_id"`
+		Name        *string    `json:"name"`
+		Mode        *string    `json:"mode"`
+		OutputMode  *string    `json:"output_mode"`
+		Credentials types.JSON `json:"credentials"`
+		Enabled     *bool      `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -221,7 +158,7 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 	}
 
 	if req.Name != nil {
-		channel.Name = *req.Name
+		channel.Name = strings.TrimSpace(*req.Name)
 	}
 	if req.Mode != nil {
 		channel.Mode = *req.Mode
@@ -229,31 +166,28 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 	if req.OutputMode != nil {
 		channel.OutputMode = *req.OutputMode
 	}
-	if req.SessionMode != nil {
-		channel.SessionMode = *req.SessionMode
-	}
-	if req.KnowledgeBaseID != nil {
-		channel.KnowledgeBaseID = *req.KnowledgeBaseID
-	}
 	if req.Credentials != nil {
-		channel.Credentials = req.Credentials
+		mergedCredentials, mergeErr := mergeIMCredentials(channel.Credentials, req.Credentials)
+		if mergeErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "credentials must be a JSON object"})
+			return
+		}
+		channel.Credentials = mergedCredentials
 	}
 	if req.Enabled != nil {
 		channel.Enabled = *req.Enabled
 	}
-	if req.AgentID != nil {
-		newAgentID := strings.TrimSpace(*req.AgentID)
-		if newAgentID != "" && newAgentID != channel.AgentID {
-			if err := h.imService.SetChannelAgentID(c.Request.Context(), channel, newAgentID); err != nil {
-				logger.Errorf(c.Request.Context(), "[IM] Update channel agent failed: %v", err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "agent not found"})
-				return
-			}
-		}
+	if channel.Platform == string(im.PlatformWeChat) {
+		channel.Mode = "longpoll"
+		channel.OutputMode = "full"
 	}
 
 	if err := h.imService.UpdateChannel(channel); err != nil {
 		logger.Errorf(c.Request.Context(), "[IM] Update channel failed: %v", err)
+		if errors.Is(err, im.ErrChannelIdentityMissing) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		if strings.HasPrefix(err.Error(), "duplicate_bot:") {
 			c.JSON(http.StatusConflict, gin.H{"error": strings.TrimPrefix(err.Error(), "duplicate_bot: ")})
 			return
@@ -262,7 +196,29 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": channel})
+	c.JSON(http.StatusOK, gin.H{"data": im.SummarizeIMChannel(*channel)})
+}
+
+func mergeIMCredentials(current, update types.JSON) (types.JSON, error) {
+	currentValues := make(map[string]any)
+	if len(current) > 0 {
+		if err := json.Unmarshal(current, &currentValues); err != nil {
+			return nil, err
+		}
+	}
+	if currentValues == nil {
+		currentValues = make(map[string]any)
+	}
+
+	updateValues := make(map[string]any)
+	if err := json.Unmarshal(update, &updateValues); err != nil {
+		return nil, err
+	}
+	for key, value := range updateValues {
+		currentValues[key] = value
+	}
+
+	return json.Marshal(currentValues)
 }
 
 // DeleteIMChannel deletes an IM channel.
@@ -286,13 +242,7 @@ func (h *IMHandler) DeleteIMChannel(c *gin.Context) {
 		return
 	}
 
-	tenantID, ok := c.Request.Context().Value(types.TenantIDContextKey).(uint64)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	if err := h.imService.DeleteChannel(channelID, tenantID); err != nil {
+	if err := h.imService.DeleteChannel(channelID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete channel"})
 		return
 	}
@@ -321,19 +271,117 @@ func (h *IMHandler) ToggleIMChannel(c *gin.Context) {
 		return
 	}
 
-	tenantID, ok := c.Request.Context().Value(types.TenantIDContextKey).(uint64)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	channel, err := h.imService.ToggleChannel(channelID, tenantID)
+	channel, err := h.imService.ToggleChannel(channelID)
 	if err != nil {
+		if errors.Is(err, im.ErrChannelIdentityMissing) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to toggle channel"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": channel})
+	c.JSON(http.StatusOK, gin.H{"data": im.SummarizeIMChannel(*channel)})
+}
+
+// ListBindableIMChannels lists the credential-free bot directory available to
+// the current signed-in user.
+func (h *IMHandler) ListBindableIMChannels(c *gin.Context) {
+	channels, err := h.imService.ListBindableChannels()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list bindable channels"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": channels})
+}
+
+// CreateIMBindingRequest starts the web-to-IM one-time-code flow.
+func (h *IMHandler) CreateIMBindingRequest(c *gin.Context) {
+	userID, ok := types.UserIDFromContext(c.Request.Context())
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var req struct {
+		IMChannelID string `json:"im_channel_id" binding:"required"`
+		TenantID    uint64 `json:"tenant_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.imService.CreateBindingRequest(
+		c.Request.Context(), userID, strings.TrimSpace(req.IMChannelID), req.TenantID,
+	)
+	if err != nil {
+		writeIMBindingError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+// GetIMBindingRequest returns the current user's binding request status.
+func (h *IMHandler) GetIMBindingRequest(c *gin.Context) {
+	userID, ok := types.UserIDFromContext(c.Request.Context())
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	result, err := h.imService.GetBindingRequest(userID, c.Param("id"))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "binding request not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get binding request"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
+}
+
+// ListIMBindings lists the current user's active IM bindings.
+func (h *IMHandler) ListIMBindings(c *gin.Context) {
+	userID, ok := types.UserIDFromContext(c.Request.Context())
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	bindings, err := h.imService.ListUserBindings(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list bindings"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": bindings})
+}
+
+// DeleteIMBinding revokes one active IM binding owned by the current user.
+func (h *IMHandler) DeleteIMBinding(c *gin.Context) {
+	userID, ok := types.UserIDFromContext(c.Request.Context())
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if err := h.imService.RevokeUserBinding(userID, c.Param("id")); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "binding not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revoke binding"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func writeIMBindingError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, im.ErrBindingUnavailable):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel is unavailable for personal binding"})
+	case errors.Is(err, im.ErrBindingMembershipInvalid):
+		c.JSON(http.StatusForbidden, gin.H{"error": "workspace membership is unavailable"})
+	default:
+		logger.Errorf(c.Request.Context(), "[IM] Binding request failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create binding request"})
+	}
 }
 
 func writeIMCallbackACK(c *gin.Context, platform string) {

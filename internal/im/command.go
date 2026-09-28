@@ -1,10 +1,6 @@
 package im
 
-import (
-	"context"
-
-	"github.com/Tencent/WeKnora/internal/types"
-)
+import "context"
 
 // CommandAction represents a service-level side effect that a command requests.
 // Using an enum keeps commands free of service/DB dependencies—they declare intent,
@@ -36,14 +32,15 @@ type CommandContext struct {
 	Incoming *IncomingMessage
 	// Session is the IM channel session for this user×chat combination.
 	Session *ChannelSession
-	// TenantID is the tenant that owns this bot deployment.
+	// TenantID is the workspace selected by the current binding.
 	TenantID uint64
-	// AgentName is the display name of the bound agent (empty if none).
-	AgentName string
-	// CustomAgent is the bound agent configuration. Commands that need to
-	// inspect agent-level settings (e.g. /search reading KBSelectionMode)
-	// can access it directly. May be nil when no agent is bound.
-	CustomAgent *types.CustomAgent
+	// TenantName is the selected workspace's display name.
+	TenantName string
+	// KnowledgeBaseIDs is the exact personal workspace scope used by both
+	// commands and the QA pipeline.
+	KnowledgeBaseIDs []string
+	// BindingID identifies the current user binding for clear/stop actions.
+	BindingID string
 	// ChannelOutputMode is the channel-level output mode configured by the admin
 	// ("stream" or "full").
 	ChannelOutputMode string

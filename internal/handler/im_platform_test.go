@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// The channel-creation endpoint rejects any platform without a registered
-// adapter factory, so this set must track the factories wired in the container.
+// The system channel endpoint intentionally omits platforms that are not part
+// of the per-user IM architecture.
 func TestValidIMPlatforms_CoversLark(t *testing.T) {
 	want := []string{
 		"wecom", "feishu", "lark", "slack", "telegram",
-		"dingtalk", "mattermost", "wechat", "qqbot",
+		"dingtalk", "wechat", "qqbot",
 	}
 	for _, platform := range want {
 		if !validIMPlatforms[platform] {
@@ -19,6 +19,9 @@ func TestValidIMPlatforms_CoversLark(t *testing.T) {
 	}
 	if validIMPlatforms["nonsense"] {
 		t.Error("unknown platform is accepted")
+	}
+	if validIMPlatforms["mattermost"] || validIMPlatforms["yunzhijia"] {
+		t.Error("excluded platform is accepted")
 	}
 }
 

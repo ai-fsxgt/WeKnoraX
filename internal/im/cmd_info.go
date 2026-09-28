@@ -9,8 +9,8 @@ import (
 )
 
 // InfoCommand implements /info.
-// It shows the bound agent's profile and capabilities so IM users can
-// understand what the bot can do without leaving the chat.
+// It shows the workspace and knowledge-base scope selected by the current
+// user's binding.
 type InfoCommand struct {
 	kbService interfaces.KnowledgeBaseService
 }
@@ -19,8 +19,13 @@ func newInfoCommand(kbService interfaces.KnowledgeBaseService) *InfoCommand {
 	return &InfoCommand{kbService: kbService}
 }
 
-func (c *InfoCommand) Name() string        { return "info" }
-func (c *InfoCommand) Description() string { return "查看当前智能体的信息与能力" }
+// Name returns the command token.
+func (c *InfoCommand) Name() string { return "info" }
+
+// Description returns the help text shown for /info.
+func (c *InfoCommand) Description() string {
+	return "查看当前绑定的工作空间与知识库范围"
+}
 
 func (c *InfoCommand) Execute(ctx context.Context, cmdCtx *CommandContext, _ []string) (*CommandResult, error) {
 	var sb strings.Builder
@@ -30,53 +35,23 @@ func (c *InfoCommand) Execute(ctx context.Context, cmdCtx *CommandContext, _ []s
 	// raw asterisks. Always keep bold text self-contained on its own line.
 
 	// ── Header ──
-	name := cmdCtx.AgentName
+	name := cmdCtx.TenantName
 	if name == "" {
-		name = "未命名智能体"
+		name = "当前工作空间"
 	}
-	sb.WriteString(fmt.Sprintf("🤖 **%s**\n", name))
-	if cmdCtx.CustomAgent != nil && cmdCtx.CustomAgent.Description != "" {
-		sb.WriteString(fmt.Sprintf("> %s\n", cmdCtx.CustomAgent.Description))
-	}
-
-	if cmdCtx.CustomAgent == nil {
-		sb.WriteString("\n未绑定智能体，发送 `/help` 查看可用指令。")
-		return &CommandResult{Content: sb.String()}, nil
-	}
-
-	cfg := cmdCtx.CustomAgent.Config
-
-	// ── Mode ──
-	if cmdCtx.CustomAgent.IsAgentMode() {
-		sb.WriteString("\n🧠 **Agent模式**\n")
-		sb.WriteString("支持多步思考、工具调用（ReAct）\n")
-	} else {
-		sb.WriteString("\n🧠 **Agent模式**\n")
-		sb.WriteString("基于知识库检索直接回答（RAG）\n")
-	}
+	fmt.Fprintf(&sb, "💼 **%s**\n", name)
+	sb.WriteString("当前使用该工作空间自有知识库进行快速问答。\n")
 
 	// ── Knowledge bases ──
-	// KBSelectionMode: "all" uses every KB under the tenant (IDs list is empty),
-	// "selected" uses the explicit KnowledgeBases list, "none"/empty means disabled.
 	sb.WriteString("\n📚 **知识库**\n")
-	if cfg.KBSelectionMode == "all" {
-		kbs, err := c.kbService.ListKnowledgeBasesByTenantID(ctx, cmdCtx.TenantID)
-		if err == nil && len(kbs) > 0 {
-			for _, kb := range kbs {
-				sb.WriteString(fmt.Sprintf("  · %s\n", kb.Name))
-			}
-			sb.WriteString(fmt.Sprintf("  共 %d 个（全部启用）\n", len(kbs)))
-		} else {
-			sb.WriteString("  全部启用\n")
-		}
-	} else if len(cfg.KnowledgeBases) > 0 {
+	if len(cmdCtx.KnowledgeBaseIDs) > 0 {
 		kbs, err := c.kbService.ListKnowledgeBasesByTenantID(ctx, cmdCtx.TenantID)
 		if err == nil {
 			nameMap := make(map[string]string, len(kbs))
 			for _, kb := range kbs {
 				nameMap[kb.ID] = kb.Name
 			}
-			for _, id := range cfg.KnowledgeBases {
+			for _, id := range cmdCtx.KnowledgeBaseIDs {
 				label := id
 				if n, ok := nameMap[id]; ok {
 					label = n
@@ -84,40 +59,10 @@ func (c *InfoCommand) Execute(ctx context.Context, cmdCtx *CommandContext, _ []s
 				sb.WriteString(fmt.Sprintf("  · %s\n", label))
 			}
 		} else {
-			sb.WriteString(fmt.Sprintf("  已选择 %d 个\n", len(cfg.KnowledgeBases)))
+			fmt.Fprintf(&sb, "  共 %d 个\n", len(cmdCtx.KnowledgeBaseIDs))
 		}
 	} else {
-		sb.WriteString("  未配置\n")
-	}
-
-	// ── Skills ──
-	sb.WriteString("\n⚡ **Skills**\n")
-	if cfg.SkillsSelectionMode == "all" {
-		sb.WriteString("  全部启用\n")
-	} else if cfg.SkillsSelectionMode == "selected" && len(cfg.SelectedSkills) > 0 {
-		for _, s := range cfg.SelectedSkills {
-			sb.WriteString(fmt.Sprintf("  · %s\n", s))
-		}
-	} else {
-		sb.WriteString("  未配置\n")
-	}
-
-	// ── MCP ──
-	sb.WriteString("\n🔌 **MCP 服务**\n")
-	if cfg.MCPSelectionMode == "all" {
-		sb.WriteString("  全部接入\n")
-	} else if cfg.MCPSelectionMode == "selected" && len(cfg.MCPServices) > 0 {
-		sb.WriteString(fmt.Sprintf("  已接入 %d 个服务\n", len(cfg.MCPServices)))
-	} else {
-		sb.WriteString("  未配置\n")
-	}
-
-	// ── Web search ──
-	sb.WriteString("\n🌐 **网络搜索**\n")
-	if cfg.WebSearchEnabled {
-		sb.WriteString("  已启用\n")
-	} else {
-		sb.WriteString("  未启用\n")
+		sb.WriteString("  当前工作空间没有可用知识库\n")
 	}
 
 	// ── Footer ──

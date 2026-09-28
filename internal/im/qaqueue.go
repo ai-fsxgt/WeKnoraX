@@ -42,11 +42,13 @@ type qaRequest struct {
 	adapter   Adapter
 	channel   *IMChannel
 	channelID string
+	bindingID string
+	kbIDs     []string
 
 	// tenant is used to resolve provider:// URLs in outbound replies (scheme-aware).
 	tenant *types.Tenant
 
-	// userKey is "channelID:userID:chatID", used for per-user limits and /stop.
+	// userKey is the binding ID, used for per-user limits and /stop.
 	userKey    string
 	enqueuedAt time.Time
 }

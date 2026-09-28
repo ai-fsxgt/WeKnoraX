@@ -186,7 +186,7 @@ func TestPrepareIMAttachmentsDetectsImageMIMEFromContent(t *testing.T) {
 		fileName:             "platform-image.png",
 	}
 
-	attachments, imageURLs, _, err := (&Service{}).prepareIMAttachments(context.Background(), &IncomingMessage{
+	attachments, imageURLs, err := (&Service{}).prepareIMAttachments(context.Background(), &IncomingMessage{
 		MessageType: MessageTypeImage,
 		FileName:    "platform-image.png",
 	}, adapter)
