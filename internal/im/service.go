@@ -263,10 +263,12 @@ type Service struct {
 	tenantService    interfaces.TenantService
 	userService      interfaces.UserService
 	memberService    interfaces.TenantMemberService
+	organizationSvc  interfaces.OrganizationService
 	systemSettingSvc interfaces.SystemSettingService
 
-	// kbService resolves the selected workspace's own knowledge bases.
-	kbService interfaces.KnowledgeBaseService
+	// Knowledge services resolve the selected workspace's own and shared knowledge bases.
+	kbService      interfaces.KnowledgeBaseService
+	kbShareService interfaces.KBShareService
 
 	// oauthManager builds MCP OAuth authorization URLs so IM users can authorize
 	// OAuth-enabled MCP services out-of-band (IM cannot resolve the in-conversation
@@ -792,8 +794,10 @@ func NewService(
 	tenantService interfaces.TenantService,
 	userService interfaces.UserService,
 	memberService interfaces.TenantMemberService,
+	organizationService interfaces.OrganizationService,
 	systemSetting interfaces.SystemSettingService,
 	kbService interfaces.KnowledgeBaseService,
+	kbShareService interfaces.KBShareService,
 	streamManager interfaces.StreamManager,
 	defaultFileSvc interfaces.FileService,
 	documentReader interfaces.DocumentReader,
@@ -821,8 +825,10 @@ func NewService(
 		tenantService:    tenantService,
 		userService:      userService,
 		memberService:    memberService,
+		organizationSvc:  organizationService,
 		systemSettingSvc: systemSetting,
 		kbService:        kbService,
+		kbShareService:   kbShareService,
 		streamManager:    streamManager,
 		defaultFileSvc:   defaultFileSvc,
 		documentReader:   documentReader,
@@ -1939,10 +1945,54 @@ func (s *Service) resolveBindingKnowledgeBaseIDs(ctx context.Context, tenantID u
 		Find(&kbs).Error; err != nil {
 		return nil, err
 	}
+
+	organizations, err := s.organizationSvc.ListTenantOrganizations(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	organizationIDs := make([]string, 0, len(organizations))
+	for _, organization := range organizations {
+		if organization != nil {
+			organizationIDs = append(organizationIDs, organization.ID)
+		}
+	}
+	if len(organizationIDs) > 0 {
+		sharedIDsByOrganization, err := s.kbShareService.ListSharedKnowledgeBaseIDsByOrganizations(
+			ctx,
+			organizationIDs,
+			tenantID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		sharedIDSet := make(map[string]struct{})
+		sharedIDs := make([]string, 0)
+		for _, organizationID := range organizationIDs {
+			for _, kbID := range sharedIDsByOrganization[organizationID] {
+				if _, exists := sharedIDSet[kbID]; exists {
+					continue
+				}
+				sharedIDSet[kbID] = struct{}{}
+				sharedIDs = append(sharedIDs, kbID)
+			}
+		}
+		if len(sharedIDs) > 0 {
+			sharedKBs, err := s.kbService.GetKnowledgeBasesByIDsOnly(ctx, sharedIDs)
+			if err != nil {
+				return nil, err
+			}
+			kbs = append(kbs, sharedKBs...)
+		}
+	}
+
 	filter := agenttools.DeriveKBFilterForAgent(types.AgentModeQuickAnswer, nil)
 	ids := make([]string, 0, len(kbs))
+	seen := make(map[string]struct{}, len(kbs))
 	for _, kb := range kbs {
-		if kb == nil {
+		if kb == nil || kb.IsTemporary {
+			continue
+		}
+		if _, exists := seen[kb.ID]; exists {
 			continue
 		}
 		kb.EnsureDefaults()
@@ -1950,6 +2000,7 @@ func (s *Service) resolveBindingKnowledgeBaseIDs(ctx context.Context, tenantID u
 			!agenttools.KBSatisfiesAgentRequirements(kb.Capabilities(), types.AgentModeQuickAnswer, nil) {
 			continue
 		}
+		seen[kb.ID] = struct{}{}
 		ids = append(ids, kb.ID)
 	}
 	return ids, nil
