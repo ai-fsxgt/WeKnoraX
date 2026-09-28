@@ -2624,17 +2624,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/im-channels/{id}": {
+        "/system/admin/im-channels/{id}": {
             "put": {
                 "security": [
                     {
                         "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
                     }
                 ],
-                "description": "更新指定 IM 渠道的名称、模式、知识库、凭证或启用状态",
+                "description": "更新系统级 IM 机器人的名称、模式、凭证或启用状态",
                 "consumes": [
                     "application/json"
                 ],
@@ -2654,7 +2651,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "更新字段（name/mode/output_mode/knowledge_base_id/credentials/enabled）",
+                        "description": "更新字段（name/mode/output_mode/credentials/enabled）",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -2692,9 +2689,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
                     }
                 ],
                 "description": "删除指定 IM 渠道",
@@ -2739,14 +2733,11 @@ const docTemplate = `{
                 }
             }
         },
-        "/im-channels/{id}/toggle": {
+        "/system/admin/im-channels/{id}/toggle": {
             "post": {
                 "security": [
                     {
                         "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
                     }
                 ],
                 "description": "切换指定 IM 渠道的启用状态",
@@ -15686,14 +15677,11 @@ const docTemplate = `{
                 }
             }
         },
-        "/wechat/qrcode": {
+        "/system/admin/im-channels/wechat/qrcode": {
             "post": {
                 "security": [
                     {
                         "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
                     }
                 ],
                 "description": "申请一个用于扫码登录绑定的微信二维码（无请求体）",
@@ -15722,14 +15710,11 @@ const docTemplate = `{
                 }
             }
         },
-        "/wechat/qrcode/status": {
+        "/system/admin/im-channels/wechat/qrcode/status": {
             "post": {
                 "security": [
                     {
                         "Bearer": []
-                    },
-                    {
-                        "ApiKeyAuth": []
                     }
                 ],
                 "description": "查询指定二维码是否已被扫描/确认/过期；confirmed 时返回凭证",

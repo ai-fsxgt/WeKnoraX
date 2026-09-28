@@ -549,5 +549,5 @@ curl --location 'http://localhost:8080/api/v1/agent-chat/session-123' \
 ## 相关文档
 
 - 智能体的组织共享、跨空间分发与禁用（`/agents/:id/shares`、`/shared-agents` 等）：见 [组织管理 API](./organization.md)
-- 智能体绑定 IM 渠道（`/agents/:id/im-channels`）：见组织/IM 渠道相关文档
+- 系统 IM 机器人与个人工作空间绑定：见 [IM 集成开发文档](../IM集成开发文档.md)
 - 网络搜索提供者配置（被 `web_search_provider_id` 引用）：见 [Web Search API](./web-search.md)
