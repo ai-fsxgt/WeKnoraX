@@ -226,18 +226,11 @@ func (r *sessionRepository) QueryPaged(
 			return db.Where("imc.platform = ?", lower)
 		}
 	}
-	applyAgent := func(db *gorm.DB) *gorm.DB {
-		if q.AgentID != "" {
-			return db.Where("1 = 0")
-		}
-		return db
-	}
-
 	// Count distinct sessions to guard against fan-out from the join.
 	var total int64
-	countQ := applyAgent(applySource(applyBase(
+	countQ := applySource(applyBase(
 		r.db.WithContext(ctx).Table("sessions AS s").Joins(joinClause),
-	)))
+	))
 	if err := countQ.Distinct("s.id").Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
@@ -252,9 +245,9 @@ func (r *sessionRepository) QueryPaged(
 	}
 
 	items := make([]*types.SessionListItem, 0)
-	rowsQ := applyAgent(applySource(applyBase(
+	rowsQ := applySource(applyBase(
 		r.db.WithContext(ctx).Table("sessions AS s").Joins(joinClause),
-	))).
+	)).
 		Select(`s.*,
 			imc.platform         AS im_platform,
 			''                   AS im_chat_id,

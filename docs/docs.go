@@ -11170,12 +11170,6 @@ const docTemplate = `{
                         "description": "来源过滤：web / embed / api / feishu / wechat / slack / ...（api、embed、IM 渠道需 Admin+）",
                         "name": "source",
                         "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "按 Agent 过滤（仅对 IM 会话生效）",
-                        "name": "agent_id",
-                        "in": "query"
                     }
                 ],
                 "responses": {

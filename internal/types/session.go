@@ -184,13 +184,11 @@ func SessionRequiresAdminConsoleRead(s *Session, imPlatform string) bool {
 // Source values: "web" (user chats, no IM/embed), "embed" / "embed:{channelID}",
 // "api" (all API-key sessions, Admin+ only), or an IM platform name
 // (e.g. "feishu", "wechat"). IM and embed sources are also Admin+ only.
-// AgentID currently only filters sessions that have an IM channel mapping.
 type SessionListQuery struct {
 	TenantID uint64
 	UserID   string
 	Keyword  string
 	Source   string
-	AgentID  string
 	Page     int
 	PageSize int
 }

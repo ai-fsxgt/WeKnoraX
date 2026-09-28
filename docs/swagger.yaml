@@ -13338,10 +13338,6 @@ paths:
         in: query
         name: source
         type: string
-      - description: 按 Agent 过滤（仅对 IM 会话生效）
-        in: query
-        name: agent_id
-        type: string
       produces:
       - application/json
       responses:
