@@ -152,6 +152,12 @@ type StreamSender interface {
 	EndStream(ctx context.Context, incoming *IncomingMessage, streamID string) error
 }
 
+// StreamAborter is an optional interface for discarding stream state without
+// delivering any additional content to the IM user.
+type StreamAborter interface {
+	AbortStream(ctx context.Context, incoming *IncomingMessage, streamID string) error
+}
+
 // FileDownloader is an optional interface that adapters can implement to support
 // downloading file attachments from the IM platform. It allows file/image
 // messages to be supplied to QA as per-question context.

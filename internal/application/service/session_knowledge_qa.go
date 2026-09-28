@@ -288,24 +288,30 @@ func (s *sessionService) selectChatModelID(
 			}
 		}
 
-		// If no Remote model found, use first knowledge base's model
+		// If no Remote model found, use the first knowledge base's model when
+		// it is available to the current tenant. A shared knowledge base may
+		// reference a private model owned by its source tenant.
 		kb, err := s.knowledgeBaseService.GetKnowledgeBaseByID(ctx, knowledgeBaseIDs[0])
 		if err != nil {
 			logger.Errorf(ctx, "Failed to get knowledge base for model ID: %v", err)
 			return "", fmt.Errorf("failed to get knowledge base %s: %w", knowledgeBaseIDs[0], err)
 		}
 		if kb != nil && kb.SummaryModelID != "" {
-			logger.Infof(
-				ctx,
-				"Using summary model from first knowledge base %s: %s",
-				knowledgeBaseIDs[0],
-				kb.SummaryModelID,
-			)
-			return kb.SummaryModelID, nil
+			model, modelErr := s.modelService.GetModelByID(ctx, kb.SummaryModelID)
+			if modelErr == nil && model != nil && model.Type == types.ModelTypeKnowledgeQA {
+				logger.Infof(
+					ctx,
+					"Using summary model from first knowledge base %s: %s",
+					knowledgeBaseIDs[0],
+					kb.SummaryModelID,
+				)
+				return kb.SummaryModelID, nil
+			}
+			logger.Infof(ctx, "Knowledge base summary model %s is unavailable to the current tenant", kb.SummaryModelID)
 		}
 	}
 
-	// No knowledge bases - try to find any available chat model
+	// No usable knowledge-base model - try to find any available chat model.
 	models, err := s.modelService.ListModels(ctx)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to list models: %v", err)
@@ -319,7 +325,7 @@ func (s *sessionService) selectChatModelID(
 	}
 
 	logger.Error(ctx, "No chat model ID available")
-	return "", fmt.Errorf("no chat model ID available: no knowledge bases configured and no available models")
+	return "", fmt.Errorf("no chat model ID available")
 }
 
 // resolveKnowledgeBasesFromAgent resolves knowledge base IDs based on agent's KBSelectionMode.

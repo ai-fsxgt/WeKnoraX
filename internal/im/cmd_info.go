@@ -40,26 +40,25 @@ func (c *InfoCommand) Execute(ctx context.Context, cmdCtx *CommandContext, _ []s
 		name = "当前工作空间"
 	}
 	fmt.Fprintf(&sb, "💼 **%s**\n", name)
-	sb.WriteString("当前使用该工作空间自有知识库进行快速问答。\n")
+	sb.WriteString("当前使用该工作空间可访问的自有及组织共享知识库进行快速问答。\n")
 
 	// ── Knowledge bases ──
 	sb.WriteString("\n📚 **知识库**\n")
 	if len(cmdCtx.KnowledgeBaseIDs) > 0 {
-		kbs, err := c.kbService.ListKnowledgeBasesByTenantID(ctx, cmdCtx.TenantID)
-		if err == nil {
-			nameMap := make(map[string]string, len(kbs))
-			for _, kb := range kbs {
+		kbs, err := c.kbService.GetKnowledgeBasesByIDsOnly(ctx, cmdCtx.KnowledgeBaseIDs)
+		if err != nil {
+			return nil, fmt.Errorf("获取知识库范围: %w", err)
+		}
+		nameMap := make(map[string]string, len(kbs))
+		for _, kb := range kbs {
+			if kb != nil {
 				nameMap[kb.ID] = kb.Name
 			}
-			for _, id := range cmdCtx.KnowledgeBaseIDs {
-				label := id
-				if n, ok := nameMap[id]; ok {
-					label = n
-				}
-				sb.WriteString(fmt.Sprintf("  · %s\n", label))
+		}
+		for _, id := range cmdCtx.KnowledgeBaseIDs {
+			if name, ok := nameMap[id]; ok {
+				fmt.Fprintf(&sb, "  · %s\n", name)
 			}
-		} else {
-			fmt.Fprintf(&sb, "  共 %d 个\n", len(cmdCtx.KnowledgeBaseIDs))
 		}
 	} else {
 		sb.WriteString("  当前工作空间没有可用知识库\n")

@@ -935,6 +935,19 @@ func (a *Adapter) SendStreamChunk(ctx context.Context, incoming *im.IncomingMess
 	return a.UpdateStreamContent(ctx, incoming, streamID, content)
 }
 
+// AbortStream discards local stream state without delivering additional content.
+func (a *Adapter) AbortStream(ctx context.Context, _ *im.IncomingMessage, streamID string) error {
+	streamsMu.Lock()
+	_, ok := dStreams[streamID]
+	delete(dStreams, streamID)
+	streamsMu.Unlock()
+
+	if ok {
+		logger.Infof(ctx, "[DingTalk] Streaming aborted without delivery: stream_id=%s", streamID)
+	}
+	return nil
+}
+
 func (a *Adapter) EndStream(ctx context.Context, incoming *im.IncomingMessage, streamID string) error {
 	streamsMu.Lock()
 	state, ok := dStreams[streamID]
@@ -954,14 +967,21 @@ func (a *Adapter) EndStream(ctx context.Context, incoming *im.IncomingMessage, s
 	if outTrackID != "" {
 		if err := a.streamingUpdateCard(ctx, outTrackID, fullContent, true); err != nil {
 			logger.Warnf(ctx, "[DingTalk] Failed to finalize card stream: %v", err)
+			if sessionWebhook != "" {
+				if fallbackErr := a.replyViaSessionWebhook(ctx, sessionWebhook, fullContent); fallbackErr != nil {
+					return fmt.Errorf("finalize card stream: %v; send sessionWebhook fallback: %w", err, fallbackErr)
+				}
+			} else if fallbackErr := a.replyViaOpenAPI(ctx, incoming, fullContent); fallbackErr != nil {
+				return fmt.Errorf("finalize card stream: %v; send OpenAPI fallback: %w", err, fallbackErr)
+			}
 		}
 	} else if sessionWebhook != "" {
 		if err := a.replyViaSessionWebhook(ctx, sessionWebhook, fullContent); err != nil {
-			logger.Warnf(ctx, "[DingTalk] Failed to end stream: %v", err)
+			return fmt.Errorf("end stream via sessionWebhook: %w", err)
 		}
 	} else {
 		if err := a.replyViaOpenAPI(ctx, incoming, fullContent); err != nil {
-			logger.Warnf(ctx, "[DingTalk] Failed to end stream via OpenAPI: %v", err)
+			return fmt.Errorf("end stream via OpenAPI: %w", err)
 		}
 	}
 
