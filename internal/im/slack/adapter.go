@@ -169,9 +169,11 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 			if threadTs == "" {
 				threadTs = ev.TimeStamp
 			}
-			return parseIncomingMessage(
+			incoming := parseIncomingMessage(
 				ev.User, ev.Channel, ev.Text, ev.TimeStamp, threadTs, chatType, files,
-			), nil
+			)
+			incoming.RequireExistingContext = chatType == im.ChatTypeGroup
+			return incoming, nil
 		}
 	}
 

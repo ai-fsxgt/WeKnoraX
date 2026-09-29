@@ -1700,6 +1700,35 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		}
 	}
 
+	var (
+		chatType     ChatType
+		externalID   string
+		externalName string
+		binding      *UserBinding
+		member       *types.TenantMember
+		err          error
+	)
+	if msg.RequireExistingContext {
+		chatType, externalID, externalName, err = bindingIdentity(msg)
+		if err != nil {
+			return err
+		}
+		binding, member, err = s.ResolveActiveBinding(ctx, channelID, chatType, externalID)
+		if err != nil {
+			if isInactiveBindingError(err) {
+				return nil
+			}
+			return fmt.Errorf("resolve existing binding context: %w", err)
+		}
+		known, err := s.hasBindingContext(binding.ID, msg)
+		if err != nil {
+			return fmt.Errorf("check existing binding context: %w", err)
+		}
+		if !known {
+			return nil
+		}
+	}
+
 	if msg.MessageID != "" {
 		dedupKey := fmt.Sprintf("%s:%s:%s:%s:%s", channelID, msg.Platform, msg.UserID, msg.ChatID, msg.MessageID)
 		if s.isDuplicate(ctx, dedupKey) {
@@ -1735,16 +1764,20 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		})
 		return nil
 	}
-	chatType, externalID, externalName, err := bindingIdentity(msg)
-	if err != nil {
-		return err
+	if !msg.RequireExistingContext {
+		chatType, externalID, externalName, err = bindingIdentity(msg)
+		if err != nil {
+			return err
+		}
 	}
 
 	if bindingCode, ok := messageBindingCode(msg.Content, chatType); ok {
 		return s.handleBindingCode(ctx, adapter, channelID, chatType, externalID, externalName, bindingCode, msg)
 	}
 
-	binding, member, err := s.ResolveActiveBinding(ctx, channelID, chatType, externalID)
+	if binding == nil {
+		binding, member, err = s.ResolveActiveBinding(ctx, channelID, chatType, externalID)
+	}
 	if err != nil {
 		systemName := s.systemName(ctx)
 		content := fmt.Sprintf("尚未绑定「%s」账号。请先登录「%s」，在 IM 绑定页面选择工作空间，再将生成的绑定码发送给我。",
@@ -2411,6 +2444,18 @@ func bindingSessionContextKey(msg *IncomingMessage) string {
 		return userID + ":" + threadID
 	}
 	return userID
+}
+
+func (s *Service) hasBindingContext(bindingID string, msg *IncomingMessage) (bool, error) {
+	contextKey := bindingSessionContextKey(msg)
+	if contextKey == "" {
+		return false, nil
+	}
+	var count int64
+	err := s.db.Unscoped().Model(&ChannelSession{}).
+		Where("binding_id = ? AND context_key = ?", bindingID, contextKey).
+		Count(&count).Error
+	return count > 0, err
 }
 
 func bindingRequestKeyForContext(bindingID, contextKey string) string {
