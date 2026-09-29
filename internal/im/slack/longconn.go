@@ -110,7 +110,9 @@ func (c *LongConnClient) handleEvent(ctx context.Context, eventsAPIEvent slackev
 			if threadTs == "" {
 				threadTs = ev.TimeStamp
 			}
-			c.processMessage(ctx, ev.User, ev.Channel, ev.Text, threadTs, im.ChatTypeGroup, files)
+			c.processMessage(
+				ctx, ev.User, ev.Channel, ev.Text, ev.TimeStamp, threadTs, im.ChatTypeGroup, files,
+			)
 		case *slackevents.MessageEvent:
 			logger.Infof(ctx, "[Slack] MessageEvent: user=%s channel=%s subtype=%s bot_id=%s",
 				ev.User, ev.Channel, ev.SubType, ev.BotID)
@@ -128,7 +130,7 @@ func (c *LongConnClient) handleEvent(ctx context.Context, eventsAPIEvent slackev
 				threadTs = ev.TimeStamp
 			}
 
-			c.processMessage(ctx, ev.User, ev.Channel, ev.Text, threadTs, chatType, files)
+			c.processMessage(ctx, ev.User, ev.Channel, ev.Text, ev.TimeStamp, threadTs, chatType, files)
 		default:
 			logger.Warnf(ctx, "[Slack] Unhandled inner event type: %T", innerEvent.Data)
 		}
@@ -137,8 +139,13 @@ func (c *LongConnClient) handleEvent(ctx context.Context, eventsAPIEvent slackev
 	}
 }
 
-func (c *LongConnClient) processMessage(ctx context.Context, user, channel, text, ts string, chatType im.ChatType, files []slack.File) {
-	incoming := parseIncomingMessage(user, channel, text, ts, chatType, files)
+func (c *LongConnClient) processMessage(
+	ctx context.Context,
+	user, channel, text, messageTS, threadTS string,
+	chatType im.ChatType,
+	files []slack.File,
+) {
+	incoming := parseIncomingMessage(user, channel, text, messageTS, threadTS, chatType, files)
 
 	if err := c.handler(ctx, incoming); err != nil {
 		logger.Errorf(ctx, "[Slack] Handle message error: %v", err)

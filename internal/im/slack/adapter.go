@@ -49,7 +49,11 @@ func NewWebhookAdapter(api *slack.Client, signingSecret string) *Adapter {
 	}
 }
 
-func parseIncomingMessage(user, channel, text, ts string, chatType im.ChatType, files []slack.File) *im.IncomingMessage {
+func parseIncomingMessage(
+	user, channel, text, messageTS, threadTS string,
+	chatType im.ChatType,
+	files []slack.File,
+) *im.IncomingMessage {
 	content := text
 	if chatType == im.ChatTypeGroup {
 		// Slack mentions are in the format <@U12345678>
@@ -69,8 +73,8 @@ func parseIncomingMessage(user, channel, text, ts string, chatType im.ChatType, 
 		ChatID:    channel,
 		ChatType:  chatType,
 		Content:   strings.TrimSpace(content),
-		MessageID: ts,
-		ThreadID:  ts,
+		MessageID: messageTS,
+		ThreadID:  threadTS,
 	}
 
 	if len(files) > 0 {
@@ -150,7 +154,9 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 			if threadTs == "" {
 				threadTs = ev.TimeStamp
 			}
-			return parseIncomingMessage(ev.User, ev.Channel, ev.Text, threadTs, im.ChatTypeGroup, files), nil
+			return parseIncomingMessage(
+				ev.User, ev.Channel, ev.Text, ev.TimeStamp, threadTs, im.ChatTypeGroup, files,
+			), nil
 		case *slackevents.MessageEvent:
 			if ev.BotID != "" || (ev.SubType != "" && ev.SubType != "file_share") {
 				return nil, nil
@@ -160,7 +166,9 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 			if threadTs == "" {
 				threadTs = ev.TimeStamp
 			}
-			return parseIncomingMessage(ev.User, ev.Channel, ev.Text, threadTs, chatType, files), nil
+			return parseIncomingMessage(
+				ev.User, ev.Channel, ev.Text, ev.TimeStamp, threadTs, chatType, files,
+			), nil
 		}
 	}
 
@@ -204,8 +212,8 @@ func (a *Adapter) SendReply(ctx context.Context, incoming *im.IncomingMessage, r
 	}
 
 	options := []slack.MsgOption{slack.MsgOptionText(reply.Content, false)}
-	if incoming.MessageID != "" {
-		options = append(options, slack.MsgOptionTS(incoming.MessageID))
+	if incoming.ThreadID != "" {
+		options = append(options, slack.MsgOptionTS(incoming.ThreadID))
 	}
 
 	_, _, err := a.api.PostMessageContext(ctx, channelID, options...)
@@ -235,8 +243,8 @@ func (a *Adapter) StartStream(ctx context.Context, incoming *im.IncomingMessage)
 	}
 
 	options := []slack.MsgOption{slack.MsgOptionText("正在思考...", false)}
-	if incoming.MessageID != "" {
-		options = append(options, slack.MsgOptionTS(incoming.MessageID))
+	if incoming.ThreadID != "" {
+		options = append(options, slack.MsgOptionTS(incoming.ThreadID))
 	}
 
 	// Send initial "Thinking..." message
