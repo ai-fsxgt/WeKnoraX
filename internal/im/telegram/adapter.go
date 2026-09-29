@@ -31,23 +31,26 @@ var (
 type Adapter struct {
 	botToken    string
 	secretToken string // optional X-Telegram-Bot-Api-Secret-Token for webhook verification
+	bot         botIdentity
 	client      *LongConnClient
 }
 
 // NewWebhookAdapter creates a Telegram adapter for webhook mode.
-func NewWebhookAdapter(botToken, secretToken string) *Adapter {
+func NewWebhookAdapter(botToken, secretToken string, bot botIdentity) *Adapter {
 	startStreamReaper()
 	return &Adapter{
 		botToken:    botToken,
 		secretToken: secretToken,
+		bot:         bot,
 	}
 }
 
 // NewAdapter creates a Telegram adapter backed by a long-polling client.
-func NewAdapter(client *LongConnClient, botToken string) *Adapter {
+func NewAdapter(client *LongConnClient, botToken string, bot botIdentity) *Adapter {
 	startStreamReaper()
 	return &Adapter{
 		botToken: botToken,
+		bot:      bot,
 		client:   client,
 	}
 }
@@ -81,6 +84,7 @@ type telegramMsg struct {
 	MessageID       int             `json:"message_id"`
 	MessageThreadID int             `json:"message_thread_id"`
 	From            *telegramUser   `json:"from"`
+	ReplyToMessage  *telegramMsg    `json:"reply_to_message"`
 	Chat            telegramChat    `json:"chat"`
 	Text            string          `json:"text"`
 	Document        *telegramDoc    `json:"document"`
@@ -89,9 +93,15 @@ type telegramMsg struct {
 
 type telegramUser struct {
 	ID        int64  `json:"id"`
+	IsBot     bool   `json:"is_bot"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Username  string `json:"username"`
+}
+
+type botIdentity struct {
+	ID       int64
+	Username string
 }
 
 type telegramChat struct {
@@ -125,17 +135,17 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 		return nil, fmt.Errorf("parse update: %w", err)
 	}
 
-	return parseUpdate(&update), nil
+	return parseUpdate(&update, a.bot), nil
 }
 
-func parseUpdate(update *telegramUpdate) *im.IncomingMessage {
+func parseUpdate(update *telegramUpdate, bot botIdentity) *im.IncomingMessage {
 	if update.Message == nil {
 		return nil
 	}
-	return parseTelegramMessage(update.Message)
+	return parseTelegramMessage(update.Message, bot)
 }
 
-func parseTelegramMessage(msg *telegramMsg) *im.IncomingMessage {
+func parseTelegramMessage(msg *telegramMsg, bot botIdentity) *im.IncomingMessage {
 	if msg == nil {
 		return nil
 	}
@@ -162,6 +172,15 @@ func parseTelegramMessage(msg *telegramMsg) *im.IncomingMessage {
 		threadID = fmt.Sprintf("%d", msg.MessageThreadID)
 	}
 
+	content := msg.Text
+	if chatType == im.ChatTypeGroup {
+		var addressed bool
+		content, addressed = normalizeGroupContent(strings.TrimSpace(content), bot.Username)
+		if !addressed && !isReplyToBot(msg, bot.ID) {
+			return nil
+		}
+	}
+
 	incoming := &im.IncomingMessage{
 		Platform:    im.PlatformTelegram,
 		UserID:      userID,
@@ -171,17 +190,7 @@ func parseTelegramMessage(msg *telegramMsg) *im.IncomingMessage {
 		MessageID:   fmt.Sprintf("%d", msg.MessageID),
 		ThreadID:    threadID,
 		MessageType: im.MessageTypeText,
-		Content:     msg.Text,
-	}
-
-	// For group messages, strip bot mention prefix (e.g., "/command@botname text" -> "text")
-	if chatType == im.ChatTypeGroup {
-		content := strings.TrimSpace(msg.Text)
-		// Remove @bot mentions
-		if idx := strings.Index(content, " "); idx > 0 && strings.Contains(content[:idx], "@") {
-			content = strings.TrimSpace(content[idx+1:])
-		}
-		incoming.Content = content
+		Content:     content,
 	}
 
 	// Handle document
@@ -202,6 +211,51 @@ func parseTelegramMessage(msg *telegramMsg) *im.IncomingMessage {
 	}
 
 	return incoming
+}
+
+func normalizeGroupContent(content, botUsername string) (string, bool) {
+	if im.IsBindingCode(content) {
+		return content, true
+	}
+
+	fields := strings.Fields(content)
+	if len(fields) == 0 {
+		return content, false
+	}
+
+	first := fields[0]
+	if strings.HasPrefix(first, "/") {
+		if at := strings.LastIndex(first, "@"); at >= 0 {
+			if !strings.EqualFold(first[at+1:], botUsername) {
+				return content, false
+			}
+			fields[0] = first[:at]
+		}
+		return strings.Join(fields, " "), true
+	}
+
+	mention := strings.TrimRight(first, ",:，：")
+	if botUsername != "" && strings.EqualFold(mention, "@"+strings.TrimPrefix(botUsername, "@")) {
+		return strings.TrimSpace(strings.TrimPrefix(content, first)), true
+	}
+	return content, false
+}
+
+func isReplyToBot(msg *telegramMsg, botID int64) bool {
+	return botID != 0 && msg.ReplyToMessage != nil && msg.ReplyToMessage.From != nil &&
+		msg.ReplyToMessage.From.ID == botID
+}
+
+func fetchBotIdentity(ctx context.Context, botToken string) (botIdentity, error) {
+	var user telegramUser
+	adapter := &Adapter{botToken: botToken}
+	if err := adapter.callAPIWithResult(ctx, "getMe", struct{}{}, &user); err != nil {
+		return botIdentity{}, fmt.Errorf("get telegram bot identity: %w", err)
+	}
+	if !user.IsBot || user.ID == 0 || strings.TrimSpace(user.Username) == "" {
+		return botIdentity{}, fmt.Errorf("get telegram bot identity: incomplete bot account")
+	}
+	return botIdentity{ID: user.ID, Username: user.Username}, nil
 }
 
 // resolveChatID returns ChatID if set, otherwise falls back to UserID (for direct messages).
