@@ -116,6 +116,15 @@ func SupportsPersonalBinding(platform string) bool {
 	}
 }
 
+// SupportsGroupChat reports whether the platform and connection mode can
+// receive group messages for the shared binding flow.
+func SupportsGroupChat(platform, mode string) bool {
+	if !SupportsPersonalBinding(platform) {
+		return false
+	}
+	return platform != string(PlatformWeCom) || mode == "websocket"
+}
+
 func (ch *IMChannel) BeforeCreate(tx *gorm.DB) error {
 	if ch.ID == "" {
 		ch.ID = uuid.New().String()

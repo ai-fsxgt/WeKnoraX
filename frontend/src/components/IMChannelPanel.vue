@@ -131,7 +131,7 @@
         </template>
         <template v-else>
           <label>{{ t('agentEditor.im.mode') }}</label>
-          <t-radio-group v-model="form.mode">
+          <t-radio-group v-model="form.mode" @change="onModeChange">
             <t-radio value="websocket">WebSocket</t-radio>
             <t-radio v-if="form.platform !== 'qqbot'" value="webhook">Webhook</t-radio>
           </t-radio-group>
@@ -143,7 +143,7 @@
           <t-radio value="full">{{ t('agentEditor.im.outputFull') }}</t-radio>
         </t-radio-group>
 
-        <div v-if="supportsGroupChat(form.platform)" class="group-chat-setting">
+        <div v-if="supportsGroupChat(form.platform, form.mode)" class="group-chat-setting">
           <div>
             <label>{{ t('imAdmin.allowGroupChat') }}</label>
             <p>{{ t('imAdmin.allowGroupChatHint') }}</p>
@@ -342,8 +342,9 @@ function platformLabel(platform: IMChannelSummary['platform']) {
   return t(`agentEditor.im.${platform}`)
 }
 
-function supportsGroupChat(platform: IMPlatform) {
-  return platform !== 'wechat' && platform !== 'qqbot'
+function supportsGroupChat(platform: IMPlatform, mode: string) {
+  if (platform === 'wechat' || platform === 'qqbot') return false
+  return platform !== 'wecom' || mode === 'websocket'
 }
 
 function resetForm() {
@@ -398,6 +399,12 @@ function onPlatformChange() {
   } else {
     form.mode = 'websocket'
     form.output_mode = 'stream'
+  }
+}
+
+function onModeChange() {
+  if (!supportsGroupChat(form.platform, form.mode)) {
+    form.allow_group_chat = false
   }
 }
 

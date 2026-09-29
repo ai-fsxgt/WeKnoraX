@@ -1727,7 +1727,8 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		})
 		return nil
 	}
-	if msg.ChatType == ChatTypeGroup && !channel.AllowGroupChat {
+	if msg.ChatType == ChatTypeGroup &&
+		(!channel.AllowGroupChat || !SupportsGroupChat(channel.Platform, channel.Mode)) {
 		_ = adapter.SendReply(ctx, msg, &ReplyMessage{
 			Content: "当前机器人未开启群聊问答，请在机器人单聊中使用。",
 			IsFinal: true,
@@ -1739,8 +1740,8 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		return err
 	}
 
-	if IsBindingCode(msg.Content) {
-		return s.handleBindingCode(ctx, adapter, channelID, chatType, externalID, externalName, msg)
+	if bindingCode, ok := messageBindingCode(msg.Content, chatType); ok {
+		return s.handleBindingCode(ctx, adapter, channelID, chatType, externalID, externalName, bindingCode, msg)
 	}
 
 	binding, member, err := s.ResolveActiveBinding(ctx, channelID, chatType, externalID)
@@ -1955,9 +1956,10 @@ func (s *Service) handleBindingCode(
 	chatType ChatType,
 	externalID string,
 	externalName string,
+	bindingCode string,
 	msg *IncomingMessage,
 ) error {
-	_, err := s.ConsumeBindingCode(ctx, channelID, chatType, externalID, externalName, msg.Content)
+	_, err := s.ConsumeBindingCode(ctx, channelID, chatType, externalID, externalName, bindingCode)
 	systemName := s.systemName(ctx)
 	content := fmt.Sprintf("绑定成功，后续将使用你在「%s」中选择的工作空间。", systemName)
 	if chatType == ChatTypeGroup {
@@ -1986,6 +1988,24 @@ func (s *Service) handleBindingCode(
 		return fmt.Errorf("send binding result: %w", sendErr)
 	}
 	return nil
+}
+
+// messageBindingCode accepts an exact binding code in private chat. Group
+// clients may retain an @mention prefix, so the final token is also checked.
+func messageBindingCode(content string, chatType ChatType) (string, bool) {
+	content = strings.TrimSpace(content)
+	if IsBindingCode(content) {
+		return content, true
+	}
+	if chatType != ChatTypeGroup {
+		return "", false
+	}
+	fields := strings.Fields(content)
+	if len(fields) < 2 {
+		return "", false
+	}
+	candidate := fields[len(fields)-1]
+	return candidate, IsBindingCode(candidate)
 }
 
 func (s *Service) resolveBindingKnowledgeBaseIDs(ctx context.Context, tenantID uint64) ([]string, error) {
@@ -3377,9 +3397,9 @@ func (s *Service) ToggleChannel(channelID string) (*IMChannel, error) {
 }
 
 func validateChannel(channel *IMChannel) error {
-	if channel.AllowGroupChat && !SupportsPersonalBinding(channel.Platform) {
-		return fmt.Errorf("%w: platform %s does not support group account binding",
-			ErrChannelConfigurationInvalid, channel.Platform)
+	if channel.AllowGroupChat && !SupportsGroupChat(channel.Platform, channel.Mode) {
+		return fmt.Errorf("%w: platform %s does not support group account binding in %s mode",
+			ErrChannelConfigurationInvalid, channel.Platform, channel.Mode)
 	}
 	credentials, err := ParseCredentials(channel.Credentials)
 	if err != nil {
