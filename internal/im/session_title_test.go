@@ -133,4 +133,17 @@ func TestBindingContextKeys(t *testing.T) {
 	if got := bindingRequestKey("binding-1", group); got != "binding-1:user-1" {
 		t.Fatalf("group request key = %q", got)
 	}
+
+	groupThread := &IncomingMessage{
+		ChatType: ChatTypeGroup,
+		UserID:   "user-1",
+		ChatID:   "group-1",
+		ThreadID: "thread-1",
+	}
+	if got := bindingSessionContextKey(groupThread); got != "user-1:thread-1" {
+		t.Fatalf("group thread context key = %q", got)
+	}
+	if got := bindingRequestKey("binding-1", groupThread); got != "binding-1:user-1:thread-1" {
+		t.Fatalf("group thread request key = %q", got)
+	}
 }

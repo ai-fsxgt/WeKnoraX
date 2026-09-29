@@ -2403,10 +2403,14 @@ func imInitialSessionTitle(msg *IncomingMessage) string {
 }
 
 func bindingSessionContextKey(msg *IncomingMessage) string {
-	if msg != nil && msg.ChatType == ChatTypeGroup {
-		return strings.TrimSpace(msg.UserID)
+	if msg == nil || msg.ChatType != ChatTypeGroup {
+		return ""
 	}
-	return ""
+	userID := strings.TrimSpace(msg.UserID)
+	if threadID := strings.TrimSpace(msg.ThreadID); threadID != "" {
+		return userID + ":" + threadID
+	}
+	return userID
 }
 
 func bindingRequestKeyForContext(bindingID, contextKey string) string {
@@ -2421,7 +2425,7 @@ func bindingRequestKey(bindingID string, msg *IncomingMessage) string {
 }
 
 // resolveBindingSession gives each direct binding one current conversation and
-// each member of a group binding an independent current conversation.
+// isolates group conversations by member and, when available, thread.
 func (s *Service) resolveBindingSession(
 	ctx context.Context,
 	msg *IncomingMessage,
