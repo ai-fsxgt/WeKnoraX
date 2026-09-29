@@ -1,7 +1,7 @@
 -- Move IM bot installations to system scope and add per-user workspace bindings.
 DO $$ BEGIN RAISE NOTICE '[Migration 000091] Creating per-user IM bindings'; END $$;
 
-CREATE TABLE im_channel_legacy_config_backup (
+CREATE TABLE IF NOT EXISTS im_channel_legacy_config_backup (
     id                VARCHAR(36) PRIMARY KEY,
     tenant_id         BIGINT      NOT NULL,
     agent_id          VARCHAR(36) NOT NULL,
@@ -10,15 +10,30 @@ CREATE TABLE im_channel_legacy_config_backup (
     enabled           BOOLEAN     NOT NULL
 );
 
-INSERT INTO im_channel_legacy_config_backup (
-    id, tenant_id, agent_id, knowledge_base_id, session_mode, enabled
-)
-SELECT id, tenant_id, agent_id, knowledge_base_id, session_mode, enabled
-FROM im_channels;
+-- Dirty-state recovery may replay this migration after its SQL already
+-- committed. Only read the legacy columns while they still exist.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'im_channels'
+          AND column_name = 'tenant_id'
+    ) THEN
+        INSERT INTO im_channel_legacy_config_backup (
+            id, tenant_id, agent_id, knowledge_base_id, session_mode, enabled
+        )
+        SELECT id, tenant_id, agent_id, knowledge_base_id, session_mode, enabled
+        FROM im_channels
+        ON CONFLICT (id) DO NOTHING;
 
--- Existing channel ownership cannot be widened safely. Keep the installation
--- configuration for administrator review, but require explicit re-enablement.
-UPDATE im_channels SET enabled = FALSE;
+        -- Existing channel ownership cannot be widened safely. Keep the installation
+        -- configuration for administrator review, but require explicit re-enablement.
+        UPDATE im_channels SET enabled = FALSE;
+    END IF;
+END $$;
+
 ALTER TABLE im_channels ALTER COLUMN enabled SET DEFAULT FALSE;
 
 ALTER TABLE im_channels
@@ -31,7 +46,7 @@ ALTER TABLE im_channels DROP COLUMN IF EXISTS agent_id;
 ALTER TABLE im_channels DROP COLUMN IF EXISTS knowledge_base_id;
 ALTER TABLE im_channels DROP COLUMN IF EXISTS session_mode;
 
-CREATE TABLE im_user_bindings (
+CREATE TABLE IF NOT EXISTS im_user_bindings (
     id                     VARCHAR(36)  PRIMARY KEY,
     im_channel_id          VARCHAR(36)  NOT NULL REFERENCES im_channels(id) ON DELETE CASCADE,
     external_user_id       VARCHAR(255) NOT NULL,
@@ -45,18 +60,18 @@ CREATE TABLE im_user_bindings (
     CONSTRAINT chk_im_user_bindings_status CHECK (status IN ('active', 'revoked'))
 );
 
-CREATE UNIQUE INDEX idx_im_user_bindings_external_active
+CREATE UNIQUE INDEX IF NOT EXISTS idx_im_user_bindings_external_active
     ON im_user_bindings(im_channel_id, external_user_id)
     WHERE revoked_at IS NULL;
-CREATE UNIQUE INDEX idx_im_user_bindings_user_active
+CREATE UNIQUE INDEX IF NOT EXISTS idx_im_user_bindings_user_active
     ON im_user_bindings(im_channel_id, user_id)
     WHERE revoked_at IS NULL;
-CREATE INDEX idx_im_user_bindings_user
+CREATE INDEX IF NOT EXISTS idx_im_user_bindings_user
     ON im_user_bindings(user_id, tenant_id);
-CREATE INDEX idx_im_user_bindings_tenant
+CREATE INDEX IF NOT EXISTS idx_im_user_bindings_tenant
     ON im_user_bindings(tenant_id);
 
-CREATE TABLE im_binding_requests (
+CREATE TABLE IF NOT EXISTS im_binding_requests (
     id                       VARCHAR(36)  PRIMARY KEY,
     code_hash                VARCHAR(64)  NOT NULL UNIQUE,
     im_channel_id            VARCHAR(36)  NOT NULL REFERENCES im_channels(id) ON DELETE CASCADE,
@@ -73,24 +88,35 @@ CREATE TABLE im_binding_requests (
     CONSTRAINT chk_im_binding_requests_status CHECK (status IN ('pending', 'consumed', 'cancelled'))
 );
 
-CREATE INDEX idx_im_binding_requests_owner
+CREATE INDEX IF NOT EXISTS idx_im_binding_requests_owner
     ON im_binding_requests(user_id, created_at DESC);
-CREATE INDEX idx_im_binding_requests_channel_status
+CREATE INDEX IF NOT EXISTS idx_im_binding_requests_channel_status
     ON im_binding_requests(im_channel_id, status, expires_at);
-CREATE UNIQUE INDEX idx_im_binding_requests_user_pending
+CREATE UNIQUE INDEX IF NOT EXISTS idx_im_binding_requests_user_pending
     ON im_binding_requests(im_channel_id, user_id)
     WHERE status = 'pending';
 
 -- Preserve old session provenance in metadata, then make new continuity depend
 -- exclusively on binding_id. Legacy rows intentionally remain unbound.
-UPDATE im_channel_sessions
-SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
-    'legacy_platform', platform,
-    'legacy_external_user_id', user_id,
-    'legacy_chat_id', chat_id,
-    'legacy_thread_id', thread_id,
-    'legacy_agent_id', agent_id
-);
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'im_channel_sessions'
+          AND column_name = 'platform'
+    ) THEN
+        UPDATE im_channel_sessions
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+            'legacy_platform', platform,
+            'legacy_external_user_id', user_id,
+            'legacy_chat_id', chat_id,
+            'legacy_thread_id', thread_id,
+            'legacy_agent_id', agent_id
+        );
+    END IF;
+END $$;
 
 DROP INDEX IF EXISTS idx_channel_lookup;
 DROP INDEX IF EXISTS idx_channel_thread_lookup;
@@ -104,10 +130,10 @@ ALTER TABLE im_channel_sessions DROP COLUMN IF EXISTS chat_id;
 ALTER TABLE im_channel_sessions DROP COLUMN IF EXISTS thread_id;
 ALTER TABLE im_channel_sessions DROP COLUMN IF EXISTS agent_id;
 
-CREATE UNIQUE INDEX idx_im_channel_sessions_binding_active
+CREATE UNIQUE INDEX IF NOT EXISTS idx_im_channel_sessions_binding_active
     ON im_channel_sessions(binding_id)
     WHERE deleted_at IS NULL AND binding_id IS NOT NULL;
-CREATE INDEX idx_im_channel_sessions_binding
+CREATE INDEX IF NOT EXISTS idx_im_channel_sessions_binding
     ON im_channel_sessions(binding_id);
 
 COMMENT ON TABLE im_channels IS 'System-managed IM bot installations';
