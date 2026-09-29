@@ -318,7 +318,7 @@ func (h *IMHandler) ToggleIMChannel(c *gin.Context) {
 //
 // ListBindableIMChannels godoc
 // @Summary      获取可绑定的 IM 渠道
-// @Description  获取当前用户可发起个人绑定的已启用机器人列表
+// @Description  获取当前用户可发起账号绑定的已启用机器人列表
 // @Tags         IM 绑定
 // @Produce      json
 // @Success      200  {object}  map[string]interface{}  "可绑定渠道列表"
@@ -404,11 +404,11 @@ func (h *IMHandler) GetIMBindingRequest(c *gin.Context) {
 // ListIMBindings lists the current user's active IM bindings.
 //
 // ListIMBindings godoc
-// @Summary      获取个人 IM 绑定
-// @Description  获取当前用户的有效 IM 账号绑定
+// @Summary      获取 IM 绑定
+// @Description  获取当前用户创建的有效个人或群聊绑定
 // @Tags         IM 绑定
 // @Produce      json
-// @Success      200  {object}  map[string]interface{}  "个人绑定列表"
+// @Success      200  {object}  map[string]interface{}  "绑定列表"
 // @Security     Bearer
 // @Router       /im/bindings [get]
 func (h *IMHandler) ListIMBindings(c *gin.Context) {

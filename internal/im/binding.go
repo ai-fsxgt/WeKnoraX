@@ -185,7 +185,7 @@ func lockBindableChannel(tx *gorm.DB, channelID string, chatType ChatType) error
 }
 
 // ListBindableChannels lists enabled system bot installations that have passed
-// the product capability gate for personal private-chat binding.
+// the product capability gate for account binding.
 func (s *Service) ListBindableChannels() ([]BindableChannel, error) {
 	platforms := []string{
 		string(PlatformWeCom), string(PlatformFeishu), string(PlatformLark),
