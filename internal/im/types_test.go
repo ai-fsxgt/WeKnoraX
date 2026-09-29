@@ -123,7 +123,7 @@ func TestBindingModelsBeforeCreate(t *testing.T) {
 	if err := binding.BeforeCreate(&gorm.DB{}); err != nil {
 		t.Fatalf("binding BeforeCreate error: %v", err)
 	}
-	if binding.ID == "" || binding.Status != IMBindingStatusActive {
+	if binding.ID == "" || binding.Status != IMBindingStatusActive || binding.ChatType != ChatTypeDirect {
 		t.Fatalf("binding defaults not applied: %#v", binding)
 	}
 

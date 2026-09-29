@@ -19,15 +19,17 @@ type MessageHandler func(ctx context.Context, msg *im.IncomingMessage) error
 // LongConnClient manages a Telegram long-polling connection.
 type LongConnClient struct {
 	botToken   string
+	bot        botIdentity
 	handler    MessageHandler
 	offset     int
 	httpClient *http.Client
 }
 
 // NewLongConnClient creates a Telegram long-polling client.
-func NewLongConnClient(botToken string, handler MessageHandler) *LongConnClient {
+func NewLongConnClient(botToken string, bot botIdentity, handler MessageHandler) *LongConnClient {
 	return &LongConnClient{
 		botToken: botToken,
+		bot:      bot,
 		handler:  handler,
 		httpClient: secutils.NewSSRFSafeHTTPClient(secutils.SSRFSafeHTTPClientConfig{
 			Timeout:      35 * time.Second,
@@ -67,7 +69,7 @@ func (c *LongConnClient) Start(ctx context.Context) error {
 				c.offset = update.UpdateID + 1
 			}
 
-			msg := parseUpdate(&update)
+			msg := parseUpdate(&update, c.bot)
 			if msg == nil {
 				continue
 			}

@@ -61,12 +61,15 @@ type IncomingMessage struct {
 	// ThreadID is the platform-specific thread identifier.
 	// - Slack: thread_ts (top-level message uses its own timestamp)
 	// - Mattermost: root_id, or post_id if top-level
-	// - Feishu/Lark: root_id, or message_id if top-level
+	// - Feishu/Lark: thread_id, root_id, or message_id if top-level
 	// - Telegram: message_thread_id (Forum Topics only)
 	// Empty for platforms without thread support (WeCom, DingTalk).
 	// In thread mode, top-level messages use their own ID as ThreadID,
 	// effectively creating a new session per top-level message.
 	ThreadID string
+	// RequireExistingContext prevents an unmentioned follow-up from creating a
+	// conversation outside a thread that has already involved the bot.
+	RequireExistingContext bool
 	// Quote is the quoted/replied message, if any.
 	// Populated by adapters on platforms that support quote-reply.
 	Quote *QuotedMessage

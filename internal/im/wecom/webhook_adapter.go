@@ -272,24 +272,19 @@ func (a *WebhookAdapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, err
 }
 
 // SendReply sends a reply message via WeCom API.
-// For group chats, it tries the appchat API first to reply in the group,
-// then falls back to sending a direct message to the user.
 func (a *WebhookAdapter) SendReply(ctx context.Context, incoming *im.IncomingMessage, reply *im.ReplyMessage) error {
 	accessToken, err := a.getAccessToken(ctx)
 	if err != nil {
 		return fmt.Errorf("get access token: %w", err)
 	}
 
-	// For group chats, try sending to the group via appchat API first.
-	// This works for groups created via /cgi-bin/appchat/create.
-	if incoming.ChatType == im.ChatTypeGroup && incoming.ChatID != "" {
-		if err := a.sendToAppChat(ctx, accessToken, incoming.ChatID, reply); err == nil {
-			return nil
+	if incoming.ChatType == im.ChatTypeGroup {
+		if strings.TrimSpace(incoming.ChatID) == "" {
+			return fmt.Errorf("send group reply: chat id is empty")
 		}
-		logger.Debugf(ctx, "[WeCom] appchat/send failed for chat=%s, falling back to touser: %v", incoming.ChatID, err)
+		return a.sendToAppChat(ctx, accessToken, incoming.ChatID, reply)
 	}
 
-	// Fallback (or direct message): send to the user directly.
 	return a.sendToUser(ctx, accessToken, incoming.UserID, reply)
 }
 

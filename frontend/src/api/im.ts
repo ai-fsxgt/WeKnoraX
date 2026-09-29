@@ -21,6 +21,7 @@ export interface IMChannelSummary {
   output_mode: 'stream' | 'full'
   bot_identity: string
   personal_binding: boolean
+  allow_group_chat: boolean
   credentials_configured: boolean
   created_by: string
   created_at: string
@@ -33,6 +34,7 @@ export interface IMChannelMutation {
   enabled?: boolean
   mode?: IMChannelSummary['mode']
   output_mode?: IMChannelSummary['output_mode']
+  allow_group_chat?: boolean
   credentials?: Record<string, unknown>
 }
 
@@ -40,6 +42,7 @@ export interface BindableIMChannel {
   id: string
   platform: IMPlatform
   name: string
+  allow_group_chat: boolean
 }
 
 export interface IMUserBinding {
@@ -47,6 +50,7 @@ export interface IMUserBinding {
   im_channel_id: string
   platform: IMPlatform
   channel_name: string
+  chat_type: 'direct' | 'group'
   external_user_id: string
   external_user_name: string
   tenant_id: number

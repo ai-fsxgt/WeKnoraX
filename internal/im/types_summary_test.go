@@ -11,11 +11,12 @@ import (
 
 func TestSummarizeIMChannel_OmitsCredentials(t *testing.T) {
 	ch := IMChannel{
-		ID:          "ch-1",
-		Platform:    "feishu",
-		Name:        "support",
-		CreatedBy:   "user-1",
-		Credentials: types.JSON(`{"app_secret":"top-secret"}`),
+		ID:             "ch-1",
+		Platform:       "feishu",
+		Name:           "support",
+		CreatedBy:      "user-1",
+		AllowGroupChat: true,
+		Credentials:    types.JSON(`{"app_secret":"top-secret"}`),
 	}
 
 	summary := SummarizeIMChannel(ch)
@@ -24,6 +25,7 @@ func TestSummarizeIMChannel_OmitsCredentials(t *testing.T) {
 
 	assert.True(t, summary.CredentialsConfigured)
 	assert.True(t, summary.PersonalBinding)
+	assert.True(t, summary.AllowGroupChat)
 	assert.Equal(t, "user-1", summary.CreatedBy)
 	assert.NotContains(t, string(body), "top-secret")
 	assert.NotContains(t, string(body), `"credentials":`)

@@ -137,7 +137,7 @@ func convertEvent(region Region, event *larkim.P2MessageReceiveV1) *im.IncomingM
 	}
 
 	// Only the documented p2p value is a private conversation. Treat unknown
-	// values as group chats so they cannot enter the personal binding flow.
+	// values as group chats so they cannot be mistaken for a direct identity.
 	chatType := im.ChatTypeGroup
 	chatID := ""
 	if msg.ChatType != nil && *msg.ChatType == "p2p" {
@@ -151,19 +151,25 @@ func convertEvent(region Region, event *larkim.P2MessageReceiveV1) *im.IncomingM
 	if msg.MessageId != nil {
 		messageID = *msg.MessageId
 	}
+	threadID := resolveFeishuThreadID(ptrStr(msg.ThreadId), ptrStr(msg.RootId), messageID)
 
+	var incoming *im.IncomingMessage
 	switch msgType {
 	case "text":
-		return convertTextEvent(region, msg, openID, chatID, chatType, messageID)
+		incoming = convertTextEvent(region, msg, openID, chatID, chatType, messageID)
 	case "file":
-		return convertFileEvent(region, msg, openID, chatID, chatType, messageID)
+		incoming = convertFileEvent(region, msg, openID, chatID, chatType, messageID)
 	case "image":
-		return convertImageEvent(region, msg, openID, chatID, chatType, messageID)
+		incoming = convertImageEvent(region, msg, openID, chatID, chatType, messageID)
 	case "post":
-		return convertPostEvent(region, msg, openID, chatID, chatType, messageID)
+		incoming = convertPostEvent(region, msg, openID, chatID, chatType, messageID)
 	default:
 		return nil
 	}
+	if incoming != nil {
+		incoming.ThreadID = threadID
+	}
+	return incoming
 }
 
 // convertTextEvent handles text message type.

@@ -18,17 +18,21 @@ func NewFactory() im.AdapterFactory {
 		}
 
 		botToken := im.GetString(creds, "bot_token")
+		bot, err := fetchBotIdentity(factoryCtx, botToken)
+		if err != nil {
+			return nil, nil, err
+		}
 
 		mode := im.ResolveMode(channel, "websocket")
 
 		switch mode {
 		case "webhook":
 			secretToken := im.GetString(creds, "secret_token")
-			adapter := NewWebhookAdapter(botToken, secretToken)
+			adapter := NewWebhookAdapter(botToken, secretToken, bot)
 			return adapter, nil, nil
 
 		case "websocket":
-			client := NewLongConnClient(botToken, msgHandler)
+			client := NewLongConnClient(botToken, bot, msgHandler)
 
 			wsCtx, wsCancel := context.WithCancel(context.Background())
 			go func() {
@@ -37,7 +41,7 @@ func NewFactory() im.AdapterFactory {
 				}
 			}()
 
-			adapter := NewAdapter(client, botToken)
+			adapter := NewAdapter(client, botToken, bot)
 			return adapter, wsCancel, nil
 
 		default:

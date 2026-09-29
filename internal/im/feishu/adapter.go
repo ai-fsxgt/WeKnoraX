@@ -260,6 +260,7 @@ type feishuMessage struct {
 	MessageID   string `json:"message_id"`
 	RootID      string `json:"root_id"`
 	ParentID    string `json:"parent_id"`
+	ThreadID    string `json:"thread_id"`
 	MessageType string `json:"message_type"`
 	ChatType    string `json:"chat_type"`
 	ChatID      string `json:"chat_id"`
@@ -318,14 +319,10 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 	}
 	msg := eventBody.Event.Message
 
-	// Compute thread ID: use root_id for threaded replies, or message_id for top-level messages.
-	threadID := msg.RootID
-	if threadID == "" {
-		threadID = msg.MessageID
-	}
+	threadID := resolveFeishuThreadID(msg.ThreadID, msg.RootID, msg.MessageID)
 
 	// Only the documented p2p value is a private conversation. Treat unknown
-	// values as group chats so they cannot enter the personal binding flow.
+	// values as group chats so they cannot be mistaken for a direct identity.
 	chatType := im.ChatTypeGroup
 	chatID := ""
 	if msg.ChatType == "p2p" {
@@ -484,6 +481,16 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 		logger.Infof(c.Request.Context(), "[%s] Ignoring unsupported message type: %s", a.region.Label, msg.MessageType)
 		return nil, nil
 	}
+}
+
+func resolveFeishuThreadID(threadID, rootID, messageID string) string {
+	if threadID != "" {
+		return threadID
+	}
+	if rootID != "" {
+		return rootID
+	}
+	return messageID
 }
 
 // SendReply sends a reply message via Feishu API.

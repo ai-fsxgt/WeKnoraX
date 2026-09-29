@@ -31,8 +31,8 @@ var (
 	ErrBindingIdentityInUse = errors.New("IM identity is already bound to another account")
 	// ErrBindingUserInUse prevents one account from binding multiple identities on the same bot.
 	ErrBindingUserInUse = errors.New("account is already bound to another identity for this bot")
-	// ErrBindingUnavailable means the selected bot cannot accept personal bindings.
-	ErrBindingUnavailable = errors.New("IM channel is unavailable for personal binding")
+	// ErrBindingUnavailable means the selected bot cannot accept account bindings.
+	ErrBindingUnavailable = errors.New("IM channel is unavailable for account binding")
 	// ErrBindingMembershipInvalid means the user can no longer access the selected workspace.
 	ErrBindingMembershipInvalid = errors.New("workspace membership is unavailable")
 )
@@ -59,6 +59,7 @@ type UserBindingView struct {
 	ChannelName      string    `json:"channel_name"`
 	ExternalUserID   string    `json:"external_user_id"`
 	ExternalUserName string    `json:"external_user_name"`
+	ChatType         ChatType  `json:"chat_type"`
 	TenantID         uint64    `json:"tenant_id"`
 	TenantName       string    `json:"tenant_name"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -67,9 +68,10 @@ type UserBindingView struct {
 // BindableChannel is the public, credential-free projection shown to signed-in
 // users on the binding page.
 type BindableChannel struct {
-	ID       string `json:"id"`
-	Platform string `json:"platform"`
-	Name     string `json:"name"`
+	ID             string `json:"id"`
+	Platform       string `json:"platform"`
+	Name           string `json:"name"`
+	AllowGroupChat bool   `json:"allow_group_chat"`
 }
 
 func generateBindingCode() (string, error) {
@@ -162,10 +164,10 @@ func (s *Service) getBindableChannel(channelID string) (*IMChannel, error) {
 	return channel, nil
 }
 
-func lockBindableChannel(tx *gorm.DB, channelID string) error {
+func lockBindableChannel(tx *gorm.DB, channelID string, chatType ChatType) error {
 	var channel IMChannel
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Select("id", "platform").
+		Select("id", "platform", "allow_group_chat").
 		Where("id = ? AND enabled = ? AND deleted_at IS NULL", channelID, true).
 		First(&channel).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -176,11 +178,14 @@ func lockBindableChannel(tx *gorm.DB, channelID string) error {
 	if !SupportsPersonalBinding(channel.Platform) {
 		return ErrBindingUnavailable
 	}
+	if chatType == ChatTypeGroup && !channel.AllowGroupChat {
+		return ErrBindingUnavailable
+	}
 	return nil
 }
 
 // ListBindableChannels lists enabled system bot installations that have passed
-// the product capability gate for personal private-chat binding.
+// the product capability gate for account binding.
 func (s *Service) ListBindableChannels() ([]BindableChannel, error) {
 	platforms := []string{
 		string(PlatformWeCom), string(PlatformFeishu), string(PlatformLark),
@@ -193,7 +198,12 @@ func (s *Service) ListBindableChannels() ([]BindableChannel, error) {
 	}
 	result := make([]BindableChannel, 0, len(channels))
 	for _, channel := range channels {
-		result = append(result, BindableChannel{ID: channel.ID, Platform: channel.Platform, Name: channel.Name})
+		result = append(result, BindableChannel{
+			ID:             channel.ID,
+			Platform:       channel.Platform,
+			Name:           channel.Name,
+			AllowGroupChat: channel.AllowGroupChat,
+		})
 	}
 	return result, nil
 }
@@ -225,7 +235,7 @@ func (s *Service) CreateBindingRequest(
 		Status:      IMBindingRequestPending,
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if err := lockBindableChannel(tx, channel.ID); err != nil {
+		if err := lockBindableChannel(tx, channel.ID, ""); err != nil {
 			return err
 		}
 		var user types.User
@@ -285,19 +295,25 @@ func bindingRequestResult(request *BindingRequest, channel *IMChannel, code stri
 	}
 }
 
-// ConsumeBindingCode atomically establishes a binding for the verified sender
-// of a private IM message.
+// ConsumeBindingCode atomically establishes a binding for a verified direct
+// user identity or group conversation identity.
 func (s *Service) ConsumeBindingCode(
 	ctx context.Context,
-	channelID, externalUserID, externalUserName, code string,
+	channelID string,
+	chatType ChatType,
+	externalUserID, externalUserName, code string,
 ) (*UserBinding, error) {
 	code, ok := normalizeBindingCode(code)
-	if !ok || strings.TrimSpace(externalUserID) == "" {
+	if !ok || strings.TrimSpace(externalUserID) == "" ||
+		(chatType != ChatTypeDirect && chatType != ChatTypeGroup) {
 		return nil, ErrBindingCodeInvalid
 	}
 	channel, err := s.getBindableChannel(channelID)
 	if err != nil {
 		return nil, err
+	}
+	if chatType == ChatTypeGroup && !channel.AllowGroupChat {
+		return nil, ErrBindingUnavailable
 	}
 	lookupTime := time.Now().UTC()
 	var pendingRequest BindingRequest
@@ -316,7 +332,7 @@ func (s *Service) ConsumeBindingCode(
 	var binding *UserBinding
 	var replacedBindingID string
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := lockBindableChannel(tx, channel.ID); err != nil {
+		if err := lockBindableChannel(tx, channel.ID, chatType); err != nil {
 			return err
 		}
 		consumeTime := time.Now().UTC()
@@ -331,8 +347,10 @@ func (s *Service) ConsumeBindingCode(
 			return err
 		}
 		var current UserBinding
-		err := tx.Where("im_channel_id = ? AND external_user_id = ? AND revoked_at IS NULL",
-			channel.ID, externalUserID).First(&current).Error
+		err := tx.Where(
+			"im_channel_id = ? AND chat_type = ? AND external_user_id = ? AND revoked_at IS NULL",
+			channel.ID, chatType, externalUserID,
+		).First(&current).Error
 		if err == nil {
 			if current.UserID != request.UserID {
 				return ErrBindingIdentityInUse
@@ -360,6 +378,7 @@ func (s *Service) ConsumeBindingCode(
 			IMChannelID:      channel.ID,
 			ExternalUserID:   strings.TrimSpace(externalUserID),
 			ExternalUserName: strings.TrimSpace(externalUserName),
+			ChatType:         chatType,
 			UserID:           request.UserID,
 			TenantID:         request.TenantID,
 			Status:           IMBindingStatusActive,
@@ -436,7 +455,7 @@ func (s *Service) ListUserBindings(userID string) ([]UserBindingView, error) {
 	var rows []UserBindingView
 	err := s.db.Table("im_user_bindings AS b").
 		Select(`b.id, b.im_channel_id, c.platform, c.name AS channel_name,
-                b.external_user_id, b.external_user_name, b.tenant_id,
+                b.external_user_id, b.external_user_name, b.chat_type, b.tenant_id,
                 t.name AS tenant_name, b.created_at`).
 		Joins("JOIN im_channels AS c ON c.id = b.im_channel_id").
 		Joins("JOIN tenants AS t ON t.id = b.tenant_id").
@@ -467,12 +486,14 @@ func (s *Service) RevokeUserBinding(userID, bindingID string) error {
 // incoming verified platform identity.
 func (s *Service) ResolveActiveBinding(
 	ctx context.Context,
-	channelID, externalUserID string,
+	channelID string,
+	chatType ChatType,
+	externalUserID string,
 ) (*UserBinding, *types.TenantMember, error) {
 	var binding UserBinding
 	if err := s.db.Where(
-		"im_channel_id = ? AND external_user_id = ? AND status = ? AND revoked_at IS NULL",
-		channelID, externalUserID, IMBindingStatusActive,
+		"im_channel_id = ? AND chat_type = ? AND external_user_id = ? AND status = ? AND revoked_at IS NULL",
+		channelID, chatType, externalUserID, IMBindingStatusActive,
 	).First(&binding).Error; err != nil {
 		return nil, nil, err
 	}
@@ -494,8 +515,10 @@ func (s *Service) ValidateActiveBinding(
 	if err := s.db.Table("im_user_bindings AS b").
 		Joins("JOIN im_channels AS c ON c.id = b.im_channel_id").
 		Where(
-			"b.id = ? AND b.status = ? AND b.revoked_at IS NULL AND c.enabled = ? AND c.deleted_at IS NULL",
-			bindingID, IMBindingStatusActive, true,
+			`b.id = ? AND b.status = ? AND b.revoked_at IS NULL
+				AND c.enabled = ? AND c.deleted_at IS NULL
+				AND (b.chat_type != ? OR c.allow_group_chat = ?)`,
+			bindingID, IMBindingStatusActive, true, ChatTypeGroup, true,
 		).Select("b.*").Scan(&binding).Error; err != nil {
 		return nil, nil, err
 	}

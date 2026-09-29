@@ -44,6 +44,10 @@
                   <t-icon :name="channel.personal_binding ? 'user-checked' : 'info-circle'" />
                   {{ channel.personal_binding ? t('imAdmin.personalBindingReady') : t('imAdmin.personalBindingUnavailable') }}
                 </span>
+                <span v-if="channel.personal_binding" :class="{ ok: channel.allow_group_chat }">
+                  <t-icon name="chat-message" />
+                  {{ channel.allow_group_chat ? t('imAdmin.groupChatEnabled') : t('imAdmin.groupChatDisabled') }}
+                </span>
               </div>
               <div v-if="channel.mode === 'webhook' && isSupportedPlatform(channel.platform)" class="callback-row">
                 <code>{{ callbackURL(channel.id) }}</code>
@@ -127,7 +131,7 @@
         </template>
         <template v-else>
           <label>{{ t('agentEditor.im.mode') }}</label>
-          <t-radio-group v-model="form.mode">
+          <t-radio-group v-model="form.mode" @change="onModeChange">
             <t-radio value="websocket">WebSocket</t-radio>
             <t-radio v-if="form.platform !== 'qqbot'" value="webhook">Webhook</t-radio>
           </t-radio-group>
@@ -138,6 +142,14 @@
           <t-radio value="stream">{{ t('agentEditor.im.outputStream') }}</t-radio>
           <t-radio value="full">{{ t('agentEditor.im.outputFull') }}</t-radio>
         </t-radio-group>
+
+        <div v-if="supportsGroupChat(form.platform, form.mode)" class="group-chat-setting">
+          <div>
+            <label>{{ t('imAdmin.allowGroupChat') }}</label>
+            <p>{{ t('imAdmin.allowGroupChatHint') }}</p>
+          </div>
+          <t-switch v-model="form.allow_group_chat" />
+        </div>
 
         <t-alert v-if="editingChannel && form.mode === 'webhook'" theme="info">
           <template #message>
@@ -290,6 +302,7 @@ const form = reactive({
   name: '',
   mode: 'websocket' as IMChannelSummary['mode'],
   output_mode: 'stream' as IMChannelSummary['output_mode'],
+  allow_group_chat: false,
   credentials: {} as Record<string, string>,
 })
 
@@ -329,6 +342,11 @@ function platformLabel(platform: IMChannelSummary['platform']) {
   return t(`agentEditor.im.${platform}`)
 }
 
+function supportsGroupChat(platform: IMPlatform, mode: string) {
+  if (platform === 'wechat' || platform === 'qqbot') return false
+  return platform !== 'wecom' || mode === 'websocket'
+}
+
 function resetForm() {
   stopWeChatPolling()
   Object.assign(form, {
@@ -336,6 +354,7 @@ function resetForm() {
     name: '',
     mode: 'websocket',
     output_mode: 'stream',
+    allow_group_chat: false,
     credentials: {},
   })
   step.value = 0
@@ -360,6 +379,7 @@ function openEdit(channel: IMChannelSummary) {
     name: channel.name,
     mode: channel.mode,
     output_mode: channel.output_mode,
+    allow_group_chat: channel.allow_group_chat,
     credentials: {},
   })
   drawerVisible.value = true
@@ -372,12 +392,19 @@ function closeDrawer() {
 
 function onPlatformChange() {
   form.credentials = {}
+  form.allow_group_chat = false
   if (form.platform === 'wechat') {
     form.mode = 'longpoll'
     form.output_mode = 'full'
   } else {
     form.mode = 'websocket'
     form.output_mode = 'stream'
+  }
+}
+
+function onModeChange() {
+  if (!supportsGroupChat(form.platform, form.mode)) {
+    form.allow_group_chat = false
   }
 }
 
@@ -404,6 +431,7 @@ async function confirmStep() {
       name: form.name.trim() || platformLabel(form.platform),
       mode: form.mode,
       output_mode: form.output_mode,
+      allow_group_chat: form.allow_group_chat,
       credentials: cleanedCredentials(),
     }
     if (editingChannel.value) {
@@ -717,6 +745,23 @@ onUnmounted(stopWeChatPolling)
     color: var(--td-text-color-primary);
     font-size: 13px;
     font-weight: 500;
+  }
+}
+
+.group-chat-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--td-bg-color-secondarycontainer);
+
+  p {
+    margin: 4px 0 0;
+    color: var(--td-text-color-secondary);
+    font-size: 12px;
+    line-height: 1.5;
   }
 }
 

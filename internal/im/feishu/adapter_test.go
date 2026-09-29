@@ -7,20 +7,36 @@ import (
 )
 
 func TestFeishuThreadID_ThreadedReply(t *testing.T) {
-	// Simulate: message is a reply in a thread (root_id is set)
-	msg := &feishuMessage{
-		MessageID: "msg-reply-1",
-		RootID:    "msg-root-1",
-		ParentID:  "msg-parent-1",
+	tests := []struct {
+		name string
+		msg  feishuMessage
+		want string
+	}{
+		{
+			name: "topic uses thread id",
+			msg: feishuMessage{
+				MessageID: "msg-reply-1",
+				RootID:    "msg-root-1",
+				ThreadID:  "thread-1",
+			},
+			want: "thread-1",
+		},
+		{
+			name: "reply falls back to root id",
+			msg: feishuMessage{
+				MessageID: "msg-reply-1",
+				RootID:    "msg-root-1",
+			},
+			want: "msg-root-1",
+		},
 	}
-
-	threadID := msg.RootID
-	if threadID == "" {
-		threadID = msg.MessageID
-	}
-
-	if threadID != "msg-root-1" {
-		t.Errorf("threadID = %q, want %q", threadID, "msg-root-1")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			threadID := resolveFeishuThreadID(tt.msg.ThreadID, tt.msg.RootID, tt.msg.MessageID)
+			if threadID != tt.want {
+				t.Errorf("threadID = %q, want %q", threadID, tt.want)
+			}
+		})
 	}
 }
 
@@ -32,10 +48,7 @@ func TestFeishuThreadID_TopLevelMessage(t *testing.T) {
 		ParentID:  "",
 	}
 
-	threadID := msg.RootID
-	if threadID == "" {
-		threadID = msg.MessageID
-	}
+	threadID := resolveFeishuThreadID(msg.ThreadID, msg.RootID, msg.MessageID)
 
 	if threadID != "msg-top-1" {
 		t.Errorf("threadID = %q, want %q (should use MessageID as fallback)", threadID, "msg-top-1")
@@ -50,6 +63,9 @@ func TestFeishuMessageStruct_JSONFields(t *testing.T) {
 	}
 	if msg.ParentID != "" {
 		t.Errorf("ParentID zero value = %q, want empty", msg.ParentID)
+	}
+	if msg.ThreadID != "" {
+		t.Errorf("ThreadID zero value = %q, want empty", msg.ThreadID)
 	}
 	if msg.MessageID != "" {
 		t.Errorf("MessageID zero value = %q, want empty", msg.MessageID)

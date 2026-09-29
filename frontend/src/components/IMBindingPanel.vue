@@ -38,7 +38,7 @@
             <div class="binding-code__header">
               <div>
                 <h4>{{ t('imBinding.codeTitle') }}</h4>
-                <p>{{ t('imBinding.codeHint', { channel: pendingRequest.channel_name || platformLabel(pendingRequest.platform) }) }}</p>
+                <p>{{ t(bindingCodeHintKey, { channel: pendingRequest.channel_name || platformLabel(pendingRequest.platform) }) }}</p>
               </div>
               <t-tag theme="warning" variant="light">{{ t('imBinding.codeExpires', { time: expiresAtText }) }}</t-tag>
             </div>
@@ -46,7 +46,7 @@
               <code>{{ pendingRequest.code }}</code>
               <t-icon name="file-copy" />
             </button>
-            <t-alert theme="info" :message="t('imBinding.privateChatOnly')" />
+            <t-alert theme="info" :message="t(bindingNoticeKey)" />
           </div>
 
           <t-alert v-else-if="requestState === 'expired'" theme="warning" :message="t('imBinding.expired')" />
@@ -69,11 +69,14 @@
               <div class="binding-card__copy">
                 <div class="binding-card__title">
                   <strong>{{ binding.channel_name || platformLabel(binding.platform) }}</strong>
-                  <span>{{ platformLabel(binding.platform) }}</span>
+                  <span class="platform-name">{{ platformLabel(binding.platform) }}</span>
+                  <t-tag size="small" variant="light">
+                    {{ t(binding.chat_type === 'group' ? 'imBinding.groupBinding' : 'imBinding.privateBinding') }}
+                  </t-tag>
                 </div>
                 <p>
-                  {{ t('imBinding.externalAccount') }}：
-                  {{ binding.external_user_name || binding.external_user_id }}
+                  {{ t(binding.chat_type === 'group' ? 'imBinding.groupConversation' : 'imBinding.externalAccount') }}：
+                  {{ bindingDisplayName(binding) }}
                 </p>
                 <p>{{ t('imBinding.workspaceLabel') }}：{{ binding.tenant_name }}</p>
               </div>
@@ -155,6 +158,10 @@ const workspaceOptions = computed(() => authStore.memberships.map(membership => 
 
 const boundChannelIDs = computed(() => new Set(bindings.value.map(binding => binding.im_channel_id)))
 const availableChannels = computed(() => channels.value.filter(channel => !boundChannelIDs.value.has(channel.id)))
+const pendingChannel = computed(() => channels.value.find(channel => channel.id === pendingRequest.value?.im_channel_id))
+const groupBindingAllowed = computed(() => pendingChannel.value?.allow_group_chat === true)
+const bindingCodeHintKey = computed(() => groupBindingAllowed.value ? 'imBinding.codeHintGroup' : 'imBinding.codeHint')
+const bindingNoticeKey = computed(() => groupBindingAllowed.value ? 'imBinding.groupChatNotice' : 'imBinding.privateChatOnly')
 
 const expiresAtText = computed(() => {
   if (!pendingRequest.value) return ''
@@ -168,6 +175,12 @@ function platformLogo(platform: IMPlatform) {
 
 function platformLabel(platform: IMPlatform) {
   return t(`agentEditor.im.${platform}`)
+}
+
+function bindingDisplayName(binding: IMUserBinding) {
+  if (binding.external_user_name) return binding.external_user_name
+  if (binding.chat_type === 'direct') return binding.external_user_id
+  return binding.external_user_id.slice(-8)
 }
 
 function chooseDefaults() {
@@ -460,7 +473,7 @@ onUnmounted(stopPolling)
     font-size: 13px;
   }
 
-  span {
+  .platform-name {
     color: var(--td-text-color-placeholder);
     font-size: 11px;
   }
