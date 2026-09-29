@@ -161,6 +161,9 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 			if ev.BotID != "" || (ev.SubType != "" && ev.SubType != "file_share") {
 				return nil, nil
 			}
+			if !shouldHandleMessageEvent(ev.ChannelType, ev.ThreadTimeStamp) {
+				return nil, nil
+			}
 			chatType := slackChatType(ev.ChannelType)
 			threadTs := ev.ThreadTimeStamp
 			if threadTs == "" {
@@ -180,6 +183,10 @@ func slackChatType(channelType string) im.ChatType {
 		return im.ChatTypeDirect
 	}
 	return im.ChatTypeGroup
+}
+
+func shouldHandleMessageEvent(channelType, threadTS string) bool {
+	return slackChatType(channelType) == im.ChatTypeDirect || strings.TrimSpace(threadTS) != ""
 }
 
 func (a *Adapter) HandleURLVerification(c *gin.Context) bool {

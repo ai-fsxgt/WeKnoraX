@@ -122,6 +122,9 @@ func (c *LongConnClient) handleEvent(ctx context.Context, eventsAPIEvent slackev
 			if ev.SubType != "" && ev.SubType != "file_share" {
 				return
 			}
+			if !shouldHandleMessageEvent(ev.ChannelType, ev.ThreadTimeStamp) {
+				return
+			}
 
 			chatType := slackChatType(ev.ChannelType)
 
