@@ -51,12 +51,13 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 	}
 
 	var req struct {
-		Platform    string     `json:"platform" binding:"required"`
-		Name        string     `json:"name"`
-		Mode        string     `json:"mode"`
-		OutputMode  string     `json:"output_mode"`
-		Credentials types.JSON `json:"credentials"`
-		Enabled     *bool      `json:"enabled"`
+		Platform       string     `json:"platform" binding:"required"`
+		Name           string     `json:"name"`
+		Mode           string     `json:"mode"`
+		OutputMode     string     `json:"output_mode"`
+		AllowGroupChat bool       `json:"allow_group_chat"`
+		Credentials    types.JSON `json:"credentials"`
+		Enabled        *bool      `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -69,13 +70,14 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 	}
 
 	channel := &im.IMChannel{
-		Platform:    req.Platform,
-		Name:        strings.TrimSpace(req.Name),
-		Mode:        req.Mode,
-		OutputMode:  req.OutputMode,
-		Credentials: req.Credentials,
-		CreatedBy:   userID,
-		Enabled:     false,
+		Platform:       req.Platform,
+		Name:           strings.TrimSpace(req.Name),
+		Mode:           req.Mode,
+		OutputMode:     req.OutputMode,
+		AllowGroupChat: req.AllowGroupChat,
+		Credentials:    req.Credentials,
+		CreatedBy:      userID,
+		Enabled:        false,
 	}
 	if req.Enabled != nil {
 		channel.Enabled = *req.Enabled
@@ -135,12 +137,12 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 //
 // UpdateIMChannel godoc
 // @Summary      更新 IM 渠道
-// @Description  更新系统级 IM 机器人的名称、模式或凭证
+// @Description  更新系统级 IM 机器人的名称、模式、群聊开关或凭证
 // @Tags         IM 渠道
 // @Accept       json
 // @Produce      json
 // @Param        id       path      string                  true  "渠道 ID"
-// @Param        request  body      map[string]interface{}  true  "更新字段（name/mode/output_mode/credentials）"
+// @Param        request  body      map[string]interface{}  true  "渠道配置更新字段"
 // @Success      200      {object}  map[string]interface{}  "更新后的渠道"
 // @Failure      400      {object}  map[string]interface{}  "请求参数错误"
 // @Failure      404      {object}  map[string]interface{}  "渠道不存在"
@@ -160,10 +162,11 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 	}
 
 	var req struct {
-		Name        *string    `json:"name"`
-		Mode        *string    `json:"mode"`
-		OutputMode  *string    `json:"output_mode"`
-		Credentials types.JSON `json:"credentials"`
+		Name           *string    `json:"name"`
+		Mode           *string    `json:"mode"`
+		OutputMode     *string    `json:"output_mode"`
+		AllowGroupChat *bool      `json:"allow_group_chat"`
+		Credentials    types.JSON `json:"credentials"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -178,6 +181,9 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 	}
 	if req.OutputMode != nil {
 		channel.OutputMode = *req.OutputMode
+	}
+	if req.AllowGroupChat != nil {
+		channel.AllowGroupChat = *req.AllowGroupChat
 	}
 	if req.Credentials != nil {
 		mergedCredentials, mergeErr := mergeIMCredentials(channel.Credentials, req.Credentials)
@@ -422,8 +428,8 @@ func (h *IMHandler) ListIMBindings(c *gin.Context) {
 // DeleteIMBinding revokes one active IM binding owned by the current user.
 //
 // DeleteIMBinding godoc
-// @Summary      解除个人 IM 绑定
-// @Description  撤销当前用户指定的 IM 账号绑定
+// @Summary      解除 IM 绑定
+// @Description  撤销当前用户创建的个人或群聊绑定
 // @Tags         IM 绑定
 // @Produce      json
 // @Param        id   path      string                  true  "绑定 ID"
@@ -451,7 +457,7 @@ func (h *IMHandler) DeleteIMBinding(c *gin.Context) {
 func writeIMBindingError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, im.ErrBindingUnavailable):
-		c.JSON(http.StatusBadRequest, gin.H{"error": "channel is unavailable for personal binding"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel is unavailable for account binding"})
 	case errors.Is(err, im.ErrBindingMembershipInvalid):
 		c.JSON(http.StatusForbidden, gin.H{"error": "workspace membership is unavailable"})
 	default:

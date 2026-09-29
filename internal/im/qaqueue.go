@@ -48,7 +48,7 @@ type qaRequest struct {
 	// tenant is used to resolve provider:// URLs in outbound replies (scheme-aware).
 	tenant *types.Tenant
 
-	// userKey is the binding ID, used for per-user limits and /stop.
+	// userKey identifies one direct binding or one member context in a group binding.
 	userKey       string
 	enqueuedAt    time.Time
 	queueTimedOut bool

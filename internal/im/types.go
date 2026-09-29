@@ -22,6 +22,8 @@ type IMChannel struct {
 	Enabled    bool   `json:"enabled"      gorm:"not null;default:false"`
 	Mode       string `json:"mode"         gorm:"type:varchar(20);not null;default:'websocket'"`
 	OutputMode string `json:"output_mode"  gorm:"type:varchar(20);not null;default:'stream'"`
+	// AllowGroupChat permits group conversations to bind a dedicated account.
+	AllowGroupChat bool `json:"allow_group_chat" gorm:"not null;default:false"`
 	// The partial unique index predicate is intentionally kept beside the field it protects.
 	//nolint:lll
 	BotIdentity string         `json:"bot_identity" gorm:"type:varchar(255);not null;default:'';uniqueIndex:idx_im_channels_bot_identity,where:deleted_at IS NULL AND bot_identity != ''"`
@@ -45,6 +47,7 @@ type IMChannelSummary struct {
 	Enabled               bool      `json:"enabled"`
 	Mode                  string    `json:"mode"`
 	OutputMode            string    `json:"output_mode"`
+	AllowGroupChat        bool      `json:"allow_group_chat"`
 	BotIdentity           string    `json:"bot_identity"`
 	PersonalBinding       bool      `json:"personal_binding"`
 	CredentialsConfigured bool      `json:"credentials_configured"`
@@ -62,6 +65,7 @@ func SummarizeIMChannel(ch IMChannel) IMChannelSummary {
 		Enabled:               ch.Enabled,
 		Mode:                  ch.Mode,
 		OutputMode:            ch.OutputMode,
+		AllowGroupChat:        ch.AllowGroupChat,
 		BotIdentity:           ch.BotIdentity,
 		PersonalBinding:       SupportsPersonalBinding(ch.Platform),
 		CredentialsConfigured: imCredentialsConfigured(ch.Credentials),
@@ -239,6 +243,7 @@ type UserBinding struct {
 	IMChannelID      string     `json:"im_channel_id"    gorm:"type:varchar(36);not null;index"`
 	ExternalUserID   string     `json:"external_user_id" gorm:"type:varchar(255);not null"`
 	ExternalUserName string     `json:"external_user_name" gorm:"type:varchar(255);not null;default:''"`
+	ChatType         ChatType   `json:"chat_type"          gorm:"type:varchar(20);not null;default:'direct'"`
 	UserID           string     `json:"user_id"          gorm:"type:varchar(36);not null;index"`
 	TenantID         uint64     `json:"tenant_id"        gorm:"not null;index"`
 	Status           string     `json:"status"           gorm:"type:varchar(20);not null;default:'active'"`
@@ -258,11 +263,14 @@ func (b *UserBinding) BeforeCreate(_ *gorm.DB) error {
 	if b.Status == "" {
 		b.Status = IMBindingStatusActive
 	}
+	if b.ChatType == "" {
+		b.ChatType = ChatTypeDirect
+	}
 	return nil
 }
 
 // BindingRequest is a short-lived, single-use proof initiated by an
-// authenticated web user and completed by a private message to the bot.
+// authenticated web user and completed in a direct or enabled group chat.
 type BindingRequest struct {
 	ID          string `json:"id"                     gorm:"type:varchar(36);primaryKey"`
 	CodeHash    string `json:"-"                      gorm:"type:varchar(64);not null;uniqueIndex"`
@@ -294,13 +302,14 @@ func (r *BindingRequest) BeforeCreate(_ *gorm.DB) error {
 	return nil
 }
 
-// ChannelSession maps one binding to its current WeKnora conversation.
+// ChannelSession maps one binding context to its current WeKnora conversation.
 type ChannelSession struct {
 	ID          string         `json:"id"            gorm:"type:varchar(36);primaryKey;default:uuid_generate_v4()"`
 	BindingID   string         `json:"binding_id"    gorm:"type:varchar(36);not null;index"`
 	SessionID   string         `json:"session_id"    gorm:"type:varchar(36);not null;index"`
 	TenantID    uint64         `json:"tenant_id"     gorm:"not null;index"`
 	IMChannelID string         `json:"im_channel_id" gorm:"type:varchar(36);not null;index"`
+	ContextKey  string         `json:"context_key"   gorm:"type:varchar(255);not null;default:''"`
 	Status      string         `json:"status"        gorm:"type:varchar(20);not null;default:'active'"`
 	Metadata    types.JSON     `json:"metadata"      gorm:"type:jsonb;default:'{}'"`
 	CreatedAt   time.Time      `json:"created_at"`

@@ -305,7 +305,7 @@ type Service struct {
 	rateLimiter  *ratelimit.Limiter
 	rateLimitMax int
 
-	// inflight tracks in-progress QA requests, keyed by binding ID. Allows
+	// inflight tracks in-progress QA requests, keyed by binding context. Allows
 	// /stop and binding revocation to abort a running request
 	// on this instance and look up (sessionID, messageID) for StreamManager.
 	inflight sync.Map // userKey -> *inflightEntry
@@ -1513,19 +1513,33 @@ func (s *Service) cancelBindingRequests(bindingID string) {
 	if bindingID == "" {
 		return
 	}
-	if s.qaQueue != nil {
-		for s.qaQueue.Remove(bindingID) {
-		}
+	requestKeys := []string{bindingID}
+	var contextKeys []string
+	if err := s.db.Unscoped().Model(&ChannelSession{}).
+		Distinct("context_key").
+		Where("binding_id = ? AND context_key != ''", bindingID).
+		Pluck("context_key", &contextKeys).Error; err != nil {
+		logger.Warnf(context.Background(), "[IM] Failed to load binding contexts for cancellation: %v", err)
 	}
-	if raw, loaded := s.inflight.LoadAndDelete(bindingID); loaded {
-		raw.(*inflightEntry).cancel()
+	for _, contextKey := range contextKeys {
+		requestKeys = append(requestKeys, bindingRequestKeyForContext(bindingID, contextKey))
 	}
+
 	ctx := context.Background()
-	if sessionID, messageID, ok := s.loadInflightMapping(ctx, bindingID); ok {
-		s.writeStopEvent(ctx, sessionID, messageID)
-	}
-	if s.redis != nil {
-		_ = s.redis.Set(ctx, RedisKeyStop+bindingID, "1", stopMarkerTTL).Err()
+	for _, requestKey := range requestKeys {
+		if s.qaQueue != nil {
+			for s.qaQueue.Remove(requestKey) {
+			}
+		}
+		if raw, loaded := s.inflight.LoadAndDelete(requestKey); loaded {
+			raw.(*inflightEntry).cancel()
+		}
+		if sessionID, messageID, ok := s.loadInflightMapping(ctx, requestKey); ok {
+			s.writeStopEvent(ctx, sessionID, messageID)
+		}
+		if s.redis != nil {
+			_ = s.redis.Set(ctx, RedisKeyStop+requestKey, "1", stopMarkerTTL).Err()
+		}
 	}
 }
 
@@ -1614,6 +1628,7 @@ func sameChannelRuntimeConfig(cached, fresh *IMChannel) bool {
 		cached.Enabled == fresh.Enabled &&
 		cached.Mode == fresh.Mode &&
 		cached.OutputMode == fresh.OutputMode &&
+		cached.AllowGroupChat == fresh.AllowGroupChat &&
 		equalChannelCredentials(cached.Credentials, fresh.Credentials)
 }
 
@@ -1705,33 +1720,38 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		}
 	}
 
-	if msg.ChatType != ChatTypeDirect {
+	if !SupportsPersonalBinding(channel.Platform) {
 		_ = adapter.SendReply(ctx, msg, &ReplyMessage{
-			Content: "个人知识库问答仅支持与机器人私聊。",
+			Content: "当前渠道尚未开放账号绑定。",
 			IsFinal: true,
 		})
 		return nil
 	}
-	if !SupportsPersonalBinding(channel.Platform) {
+	if msg.ChatType == ChatTypeGroup && !channel.AllowGroupChat {
 		_ = adapter.SendReply(ctx, msg, &ReplyMessage{
-			Content: "当前渠道尚未开放个人账号绑定。",
+			Content: "当前机器人未开启群聊问答，请在机器人单聊中使用。",
 			IsFinal: true,
 		})
 		return nil
+	}
+	chatType, externalID, externalName, err := bindingIdentity(msg)
+	if err != nil {
+		return err
 	}
 
 	if IsBindingCode(msg.Content) {
-		return s.handleBindingCode(ctx, adapter, channelID, msg)
+		return s.handleBindingCode(ctx, adapter, channelID, chatType, externalID, externalName, msg)
 	}
 
-	binding, member, err := s.ResolveActiveBinding(ctx, channelID, msg.UserID)
+	binding, member, err := s.ResolveActiveBinding(ctx, channelID, chatType, externalID)
 	if err != nil {
 		systemName := s.systemName(ctx)
-		content := fmt.Sprintf(
-			"尚未绑定「%s」账号。请先登录「%s」，在 IM 绑定页面选择工作空间，再将生成的绑定码发送给我。",
-			systemName,
-			systemName,
-		)
+		content := fmt.Sprintf("尚未绑定「%s」账号。请先登录「%s」，在 IM 绑定页面选择工作空间，再将生成的绑定码发送给我。",
+			systemName, systemName)
+		if chatType == ChatTypeGroup {
+			content = fmt.Sprintf("当前群尚未绑定知识库账号。请使用该群的专用账号登录「%s」生成绑定码，并在本群发送给机器人。",
+				systemName)
+		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			if errors.Is(err, ErrBindingMembershipInvalid) {
 				content = fmt.Sprintf("绑定的账号或工作空间权限已失效，请登录「%s」重新绑定。", systemName)
@@ -1853,7 +1873,7 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 	// 5. Enqueue the QA request into the bounded worker pool.
 	// The worker pool controls LLM concurrency and provides backpressure.
 	qaCtx, qaCancel := context.WithCancel(sessionCtx)
-	userKey := binding.ID
+	userKey := bindingRequestKey(binding.ID, msg)
 
 	req := &qaRequest{
 		ctx:       qaCtx,
@@ -1905,23 +1925,55 @@ func isStopCommand(content string) bool {
 	return len(fields) > 0 && strings.EqualFold(fields[0], "/stop")
 }
 
+func bindingIdentity(msg *IncomingMessage) (ChatType, string, string, error) {
+	if msg == nil {
+		return "", "", "", errors.New("incoming message is nil")
+	}
+	switch msg.ChatType {
+	case ChatTypeDirect:
+		if strings.TrimSpace(msg.UserID) == "" {
+			return "", "", "", errors.New("direct message user id is empty")
+		}
+		return ChatTypeDirect, strings.TrimSpace(msg.UserID), strings.TrimSpace(msg.UserName), nil
+	case ChatTypeGroup:
+		if strings.TrimSpace(msg.ChatID) == "" {
+			return "", "", "", errors.New("group message chat id is empty")
+		}
+		if strings.TrimSpace(msg.UserID) == "" {
+			return "", "", "", errors.New("group message user id is empty")
+		}
+		return ChatTypeGroup, strings.TrimSpace(msg.ChatID), "", nil
+	default:
+		return "", "", "", fmt.Errorf("unsupported IM chat type: %s", msg.ChatType)
+	}
+}
+
 func (s *Service) handleBindingCode(
 	ctx context.Context,
 	adapter Adapter,
 	channelID string,
+	chatType ChatType,
+	externalID string,
+	externalName string,
 	msg *IncomingMessage,
 ) error {
-	_, err := s.ConsumeBindingCode(ctx, channelID, msg.UserID, msg.UserName, msg.Content)
+	_, err := s.ConsumeBindingCode(ctx, channelID, chatType, externalID, externalName, msg.Content)
 	systemName := s.systemName(ctx)
 	content := fmt.Sprintf("绑定成功，后续将使用你在「%s」中选择的工作空间。", systemName)
+	if chatType == ChatTypeGroup {
+		content = fmt.Sprintf("群聊绑定成功。群成员将使用当前账号在「%s」中选择的工作空间，并分别维护对话上下文。", systemName)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrBindingCodeInvalid):
 			content = fmt.Sprintf("绑定码无效或已过期，请登录「%s」重新生成。", systemName)
 		case errors.Is(err, ErrBindingIdentityInUse):
 			content = fmt.Sprintf("当前 IM 账号已绑定其他「%s」账号，请先解除原绑定。", systemName)
+			if chatType == ChatTypeGroup {
+				content = fmt.Sprintf("当前群已绑定其他「%s」账号，请先解除原绑定。", systemName)
+			}
 		case errors.Is(err, ErrBindingUserInUse):
-			content = fmt.Sprintf("当前「%s」账号已绑定该机器人下的其他 IM 账号，请先解除原绑定。", systemName)
+			content = fmt.Sprintf("当前「%s」账号已绑定该机器人下的其他私聊或群聊，请先解除原绑定。", systemName)
 		case errors.Is(err, ErrBindingMembershipInvalid):
 			content = fmt.Sprintf("账号或工作空间权限已失效，请返回「%s」重新选择。", systemName)
 		case errors.Is(err, ErrBindingUnavailable):
@@ -2201,7 +2253,7 @@ func (s *Service) handleCommand(
 			logger.Warnf(ctx, "[IM] Failed to soft-delete channel session: %v", err)
 		}
 	case ActionStop:
-		inflightKey := binding.ID
+		inflightKey := bindingRequestKey(binding.ID, msg)
 
 		// 1. Try local cancel: remove from queue or cancel in-flight.
 		var localSessionID, localMessageID string
@@ -2305,6 +2357,8 @@ func buildBindingSessionTitle(msg *IncomingMessage) string {
 	}
 	if msg.ChatType == ChatTypeDirect {
 		b.WriteString(" · dm")
+	} else if msg.ChatType == ChatTypeGroup {
+		b.WriteString(" · group")
 	}
 	return b.String()
 }
@@ -2319,23 +2373,44 @@ func shortID(id string) string {
 }
 
 func imInitialSessionTitle(msg *IncomingMessage) string {
+	if msg.ChatType == ChatTypeGroup {
+		return buildBindingSessionTitle(msg)
+	}
 	if strings.TrimSpace(msg.Content) != "" {
 		return ""
 	}
 	return buildBindingSessionTitle(msg)
 }
 
-// resolveBindingSession gives each active binding one current conversation.
-// Revoking the binding soft-deletes this mapping, so a later binding always
-// starts from a clean session.
+func bindingSessionContextKey(msg *IncomingMessage) string {
+	if msg != nil && msg.ChatType == ChatTypeGroup {
+		return strings.TrimSpace(msg.UserID)
+	}
+	return ""
+}
+
+func bindingRequestKeyForContext(bindingID, contextKey string) string {
+	if contextKey == "" {
+		return bindingID
+	}
+	return bindingID + ":" + contextKey
+}
+
+func bindingRequestKey(bindingID string, msg *IncomingMessage) string {
+	return bindingRequestKeyForContext(bindingID, bindingSessionContextKey(msg))
+}
+
+// resolveBindingSession gives each direct binding one current conversation and
+// each member of a group binding an independent current conversation.
 func (s *Service) resolveBindingSession(
 	ctx context.Context,
 	msg *IncomingMessage,
 	binding *UserBinding,
 	imChannelID string,
 ) (*ChannelSession, error) {
+	contextKey := bindingSessionContextKey(msg)
 	var cs ChannelSession
-	result := s.db.Where("binding_id = ? AND deleted_at IS NULL", binding.ID).
+	result := s.db.Where("binding_id = ? AND context_key = ? AND deleted_at IS NULL", binding.ID, contextKey).
 		First(&cs)
 
 	if result.Error == nil {
@@ -2363,13 +2438,16 @@ func (s *Service) resolveBindingSession(
 		SessionID:   createdSession.ID,
 		TenantID:    binding.TenantID,
 		IMChannelID: imChannelID,
+		ContextKey:  contextKey,
 	}
 	if err := s.db.Create(&cs).Error; err != nil {
 		if delErr := s.db.Where("id = ?", createdSession.ID).Delete(createdSession).Error; delErr != nil {
 			logger.Warnf(ctx, "[IM] Failed to clean up orphaned session %s: %v", createdSession.ID, delErr)
 		}
 		var existing ChannelSession
-		if findErr := s.db.Where("binding_id = ? AND deleted_at IS NULL", binding.ID).
+		if findErr := s.db.Where(
+			"binding_id = ? AND context_key = ? AND deleted_at IS NULL", binding.ID, contextKey,
+		).
 			First(&existing).Error; findErr != nil {
 			return nil, fmt.Errorf("create channel session: %w (lookup fallback: %v)", err, findErr)
 		}
@@ -3299,6 +3377,10 @@ func (s *Service) ToggleChannel(channelID string) (*IMChannel, error) {
 }
 
 func validateChannel(channel *IMChannel) error {
+	if channel.AllowGroupChat && !SupportsPersonalBinding(channel.Platform) {
+		return fmt.Errorf("%w: platform %s does not support group account binding",
+			ErrChannelConfigurationInvalid, channel.Platform)
+	}
 	credentials, err := ParseCredentials(channel.Credentials)
 	if err != nil {
 		return fmt.Errorf("%w: credentials must be a JSON object", ErrChannelConfigurationInvalid)
