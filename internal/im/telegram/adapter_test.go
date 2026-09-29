@@ -78,8 +78,8 @@ func TestParseTelegramMessage_Document(t *testing.T) {
 		MessageID:       400,
 		MessageThreadID: 7, // in a Forum topic
 		From:            &telegramUser{ID: 1004, FirstName: "Dave"},
-		ReplyToMessage:  &telegramMsg{From: &telegramUser{ID: testBot.ID, IsBot: true}},
 		Chat:            telegramChat{ID: -7777, Type: "supergroup"},
+		Caption:         "@test_bot 总结文件",
 		Document: &telegramDoc{
 			FileID:   "doc-123",
 			FileName: "report.pdf",
@@ -97,6 +97,9 @@ func TestParseTelegramMessage_Document(t *testing.T) {
 	}
 	if incoming.MessageType != im.MessageTypeFile {
 		t.Errorf("MessageType = %q, want %q", incoming.MessageType, im.MessageTypeFile)
+	}
+	if incoming.Content != "总结文件" {
+		t.Errorf("Content = %q, want %q", incoming.Content, "总结文件")
 	}
 }
 

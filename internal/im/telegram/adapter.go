@@ -87,6 +87,7 @@ type telegramMsg struct {
 	ReplyToMessage  *telegramMsg    `json:"reply_to_message"`
 	Chat            telegramChat    `json:"chat"`
 	Text            string          `json:"text"`
+	Caption         string          `json:"caption"`
 	Document        *telegramDoc    `json:"document"`
 	Photo           []telegramPhoto `json:"photo"`
 }
@@ -173,6 +174,9 @@ func parseTelegramMessage(msg *telegramMsg, bot botIdentity) *im.IncomingMessage
 	}
 
 	content := msg.Text
+	if content == "" {
+		content = msg.Caption
+	}
 	if chatType == im.ChatTypeGroup {
 		var addressed bool
 		content, addressed = normalizeGroupContent(strings.TrimSpace(content), bot.Username)
