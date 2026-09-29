@@ -5,9 +5,19 @@ ALTER TABLE im_channels
 
 ALTER TABLE im_user_bindings
     ADD COLUMN IF NOT EXISTS chat_type VARCHAR(20) NOT NULL DEFAULT 'direct';
-ALTER TABLE im_user_bindings
-    ADD CONSTRAINT chk_im_user_bindings_chat_type
-    CHECK (chat_type IN ('direct', 'group'));
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'im_user_bindings'::regclass
+          AND conname = 'chk_im_user_bindings_chat_type'
+    ) THEN
+        ALTER TABLE im_user_bindings
+            ADD CONSTRAINT chk_im_user_bindings_chat_type
+            CHECK (chat_type IN ('direct', 'group'));
+    END IF;
+END $$;
 
 DROP INDEX IF EXISTS idx_im_user_bindings_external_active;
 CREATE UNIQUE INDEX idx_im_user_bindings_external_active
