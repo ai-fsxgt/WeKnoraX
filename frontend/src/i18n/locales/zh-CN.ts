@@ -856,7 +856,7 @@ export default {
     groupChatEnabled: '已开启群聊问答',
     groupChatDisabled: '未开启群聊问答',
     allowGroupChat: '允许群聊问答',
-    allowGroupChatHint: '开启后，可在群聊中发送绑定码，将该群绑定到独立的知识库账号；群成员分别维护对话上下文。',
+    allowGroupChatHint: '开启后，可在群聊中发送绑定码；同一个知识库账号可以绑定多个群，群成员分别维护对话上下文。',
     wechatFixedMode: '微信使用固定的长轮询接入和完整输出模式。',
     credentialsPreserved: '凭据不会回显；留空将保留已保存的值。',
     loadFailed: '加载 IM 机器人失败'
@@ -874,7 +874,7 @@ export default {
     codeHintGroup: '将绑定码私聊发送给 {channel} 可绑定个人账号，发送到目标群聊可绑定该群，无需输入命令。',
     codeExpires: '{time} 前有效',
     privateChatOnly: '仅支持与机器人私聊；请勿在群聊中发送绑定码。',
-    groupChatNotice: '群聊绑定应使用该群专用的知识库账号；绑定后，群成员分别维护对话上下文。',
+    groupChatNotice: '同一个知识库账号可以绑定多个群；绑定后，各群成员分别维护对话上下文。',
     currentBindings: '当前绑定',
     noBindings: '尚未绑定任何 IM 账号',
     noChannelsTitle: '暂无可绑定机器人',

@@ -13,7 +13,7 @@ import (
 // create to stay in sync with the versioned (PostgreSQL) migrations:
 // 000041 task queue, 000053 system settings, 000055 processing spans,
 // 000063 knowledge multi-tags, 000090 multi-workspace third-party integrations,
-// 000091 per-user IM bindings, 000092 group chat bindings.
+// 000091 per-user IM bindings, 000092 group chat bindings, 000093 multi-group bindings.
 var versionedSQLiteTables = []string{
 	"task_pending_ops",
 	"task_dead_letters",
@@ -46,7 +46,7 @@ var versionedSQLiteColumns = map[string][]string{
 	"im_channel_sessions": {"binding_id", "context_key"},      // 000091, 000092
 }
 
-const expectedSQLiteMigrationVersion = 18
+const expectedSQLiteMigrationVersion = 19
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

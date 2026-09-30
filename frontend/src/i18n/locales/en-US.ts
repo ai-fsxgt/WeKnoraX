@@ -5572,7 +5572,7 @@ export default {
     groupChatEnabled: 'Group chat enabled',
     groupChatDisabled: 'Group chat disabled',
     allowGroupChat: 'Allow group chat Q&A',
-    allowGroupChatHint: 'When enabled, send a binding code in a group to bind it to a dedicated knowledge account. Each member keeps a separate conversation context.',
+    allowGroupChatHint: 'When enabled, send a binding code in a group. The same knowledge account can bind multiple groups, and each member keeps a separate conversation context.',
     wechatFixedMode: 'WeChat uses fixed long polling and full response output.',
     credentialsPreserved: 'Credentials are never displayed. Leave a field blank to keep its saved value.',
     loadFailed: 'Failed to load IM bots'
@@ -5590,7 +5590,7 @@ export default {
     codeHintGroup: 'Send this code privately to {channel} to bind your account, or send it in the target group to bind that group. No command is required.',
     codeExpires: 'Valid until {time}',
     privateChatOnly: 'Private chats only. Do not send the binding code in a group chat.',
-    groupChatNotice: 'Use a dedicated knowledge account for each group. After binding, each member keeps a separate conversation context.',
+    groupChatNotice: 'The same knowledge account can bind multiple groups. After binding, each group member keeps a separate conversation context.',
     currentBindings: 'Current Bindings',
     noBindings: 'No IM accounts are bound yet',
     noChannelsTitle: 'No Bots Available',
