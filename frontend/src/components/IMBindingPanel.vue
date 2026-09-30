@@ -156,8 +156,12 @@ const workspaceOptions = computed(() => authStore.memberships.map(membership => 
   label: membership.tenant_name || String(membership.tenant_id),
 })))
 
-const boundChannelIDs = computed(() => new Set(bindings.value.map(binding => binding.im_channel_id)))
-const availableChannels = computed(() => channels.value.filter(channel => !boundChannelIDs.value.has(channel.id)))
+const privateBoundChannelIDs = computed(() => new Set(bindings.value
+  .filter(binding => binding.chat_type === 'direct')
+  .map(binding => binding.im_channel_id)))
+const availableChannels = computed(() => channels.value.filter(
+  channel => channel.allow_group_chat || !privateBoundChannelIDs.value.has(channel.id),
+))
 const pendingChannel = computed(() => channels.value.find(channel => channel.id === pendingRequest.value?.im_channel_id))
 const groupBindingAllowed = computed(() => pendingChannel.value?.allow_group_chat === true)
 const bindingCodeHintKey = computed(() => groupBindingAllowed.value ? 'imBinding.codeHintGroup' : 'imBinding.codeHint')

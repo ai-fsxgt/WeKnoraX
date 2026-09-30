@@ -13,7 +13,7 @@ import (
 // create to stay in sync with the versioned (PostgreSQL) migrations:
 // 000041 task queue, 000053 system settings, 000055 processing spans,
 // 000063 knowledge multi-tags, 000090 multi-workspace third-party integrations,
-// 000091 per-user IM bindings, 000092 group chat bindings.
+// 000091 per-user IM bindings, 000092 group chat bindings, 000093 multi-group bindings.
 var versionedSQLiteTables = []string{
 	"task_pending_ops",
 	"task_dead_letters",
@@ -46,7 +46,7 @@ var versionedSQLiteColumns = map[string][]string{
 	"im_channel_sessions": {"binding_id", "context_key"},      // 000091, 000092
 }
 
-const expectedSQLiteMigrationVersion = 18
+const expectedSQLiteMigrationVersion = 19
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)
@@ -77,6 +77,7 @@ func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 
 	assertSQLiteShareLinkInvitationsWork(t, db)
 	assertSQLiteMCPOAuthPrincipalUpsertWorks(t, db)
+	assertSQLiteIMBindingUniqueness(t, db)
 	require.False(t, sqliteColumnExists(t, db, "knowledges", "tag_id"),
 		"SQLite migrations must drop legacy knowledges.tag_id after multi-tag migration")
 }
@@ -129,6 +130,8 @@ func TestSQLiteMigrationsUpgradeV4PreservesData(t *testing.T) {
 			)
 		}
 	}
+
+	assertSQLiteIMBindingUniqueness(t, db)
 
 	var sentinelName string
 	require.NoError(t, db.QueryRow("SELECT name FROM tenants WHERE business = ?", "migration-test").Scan(&sentinelName))
@@ -251,6 +254,39 @@ func assertSQLiteMCPOAuthPrincipalUpsertWorks(t *testing.T, db *sql.DB) {
 		"SELECT COUNT(*) FROM mcp_oauth_tokens WHERE tenant_id = 1 AND service_id = 'svc-migration-1'",
 	).Scan(&rowCount))
 	require.Equal(t, 1, rowCount)
+}
+
+func assertSQLiteIMBindingUniqueness(t *testing.T, db *sql.DB) {
+	t.Helper()
+	_, err := db.Exec("INSERT INTO tenants (id, name, business) VALUES (9001, 'im-workspace', 'im-test')")
+	require.NoError(t, err)
+	for _, userID := range []string{"im-user-1", "im-user-2"} {
+		_, err = db.Exec(
+			"INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, 'unused')",
+			userID, userID, userID+"@example.invalid",
+		)
+		require.NoError(t, err)
+	}
+	_, err = db.Exec("INSERT INTO im_channels (id, platform, allow_group_chat) VALUES ('im-bot', 'dingtalk', 1)")
+	require.NoError(t, err)
+
+	insertBinding := `INSERT INTO im_user_bindings
+		(id, im_channel_id, user_id, tenant_id, chat_type, external_user_id)
+		VALUES (?, 'im-bot', ?, 9001, ?, ?)`
+	_, err = db.Exec(insertBinding, "group-binding-1", "im-user-1", "group", "group-1")
+	require.NoError(t, err)
+	_, err = db.Exec(insertBinding, "group-binding-2", "im-user-1", "group", "group-2")
+	require.NoError(t, err, "one account must be able to bind multiple groups on the same bot")
+	_, err = db.Exec(insertBinding, "direct-binding-1", "im-user-1", "direct", "direct-1")
+	require.NoError(t, err, "group bindings must not occupy the account's direct binding")
+
+	_, err = db.Exec(insertBinding, "direct-binding-2", "im-user-1", "direct", "direct-2")
+	require.ErrorContains(t, err,
+		"UNIQUE constraint failed: im_user_bindings.im_channel_id, im_user_bindings.user_id")
+	_, err = db.Exec(insertBinding, "group-binding-other-user", "im-user-2", "group", "group-1")
+	require.ErrorContains(t, err,
+		"UNIQUE constraint failed: im_user_bindings.im_channel_id, im_user_bindings.chat_type, "+
+			"im_user_bindings.external_user_id")
 }
 
 func copySQLiteMigrationsV4(t *testing.T, repoRoot string) string {

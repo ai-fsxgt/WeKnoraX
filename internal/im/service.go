@@ -1783,7 +1783,7 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		content := fmt.Sprintf("尚未绑定「%s」账号。请先登录「%s」，在 IM 绑定页面选择工作空间，再将生成的绑定码发送给我。",
 			systemName, systemName)
 		if chatType == ChatTypeGroup {
-			content = fmt.Sprintf("当前群尚未绑定知识库账号。请使用该群的专用账号登录「%s」生成绑定码，并在本群发送给机器人。",
+			content = fmt.Sprintf("当前群尚未绑定知识库账号。请登录「%s」生成绑定码，并在本群发送给机器人；同一账号可以绑定多个群。",
 				systemName)
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -2008,7 +2008,7 @@ func (s *Service) handleBindingCode(
 				content = fmt.Sprintf("当前群已绑定其他「%s」账号，请先解除原绑定。", systemName)
 			}
 		case errors.Is(err, ErrBindingUserInUse):
-			content = fmt.Sprintf("当前「%s」账号已绑定该机器人下的其他私聊或群聊，请先解除原绑定。", systemName)
+			content = fmt.Sprintf("当前「%s」账号已绑定该机器人下的其他私聊，请先解除原绑定。", systemName)
 		case errors.Is(err, ErrBindingMembershipInvalid):
 			content = fmt.Sprintf("账号或工作空间权限已失效，请返回「%s」重新选择。", systemName)
 		case errors.Is(err, ErrBindingUnavailable):

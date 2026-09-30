@@ -29,7 +29,7 @@ var (
 	ErrBindingCodeInvalid = errors.New("invalid or expired binding code")
 	// ErrBindingIdentityInUse prevents one IM identity from belonging to multiple accounts.
 	ErrBindingIdentityInUse = errors.New("IM identity is already bound to another account")
-	// ErrBindingUserInUse prevents one account from binding multiple identities on the same bot.
+	// ErrBindingUserInUse prevents one account from binding multiple direct identities on the same bot.
 	ErrBindingUserInUse = errors.New("account is already bound to another identity for this bot")
 	// ErrBindingUnavailable means the selected bot cannot accept account bindings.
 	ErrBindingUnavailable = errors.New("IM channel is unavailable for account binding")
@@ -363,14 +363,18 @@ func (s *Service) ConsumeBindingCode(
 			return err
 		}
 
-		var userBinding UserBinding
-		err = tx.Where("im_channel_id = ? AND user_id = ? AND revoked_at IS NULL",
-			channel.ID, request.UserID).First(&userBinding).Error
-		if err == nil {
-			return ErrBindingUserInUse
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+		if chatType == ChatTypeDirect {
+			var userBinding UserBinding
+			err = tx.Where(
+				"im_channel_id = ? AND user_id = ? AND chat_type = ? AND revoked_at IS NULL",
+				channel.ID, request.UserID, ChatTypeDirect,
+			).First(&userBinding).Error
+			if err == nil {
+				return ErrBindingUserInUse
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 		}
 
 		binding = &UserBinding{

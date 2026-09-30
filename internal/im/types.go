@@ -22,7 +22,7 @@ type IMChannel struct {
 	Enabled    bool   `json:"enabled"      gorm:"not null;default:false"`
 	Mode       string `json:"mode"         gorm:"type:varchar(20);not null;default:'websocket'"`
 	OutputMode string `json:"output_mode"  gorm:"type:varchar(20);not null;default:'stream'"`
-	// AllowGroupChat permits group conversations to bind a dedicated account.
+	// AllowGroupChat permits group conversations to bind an account.
 	AllowGroupChat bool `json:"allow_group_chat" gorm:"not null;default:false"`
 	// The partial unique index predicate is intentionally kept beside the field it protects.
 	//nolint:lll

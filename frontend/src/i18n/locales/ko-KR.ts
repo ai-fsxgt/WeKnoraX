@@ -854,7 +854,7 @@ export default {
     groupChatEnabled: '그룹 채팅 활성화됨',
     groupChatDisabled: '그룹 채팅 비활성화됨',
     allowGroupChat: '그룹 채팅 질의응답 허용',
-    allowGroupChatHint: '활성화하면 그룹에서 바인딩 코드를 보내 전용 지식 계정에 연결할 수 있으며 각 구성원은 별도의 대화 컨텍스트를 유지합니다.',
+    allowGroupChatHint: '활성화하면 그룹에서 바인딩 코드를 보낼 수 있습니다. 동일한 지식 계정으로 여러 그룹을 연결할 수 있으며 각 구성원은 별도의 대화 컨텍스트를 유지합니다.',
     wechatFixedMode: 'WeChat은 고정된 롱 폴링과 전체 응답 출력 모드를 사용합니다.',
     credentialsPreserved: '자격 증명은 표시되지 않습니다. 비워 두면 저장된 값이 유지됩니다.',
     loadFailed: 'IM 봇을 불러오지 못했습니다'
@@ -872,7 +872,7 @@ export default {
     codeHintGroup: '개인 계정은 {channel}에 비공개로, 그룹은 대상 그룹에 이 코드를 보내 바인딩하세요. 명령어는 필요하지 않습니다.',
     codeExpires: '{time}까지 유효',
     privateChatOnly: '비공개 채팅에서만 지원됩니다. 그룹 채팅에 바인딩 코드를 보내지 마세요.',
-    groupChatNotice: '각 그룹에는 전용 지식 계정을 사용하세요. 바인딩 후 각 구성원은 별도의 대화 컨텍스트를 유지합니다.',
+    groupChatNotice: '동일한 지식 계정으로 여러 그룹을 연결할 수 있습니다. 연결 후 각 그룹 구성원은 별도의 대화 컨텍스트를 유지합니다.',
     currentBindings: '현재 바인딩',
     noBindings: '바인딩된 IM 계정이 없습니다',
     noChannelsTitle: '사용 가능한 봇 없음',
