@@ -13,14 +13,14 @@ permissions:
   contents: read
 
 env:
-  REGISTRY: docker.io
-  REGISTRY_NAMESPACE: wslmf
+  REGISTRY: ${{ github.event_name == 'workflow_dispatch' && 'docker.io' || 'registry.cn-hangzhou.aliyuncs.com' }}
+  REGISTRY_NAMESPACE: ${{ github.event_name == 'workflow_dispatch' && 'wslmf' || 'ripper' }}
   NODE_VERSION: "24"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     permissions:
       contents: read
       actions: read
@@ -183,7 +183,7 @@ jobs:
   reuse-images:
     needs: changes
     if: needs.changes.outputs.reuse != '[]'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     strategy:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.reuse) }}
@@ -191,12 +191,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Login to Docker Hub
+      - name: Login to Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_USERNAME' || 'ALIYUN_REGISTRY_USERNAME'] }}
+          password: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_TOKEN' || 'ALIYUN_REGISTRY_PASSWORD'] }}
 
       - name: Docker meta
         id: meta
@@ -225,7 +225,7 @@ jobs:
   build-ui:
     needs: changes
     if: needs.changes.outputs.ui == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -253,12 +253,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Login to Docker Hub
+      - name: Login to Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_USERNAME' || 'ALIYUN_REGISTRY_USERNAME'] }}
+          password: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_TOKEN' || 'ALIYUN_REGISTRY_PASSWORD'] }}
 
       - name: Docker meta
         id: meta
@@ -286,7 +286,7 @@ jobs:
   build-docreader:
     needs: changes
     if: needs.changes.outputs.docreader == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -310,12 +310,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Login to Docker Hub
+      - name: Login to Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_USERNAME' || 'ALIYUN_REGISTRY_USERNAME'] }}
+          password: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_TOKEN' || 'ALIYUN_REGISTRY_PASSWORD'] }}
 
       - name: Docker meta
         id: meta
@@ -343,7 +343,7 @@ jobs:
   build-sandbox:
     needs: changes
     if: needs.changes.outputs.sandbox == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -351,12 +351,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Login to Docker Hub
+      - name: Login to Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_USERNAME' || 'ALIYUN_REGISTRY_USERNAME'] }}
+          password: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_TOKEN' || 'ALIYUN_REGISTRY_PASSWORD'] }}
 
       - name: Docker meta
         id: meta
@@ -411,7 +411,7 @@ jobs:
   build-mcp:
     needs: changes
     if: needs.changes.outputs.mcp == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -419,12 +419,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Login to Docker Hub
+      - name: Login to Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_USERNAME' || 'ALIYUN_REGISTRY_USERNAME'] }}
+          password: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_TOKEN' || 'ALIYUN_REGISTRY_PASSWORD'] }}
 
       - name: Docker meta
         id: meta
@@ -451,7 +451,7 @@ jobs:
   build-odl-hybrid:
     needs: changes
     if: needs.changes.outputs.odl-hybrid == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -470,12 +470,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Login to Docker Hub
+      - name: Login to Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_USERNAME' || 'ALIYUN_REGISTRY_USERNAME'] }}
+          password: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_TOKEN' || 'ALIYUN_REGISTRY_PASSWORD'] }}
 
       - name: Docker meta
         id: meta
@@ -503,7 +503,7 @@ jobs:
   build-app:
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 60
     steps:
       - name: Checkout code
@@ -512,12 +512,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Login to Docker Hub
+      - name: Login to Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_USERNAME' || 'ALIYUN_REGISTRY_USERNAME'] }}
+          password: ${{ secrets[github.event_name == 'workflow_dispatch' && 'DOCKERHUB_TOKEN' || 'ALIYUN_REGISTRY_PASSWORD'] }}
 
       - name: Docker meta
         id: meta
