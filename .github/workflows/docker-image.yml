@@ -3,6 +3,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,7 +20,7 @@ env:
 
 jobs:
   changes:
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     permissions:
       contents: read
       actions: read
@@ -52,7 +53,7 @@ jobs:
               per_page: 100,
             });
             const baseline = runs
-              .filter(run => run.run_number < context.runNumber &&
+              .filter(run => (context.eventName !== 'push' || run.run_number < context.runNumber) &&
                 run.head_branch !== process.env.GITHUB_REF_NAME &&
                 run.head_branch?.startsWith('v'))
               .sort((a, b) => a.run_number - b.run_number)
@@ -95,7 +96,9 @@ jobs:
         run: |
           set -euo pipefail
           reuse=''
-          shared_paths=(.github/workflows/docker-image.yml .gitattributes)
+          shared_paths=(
+            .github/workflows/docker-image.yml .github/workflows/docker-image-manual.yml .gitattributes
+          )
           # These paths are not inputs to the images published by this workflow.
           # Keep the list explicit: new, unclassified paths must stop the release.
           classified_paths=(
@@ -179,7 +182,7 @@ jobs:
   reuse-images:
     needs: changes
     if: needs.changes.outputs.reuse != '[]'
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     strategy:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.reuse) }}
@@ -201,7 +204,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-${{ matrix.image }}
           flavor: latest=false
           tags: |
-            type=ref,event=tag,suffix=${{ matrix.suffix }}
+            type=ref,event=tag,suffix=${{ matrix.suffix }},enable=${{ github.event_name == 'push' }}
             type=raw,value=latest${{ matrix.suffix }}
 
       - name: Publish existing image with release tags
@@ -221,7 +224,7 @@ jobs:
   build-ui:
     needs: changes
     if: needs.changes.outputs.ui == 'true'
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -263,7 +266,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-ui
           flavor: latest=false
           tags: |
-            type=ref,event=tag
+            type=ref,event=tag,enable=${{ github.event_name == 'push' }}
             type=raw,value=latest
 
       - name: Build ui Image
@@ -282,7 +285,7 @@ jobs:
   build-docreader:
     needs: changes
     if: needs.changes.outputs.docreader == 'true'
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -320,7 +323,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader
           flavor: latest=false
           tags: |
-            type=ref,event=tag
+            type=ref,event=tag,enable=${{ github.event_name == 'push' }}
             type=raw,value=latest
 
       - name: Build docreader Image
@@ -339,7 +342,7 @@ jobs:
   build-sandbox:
     needs: changes
     if: needs.changes.outputs.sandbox == 'true'
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -361,7 +364,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-sandbox
           flavor: latest=false
           tags: |
-            type=ref,event=tag
+            type=ref,event=tag,enable=${{ github.event_name == 'push' }}
             type=raw,value=latest
 
       - name: Build sandbox Image
@@ -387,7 +390,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-sandbox
           flavor: latest=false
           tags: |
-            type=ref,event=tag,suffix=-cube
+            type=ref,event=tag,suffix=-cube,enable=${{ github.event_name == 'push' }}
             type=raw,value=latest-cube
 
       - name: Build sandbox Cube Image
@@ -407,7 +410,7 @@ jobs:
   build-mcp:
     needs: changes
     if: needs.changes.outputs.mcp == 'true'
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -429,7 +432,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp
           flavor: latest=false
           tags: |
-            type=ref,event=tag
+            type=ref,event=tag,enable=${{ github.event_name == 'push' }}
             type=raw,value=latest
 
       - name: Build MCP Image
@@ -447,7 +450,7 @@ jobs:
   build-odl-hybrid:
     needs: changes
     if: needs.changes.outputs.odl-hybrid == 'true'
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -480,7 +483,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-odl-hybrid
           flavor: latest=false
           tags: |
-            type=ref,event=tag
+            type=ref,event=tag,enable=${{ github.event_name == 'push' }}
             type=raw,value=latest
 
       - name: Build ODL Hybrid Image
@@ -499,7 +502,7 @@ jobs:
   build-app:
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: self-hosted
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 60
     steps:
       - name: Checkout code
@@ -522,7 +525,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-app
           flavor: latest=false
           tags: |
-            type=ref,event=tag
+            type=ref,event=tag,enable=${{ github.event_name == 'push' }}
             type=raw,value=latest
 
       - name: Prepare version info

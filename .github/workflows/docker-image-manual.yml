@@ -1,0 +1,13 @@
+name: 手动构建并推送 latest 镜像
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/docker-image.yml
+    secrets: inherit
