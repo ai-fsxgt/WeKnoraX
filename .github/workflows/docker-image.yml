@@ -94,7 +94,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          reuse='[]'
+          reuse=''
           shared_paths=(.github/workflows/docker-image.yml .gitattributes)
           # These paths are not inputs to the images published by this workflow.
           # Keep the list explicit: new, unclassified paths must stop the release.
@@ -134,9 +134,9 @@ jobs:
               echo "| $image | Build |" >> "$GITHUB_STEP_SUMMARY"
             else
               echo "| $image | Reuse |" >> "$GITHUB_STEP_SUMMARY"
-              reuse=$(jq -c --arg image "$image" '. + [{image: $image, suffix: ""}]' <<< "$reuse")
+              reuse+="{\"image\":\"$image\",\"suffix\":\"\"},"
               if [ "$image" = sandbox ]; then
-                reuse=$(jq -c '. + [{image: "sandbox", suffix: "-cube"}]' <<< "$reuse")
+                reuse+='{"image":"sandbox","suffix":"-cube"},'
               fi
             fi
           }
@@ -174,7 +174,7 @@ jobs:
               exit 1
             fi
           fi
-          echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
+          echo "reuse=[${reuse%,}]" >> "$GITHUB_OUTPUT"
 
   reuse-images:
     needs: changes

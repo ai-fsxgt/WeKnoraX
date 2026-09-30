@@ -16,6 +16,10 @@ Use Go 1.26, Node 24, npm, Make, and Docker with Compose. Run `cp .env.example .
 - `cd frontend && npm ci && npm test`: install locked dependencies and test the frontend.
 - `cd frontend && npm run type-check && npm run build`: validate and build the frontend.
 
+## 私有构建机约束
+
+在私有构建机（`self-hosted` Runner）上执行的 CI 工作流和构建脚本，只能使用构建机已提供的工具。禁止直接依赖未提供的 `jq`、`gh` 等命令；优先使用 Bash 内置能力或项目已有的 GitHub Actions 完成相应操作。
+
 ## Coding Style & Naming Conventions
 
 Format Go files with `gofmt`; CI also checks `gofumpt`, `govet`, `revive`, and a 120-character line limit. Use `PascalCase` for exported Go identifiers, `camelCase` for unexported identifiers, and lowercase package names. In Vue/TypeScript, follow surrounding two-space formatting, name components `PascalCase.vue`, and composables `useSomething`. Keep component styles scoped and reuse existing components, stores, and utilities.
