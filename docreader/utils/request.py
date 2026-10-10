@@ -1,5 +1,7 @@
 import contextlib
 import logging
+import os
+import sys
 import time
 import uuid
 from contextvars import ContextVar
@@ -42,6 +44,22 @@ class MillisecondFormatter(logging.Formatter):
                 result = f"{parts[0]}.{millis}"
 
         return result
+
+
+def setup_stdout_logging() -> str:
+    """配置输出到 stdout、带请求 ID 的根日志，返回生效的日志级别名。
+
+    主进程与解析子进程共用：子进程由干净的 forkserver 创建，不继承主进程的日志配置。
+    """
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    logging.root.addHandler(logging.StreamHandler(sys.stdout))
+
+    level_name = (os.environ.get("LOG_LEVEL") or "INFO").upper()
+    logging.root.setLevel(getattr(logging, level_name, logging.INFO))
+
+    init_logging_request_id()
+    return level_name
 
 
 def init_logging_request_id():

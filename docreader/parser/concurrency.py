@@ -1,15 +1,21 @@
 import logging
 import threading
 from contextlib import contextmanager
-from typing import Dict, Iterator
+from typing import Any, Dict, Iterator
 
 logger = logging.getLogger(__name__)
 
-_LIMITERS: Dict[str, threading.BoundedSemaphore] = {}
+_LIMITERS: Dict[str, Any] = {}
 _LIMITERS_LOCK = threading.Lock()
 
 
-def _get_limiter(name: str, max_workers: int) -> threading.BoundedSemaphore:
+def use_shared_limiters(limiters: Dict[str, Any]) -> None:
+    """在解析子进程中使用父进程创建的跨进程信号量，使 max_workers 限制跨子进程生效。"""
+    with _LIMITERS_LOCK:
+        _LIMITERS.update(limiters)
+
+
+def _get_limiter(name: str, max_workers: int) -> Any:
     with _LIMITERS_LOCK:
         limiter = _LIMITERS.get(name)
         if limiter is None:
