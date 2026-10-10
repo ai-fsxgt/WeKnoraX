@@ -1203,6 +1203,7 @@ function validatePocoSettings(): boolean {
 }
 
 async function nextStep() {
+  if (loadingResources.value) return
   if (step.value === 1) {
     if (!validateStep1Fields()) return
     if (needsConnectionTest() && testResult.value !== 'success') {
@@ -1462,6 +1463,7 @@ const drawerConfirmText = computed(() => {
     :hide-footer="step === 0"
     :confirm-text="drawerConfirmText"
     :confirm-loading="submitting || (step === 1 && testing)"
+    :confirm-disabled="loadingResources"
     storage-key="setting-drawer:width:datasource-editor"
     width="640px"
     @confirm="handleDrawerConfirm"

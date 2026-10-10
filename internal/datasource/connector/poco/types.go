@@ -93,6 +93,7 @@ type noteList struct {
 }
 
 type syncCursor struct {
+	SourceKey      string            `json:"source_key"`
 	Items          map[string]string `json:"items"`
 	PendingFullIDs map[string]bool   `json:"pending_full_ids,omitempty"`
 }

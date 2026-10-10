@@ -108,10 +108,9 @@ func (c *Connector) fetchStream(
 	if !slices.Contains(ds.ResourceIDs, allNotesID) {
 		return nil, fmt.Errorf("%w: select all Poco notes to sync", datasource.ErrInvalidConfig)
 	}
+	sourceKey := fmt.Sprintf("%x", sha256.Sum256([]byte(cfg.BaseURL+"\n"+cfg.Username)))
 	var state syncCursor
-	if cursor == nil {
-		state.Items = make(map[string]string)
-	} else {
+	if cursor != nil {
 		raw, err := json.Marshal(cursor.ConnectorCursor)
 		if err != nil {
 			return nil, err
@@ -122,6 +121,9 @@ func (c *Connector) fetchStream(
 		if state.Items == nil {
 			return nil, fmt.Errorf("invalid Poco sync cursor: items are missing")
 		}
+	}
+	if state.SourceKey != sourceKey {
+		state = syncCursor{SourceKey: sourceKey, Items: make(map[string]string)}
 	}
 	baseline := maps.Clone(state.Items)
 	if forceFull {
