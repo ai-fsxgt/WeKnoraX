@@ -327,6 +327,10 @@ export default {
     sharedTooltip: 'Accessed from an external workspace via a shared space'
   },
   knowledgeBase: {
+    queueSummary: {
+      title: 'Global tasks',
+      description: 'Running and queued task counts across all system background queues, updated every 5 seconds.'
+    },
     title: 'Knowledge Base',
     fileContent: 'File Content',
     accessInfo: {

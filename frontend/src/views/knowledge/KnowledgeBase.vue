@@ -8,6 +8,7 @@ import EmptyKnowledge from '@/components/empty-knowledge.vue';
 import ContextualGuide from '@/components/ContextualGuide.vue';
 import KBInfoPopover from '@/components/KBInfoPopover.vue';
 import KBSwitcherDropdown from '@/components/KBSwitcherDropdown.vue';
+import KbQueueSummary from '@/components/KbQueueSummary.vue';
 import { getSessionsList, createSessions, generateSessionsTitle } from "@/api/chat/index";
 import { useMenuStore } from '@/stores/menu';
 import { useUIStore } from '@/stores/ui';
@@ -2345,6 +2346,7 @@ async function createNewSession(value: string): Promise<void> {
             <span class="warning-link">{{ $t('knowledgeBase.goToStorageSettings') }} →</span>
           </p>
         </div>
+        <KbQueueSummary />
       </div>
 
       <!-- Wiki Browser / Graph (shown when wiki or graph tab is active) -->

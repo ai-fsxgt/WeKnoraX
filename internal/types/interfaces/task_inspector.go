@@ -53,9 +53,8 @@ type TaskInspector interface {
 	// use it to render an "unavailable in this deployment" state rather
 	// than an empty table.
 	//
-	// Best-effort: a per-queue backend error is logged and that queue is
-	// surfaced as a zeroed row (so the full lane set stays visible) rather
-	// than failing the whole call.
+	// Queues that have not received tasks are surfaced as zeroed rows.
+	// Backend errors are returned instead of an incomplete snapshot.
 	QueueStats(ctx context.Context) (stats []types.QueueStat, supported bool, err error)
 
 	// WorkerServerStats returns live asynq server heartbeats across all

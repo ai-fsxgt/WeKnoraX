@@ -6217,6 +6217,10 @@ export default {
     }
   },
   knowledgeBase: {
+    queueSummary: {
+      title: '全局任务',
+      description: '全系统后台队列的运行中和排队中任务数量，每 5 秒更新。'
+    },
     title: '知识库',
     fileContent: '文件内容',
     name: '名称',

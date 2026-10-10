@@ -94,6 +94,7 @@
           </div>
           <p class="faq-subtitle">{{ $t('knowledgeEditor.faq.subtitle') }}</p>
         </div>
+        <KbQueueSummary />
       </div>
 
       <div class="faq-main">
@@ -890,6 +891,7 @@ import Papa from 'papaparse'
 import FAQTagTooltip from '@/components/FAQTagTooltip.vue'
 import KBInfoPopover from '@/components/KBInfoPopover.vue'
 import KBSwitcherDropdown from '@/components/KBSwitcherDropdown.vue'
+import KbQueueSummary from '@/components/KbQueueSummary.vue'
 import FAQBatchBar from './FAQBatchBar.vue'
 import KbTagManageDrawer from './KbTagManageDrawer.vue'
 import { useUIStore } from '@/stores/ui'
