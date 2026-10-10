@@ -2,6 +2,8 @@ services:
   frontend:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/weknora-ui:${WEKNORA_VERSION:-latest}
     container_name: WeKnora-frontend
+    mem_limit: 8g
+    memswap_limit: 8g
     ports:
       - "${FRONTEND_PORT:-80}:80"
     environment:
@@ -25,6 +27,8 @@ services:
   app:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/weknora-app:${WEKNORA_VERSION:-latest}
     container_name: WeKnora-app
+    mem_limit: 8g
+    memswap_limit: 8g
     ports:
       - "${APP_PORT:-8080}:8080"
     volumes:
@@ -367,7 +371,8 @@ services:
   docreader:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/weknora-docreader:${WEKNORA_VERSION:-latest}
     container_name: WeKnora-docreader
-    mem_limit: 8g
+    mem_limit: 16g
+    memswap_limit: 16g
     # docreader gRPC ships without auth/TLS and is only consumed by the app
     # container over the WeKnora-network (DOCREADER_ADDR defaults to
     # docreader:50051), so we don't publish 50051 to the host. `expose` keeps
@@ -482,6 +487,8 @@ services:
   postgres:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/paradedb:v0.22.2-pg17
     container_name: WeKnora-postgres
+    mem_limit: 8g
+    memswap_limit: 8g
     ports:
       - "${DB_PORT:-5432}:5432"
     environment:
@@ -505,6 +512,8 @@ services:
   redis:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/redis:7.0-alpine
     container_name: WeKnora-redis
+    mem_limit: 8g
+    memswap_limit: 8g
     ports:
       - "${REDIS_PORT:-6379}:6379"
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
@@ -567,6 +576,8 @@ services:
   minio:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: WeKnora-minio
+    mem_limit: 8g
+    memswap_limit: 8g
     ports:
       - "${MINIO_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -587,6 +598,8 @@ services:
   neo4j:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/neo4j:2025.10.1
     container_name: WeKnora-neo4j
+    mem_limit: 8g
+    memswap_limit: 8g
     volumes:
       - neo4j-data:/data
     environment:
@@ -957,6 +970,8 @@ services:
   mcp:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/weknora-mcp:${WEKNORA_VERSION:-latest}
     container_name: WeKnora-mcp
+    mem_limit: 8g
+    memswap_limit: 8g
     ports:
       - "${MCP_PORT:-8082}:8000"
     environment:
