@@ -8,7 +8,7 @@ Skill 托管在 ClawHub，包名 [`@lyingbug/weknora`](https://clawhub.ai/lyingb
 
 | 能力 | 对应接口 |
 | --- | --- |
-| 上传文件 | 把 PDF / Word / Excel 等文档送进知识库并自动解析向量化 |
+| 上传文件 | 把 PDF / Word / PPT 等文档送进知识库并自动解析向量化 |
 | 导入网页 | 按 URL 抓取正文写入知识库，支持轮询解析状态 |
 | 写入 Markdown | 以 Markdown 创建或编辑知识条目，适合会议记录、结构化笔记 |
 | 混合检索 | 单库 `hybrid-search` 与跨库 `knowledge-search`，向量 + 关键词召回 |
