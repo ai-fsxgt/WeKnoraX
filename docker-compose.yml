@@ -370,7 +370,11 @@ services:
 
   docreader:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/weknora-docreader:${WEKNORA_VERSION:-latest}
-    container_name: WeKnora-docreader
+    # 单机多副本：app 通过 DNS + round_robin 把解析请求分发到各副本。
+    # 修改 DOCREADER_REPLICAS 后执行 `docker compose up -d docreader`，再重启 app 才会用上新副本。
+    # 每个副本内存上限 8G，按宿主机内存评估副本数。
+    deploy:
+      replicas: ${DOCREADER_REPLICAS:-2}
     mem_limit: 8g
     memswap_limit: 8g
     # docreader gRPC ships without auth/TLS and is only consumed by the app
