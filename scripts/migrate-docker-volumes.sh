@@ -16,7 +16,7 @@ show_help() {
   --compose-file FILE    编排文件，默认 ./docker-compose.yml
   --project-name NAME    原部署使用了 -p 时，指定同一个项目名
   --helper-image IMAGE   包含 Bash 和 GNU cp/tar/du 的镜像
-                         默认 debian:bookworm-slim，可指定镜像代理地址
+                         默认 registry.cn-hangzhou.aliyuncs.com/ripper/debian:bookworm-slim
   -h, --help             显示帮助
 
 命名卷迁到 ./data/<业务卷名>；无业务卷标签的卷按服务名和挂载目录命名。
@@ -41,7 +41,7 @@ EXECUTE=false
 LIST_OLD_VOLUMES=false
 COMPOSE_FILE=./docker-compose.yml
 PROJECT_NAME=
-HELPER_IMAGE=debian:bookworm-slim
+HELPER_IMAGE=registry.cn-hangzhou.aliyuncs.com/ripper/debian:bookworm-slim
 HELPER_CONTAINER="weknora-volume-migration-$$-$RANDOM"
 STOP_ATTEMPTED=false
 HELPER_ACTIVE=false
