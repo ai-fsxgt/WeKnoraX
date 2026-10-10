@@ -402,7 +402,11 @@ func (s *temporaryDocumentService) parse(ctx context.Context, document *types.Te
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("parse document: %w", err)
 	}
-	result, err := reader.Read(ctx, request)
+	// Lite 模式的同步执行器不带超时，这里与 asynq 任务超时（10 分钟）保持一致，
+	// 避免 docreader 不可用时 WaitForReady 无限阻塞。
+	readCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	result, err := reader.Read(readCtx, request)
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("parse document: %w", err)
 	}

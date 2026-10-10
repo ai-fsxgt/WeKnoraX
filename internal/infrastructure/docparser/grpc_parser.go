@@ -152,7 +152,9 @@ func (p *GRPCDocumentReader) Read(ctx context.Context, req *types.ReadRequest) (
 func (p *GRPCDocumentReader) readStream(
 	ctx context.Context, client proto.DocReaderClient, protoReq *proto.ReadRequest,
 ) (*types.ReadResult, error) {
-	stream, err := client.ReadStream(ctx, protoReq)
+	// WaitForReady: docreader 重启期间阻塞等待连接恢复（受 ctx 超时约束），
+	// 而不是立刻以 Unavailable 失败，避免排队任务白白消耗重试次数。
+	stream, err := client.ReadStream(ctx, protoReq, grpc.WaitForReady(true))
 	if err != nil {
 		return nil, fmt.Errorf("gRPC ReadStream failed: %w", err)
 	}
@@ -202,7 +204,7 @@ func (p *GRPCDocumentReader) readStream(
 func (p *GRPCDocumentReader) readUnary(
 	ctx context.Context, client proto.DocReaderClient, protoReq *proto.ReadRequest,
 ) (*types.ReadResult, error) {
-	resp, err := client.Read(ctx, protoReq)
+	resp, err := client.Read(ctx, protoReq, grpc.WaitForReady(true))
 	if err != nil {
 		return nil, fmt.Errorf("gRPC Read failed: %w", err)
 	}
