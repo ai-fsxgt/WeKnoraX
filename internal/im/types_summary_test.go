@@ -16,10 +16,13 @@ func TestSummarizeIMChannel_OmitsCredentials(t *testing.T) {
 		Name:           "support",
 		CreatedBy:      "user-1",
 		AllowGroupChat: true,
-		Credentials:    types.JSON(`{"app_secret":"top-secret"}`),
+		Credentials: types.JSON(`{
+			"app_id":"cli_support","app_secret":"top-secret","encrypt_key":"encrypt-secret"
+		}`),
 	}
 
-	summary := SummarizeIMChannel(ch)
+	summary, err := SummarizeIMChannel(ch)
+	require.NoError(t, err)
 	body, err := json.Marshal(summary)
 	require.NoError(t, err)
 
@@ -27,11 +30,15 @@ func TestSummarizeIMChannel_OmitsCredentials(t *testing.T) {
 	assert.True(t, summary.PersonalBinding)
 	assert.True(t, summary.AllowGroupChat)
 	assert.Equal(t, "user-1", summary.CreatedBy)
+	assert.Equal(t, map[string]string{"app_id": "cli_support"}, summary.CredentialIDs)
 	assert.NotContains(t, string(body), "top-secret")
+	assert.NotContains(t, string(body), "encrypt-secret")
 	assert.NotContains(t, string(body), `"credentials":`)
 }
 
 func TestSummarizeIMChannel_EmptyCredentialsNotConfigured(t *testing.T) {
-	summary := SummarizeIMChannel(IMChannel{Credentials: types.JSON("{}")})
+	summary, err := SummarizeIMChannel(IMChannel{Credentials: types.JSON("{}")})
+	require.NoError(t, err)
 	assert.False(t, summary.CredentialsConfigured)
+	assert.Empty(t, summary.CredentialIDs)
 }

@@ -182,13 +182,18 @@
         </div>
 
         <template v-else>
-          <div v-for="field in credentialFields" :key="field.key" class="credential-field">
+          <div
+            v-for="field in credentialFields"
+            :key="`${editingChannel?.id || 'new'}:${form.platform}:${form.mode}:${field.key}`"
+            class="credential-field"
+          >
             <label>{{ field.label }}</label>
             <t-input
               v-model="form.credentials[field.key]"
+              :name="`im-${editingChannel?.id || 'new'}-${form.platform}-${form.mode}-${field.key}`"
               :type="field.secret ? 'password' : 'text'"
               :placeholder="editingChannel ? t('imAdmin.credentialsPreserved') : ''"
-              autocomplete="off"
+              :autocomplete="field.secret ? 'new-password' : 'off'"
             />
           </div>
         </template>
@@ -380,7 +385,7 @@ function openEdit(channel: IMChannelSummary) {
     mode: channel.mode,
     output_mode: channel.output_mode,
     allow_group_chat: channel.allow_group_chat,
-    credentials: {},
+    credentials: { ...channel.credential_ids },
   })
   drawerVisible.value = true
 }

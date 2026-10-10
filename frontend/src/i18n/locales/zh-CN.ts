@@ -858,7 +858,7 @@ export default {
     allowGroupChat: '允许群聊问答',
     allowGroupChatHint: '开启后，可在群聊中发送绑定码；同一个知识库账号可以绑定多个群，群成员分别维护对话上下文。',
     wechatFixedMode: '微信使用固定的长轮询接入和完整输出模式。',
-    credentialsPreserved: '凭据不会回显；留空将保留已保存的值。',
+    credentialsPreserved: '密钥不会回显；留空将保留已保存的值。',
     loadFailed: '加载 IM 机器人失败'
   },
   imBinding: {

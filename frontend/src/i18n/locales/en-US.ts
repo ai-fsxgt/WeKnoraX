@@ -5574,7 +5574,7 @@ export default {
     allowGroupChat: 'Allow group chat Q&A',
     allowGroupChatHint: 'When enabled, send a binding code in a group. The same knowledge account can bind multiple groups, and each member keeps a separate conversation context.',
     wechatFixedMode: 'WeChat uses fixed long polling and full response output.',
-    credentialsPreserved: 'Credentials are never displayed. Leave a field blank to keep its saved value.',
+    credentialsPreserved: 'Secrets are never displayed. Leave a field blank to keep its saved value.',
     loadFailed: 'Failed to load IM bots'
   },
   imBinding: {

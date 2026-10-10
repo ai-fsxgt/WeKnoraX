@@ -856,7 +856,7 @@ export default {
     allowGroupChat: '그룹 채팅 질의응답 허용',
     allowGroupChatHint: '활성화하면 그룹에서 바인딩 코드를 보낼 수 있습니다. 동일한 지식 계정으로 여러 그룹을 연결할 수 있으며 각 구성원은 별도의 대화 컨텍스트를 유지합니다.',
     wechatFixedMode: 'WeChat은 고정된 롱 폴링과 전체 응답 출력 모드를 사용합니다.',
-    credentialsPreserved: '자격 증명은 표시되지 않습니다. 비워 두면 저장된 값이 유지됩니다.',
+    credentialsPreserved: '비밀 키는 표시되지 않습니다. 비워 두면 저장된 값이 유지됩니다.',
     loadFailed: 'IM 봇을 불러오지 못했습니다'
   },
   imBinding: {

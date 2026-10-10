@@ -110,14 +110,14 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": im.SummarizeIMChannel(*channel)})
+	writeIMChannelResponse(c, channel)
 }
 
 // ListIMChannels lists all system-managed bot installations.
 //
 // ListIMChannels godoc
 // @Summary      获取 IM 渠道列表
-// @Description  获取全部系统级 IM 机器人配置，不返回凭证内容
+// @Description  获取全部系统级 IM 机器人配置及凭据 ID，不返回密钥
 // @Tags         IM 渠道
 // @Produce      json
 // @Success      200  {object}  map[string]interface{}  "渠道列表"
@@ -130,7 +130,13 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": im.SummarizeIMChannels(channels)})
+	summaries, err := im.SummarizeIMChannels(channels)
+	if err != nil {
+		logger.Errorf(c.Request.Context(), "[IM] Summarize channels failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to summarize channels"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": summaries})
 }
 
 // UpdateIMChannel updates an IM channel.
@@ -216,7 +222,17 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": im.SummarizeIMChannel(*channel)})
+	writeIMChannelResponse(c, channel)
+}
+
+func writeIMChannelResponse(c *gin.Context, channel *im.IMChannel) {
+	summary, err := im.SummarizeIMChannel(*channel)
+	if err != nil {
+		logger.Errorf(c.Request.Context(), "[IM] Summarize channel failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to summarize channel"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": summary})
 }
 
 func mergeIMCredentials(current, update types.JSON) (types.JSON, error) {
@@ -310,7 +326,7 @@ func (h *IMHandler) ToggleIMChannel(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": im.SummarizeIMChannel(*channel)})
+	writeIMChannelResponse(c, channel)
 }
 
 // ListBindableIMChannels lists the credential-free bot directory available to

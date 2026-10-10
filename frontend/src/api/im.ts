@@ -23,6 +23,7 @@ export interface IMChannelSummary {
   personal_binding: boolean
   allow_group_chat: boolean
   credentials_configured: boolean
+  credential_ids: Record<string, string>
   created_by: string
   created_at: string
   updated_at: string

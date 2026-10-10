@@ -38,26 +38,58 @@ func (IMChannel) TableName() string {
 	return "im_channels"
 }
 
-// IMChannelSummary is the HTTP-safe list shape for IM channels. Credentials
-// are never included in list or mutation responses.
+// IMChannelSummary is the HTTP-safe list shape for IM channels. Only credential
+// IDs are included; secret credentials are never returned.
 type IMChannelSummary struct {
-	ID                    string    `json:"id"`
-	Platform              string    `json:"platform"`
-	Name                  string    `json:"name"`
-	Enabled               bool      `json:"enabled"`
-	Mode                  string    `json:"mode"`
-	OutputMode            string    `json:"output_mode"`
-	AllowGroupChat        bool      `json:"allow_group_chat"`
-	BotIdentity           string    `json:"bot_identity"`
-	PersonalBinding       bool      `json:"personal_binding"`
-	CredentialsConfigured bool      `json:"credentials_configured"`
-	CreatedBy             string    `json:"created_by"`
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	ID                    string            `json:"id"`
+	Platform              string            `json:"platform"`
+	Name                  string            `json:"name"`
+	Enabled               bool              `json:"enabled"`
+	Mode                  string            `json:"mode"`
+	OutputMode            string            `json:"output_mode"`
+	AllowGroupChat        bool              `json:"allow_group_chat"`
+	BotIdentity           string            `json:"bot_identity"`
+	PersonalBinding       bool              `json:"personal_binding"`
+	CredentialsConfigured bool              `json:"credentials_configured"`
+	CredentialIDs         map[string]string `json:"credential_ids"`
+	CreatedBy             string            `json:"created_by"`
+	CreatedAt             time.Time         `json:"created_at"`
+	UpdatedAt             time.Time         `json:"updated_at"`
 }
 
 // SummarizeIMChannel converts a stored channel into its list response shape.
-func SummarizeIMChannel(ch IMChannel) IMChannelSummary {
+func SummarizeIMChannel(ch IMChannel) (IMChannelSummary, error) {
+	credentials, err := ParseCredentials(ch.Credentials)
+	if err != nil {
+		return IMChannelSummary{}, fmt.Errorf("parse IM channel %s credentials: %w", ch.ID, err)
+	}
+	var idFields []string
+	switch ch.Platform {
+	case string(PlatformWeCom):
+		switch ch.Mode {
+		case "websocket":
+			idFields = []string{"bot_id"}
+		case "webhook":
+			idFields = []string{"corp_id", "corp_agent_id"}
+		}
+	case string(PlatformFeishu), string(PlatformLark), string(PlatformQQBot):
+		idFields = []string{"app_id"}
+	case string(PlatformDingtalk):
+		idFields = []string{"client_id", "card_template_id"}
+	}
+	credentialIDs := make(map[string]string, len(idFields))
+	for _, field := range idFields {
+		value := GetString(credentials, field)
+		if field == "corp_agent_id" {
+			if agentID, ok := credentials[field].(float64); ok {
+				value = fmt.Sprintf("%.0f", agentID)
+			}
+		}
+		if value != "" {
+			credentialIDs[field] = value
+		}
+	}
+
 	return IMChannelSummary{
 		ID:                    ch.ID,
 		Platform:              ch.Platform,
@@ -69,19 +101,24 @@ func SummarizeIMChannel(ch IMChannel) IMChannelSummary {
 		BotIdentity:           ch.BotIdentity,
 		PersonalBinding:       SupportsPersonalBinding(ch.Platform),
 		CredentialsConfigured: imCredentialsConfigured(ch.Credentials),
+		CredentialIDs:         credentialIDs,
 		CreatedBy:             ch.CreatedBy,
 		CreatedAt:             ch.CreatedAt,
 		UpdatedAt:             ch.UpdatedAt,
-	}
+	}, nil
 }
 
 // SummarizeIMChannels converts stored channels into list response shapes.
-func SummarizeIMChannels(channels []IMChannel) []IMChannelSummary {
+func SummarizeIMChannels(channels []IMChannel) ([]IMChannelSummary, error) {
 	out := make([]IMChannelSummary, 0, len(channels))
 	for _, ch := range channels {
-		out = append(out, SummarizeIMChannel(ch))
+		summary, err := SummarizeIMChannel(ch)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, summary)
 	}
-	return out
+	return out, nil
 }
 
 func imCredentialsConfigured(cred types.JSON) bool {

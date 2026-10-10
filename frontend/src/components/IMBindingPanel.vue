@@ -1,102 +1,99 @@
 <template>
   <div class="im-binding-panel">
     <t-loading :loading="loading" show-overlay>
-      <div v-if="channels.length || bindings.length" class="binding-layout">
-        <section v-if="channels.length" class="binding-create">
-          <h3>{{ t('imBinding.createTitle') }}</h3>
-          <div class="binding-form">
-            <label>{{ t('imBinding.workspace') }}</label>
-            <t-select v-model="selectedTenantID" :options="workspaceOptions" />
+      <t-tabs v-model="activeTab" class="binding-tabs">
+        <t-tab-panel value="create" :label="t('imBinding.createTitle')" :destroy-on-hide="false">
+          <section v-if="channels.length" class="binding-create">
+            <div class="binding-form">
+              <label>{{ t('imBinding.workspace') }}</label>
+              <t-select v-model="selectedTenantID" :options="workspaceOptions" />
 
-            <label>{{ t('imBinding.channel') }}</label>
-            <t-select v-model="selectedChannelID" :placeholder="t('imBinding.channelPlaceholder')">
-              <t-option
-                v-for="channel in availableChannels"
-                :key="channel.id"
-                :value="channel.id"
-                :label="channel.name || platformLabel(channel.platform)"
+              <label>{{ t('imBinding.channel') }}</label>
+              <t-select v-model="selectedChannelID" :placeholder="t('imBinding.channelPlaceholder')">
+                <t-option
+                  v-for="channel in availableChannels"
+                  :key="channel.id"
+                  :value="channel.id"
+                  :label="channel.name || platformLabel(channel.platform)"
+                >
+                  <div class="channel-option">
+                    <img :src="platformLogo(channel.platform)" :alt="platformLabel(channel.platform)" />
+                    <span>{{ channel.name || platformLabel(channel.platform) }}</span>
+                    <small>{{ platformLabel(channel.platform) }}</small>
+                  </div>
+                </t-option>
+              </t-select>
+
+              <t-button
+                theme="primary"
+                :loading="generating"
+                :disabled="!selectedTenantID || !selectedChannelID"
+                @click="generateBindingCode"
               >
-                <div class="channel-option">
-                  <img :src="platformLogo(channel.platform)" :alt="platformLabel(channel.platform)" />
-                  <span>{{ channel.name || platformLabel(channel.platform) }}</span>
-                  <small>{{ platformLabel(channel.platform) }}</small>
-                </div>
-              </t-option>
-            </t-select>
-
-            <t-button
-              theme="primary"
-              :loading="generating"
-              :disabled="!selectedTenantID || !selectedChannelID"
-              @click="generateBindingCode"
-            >
-              {{ t('imBinding.generate') }}
-            </t-button>
-          </div>
-
-          <div v-if="pendingRequest?.code" class="binding-code">
-            <div class="binding-code__header">
-              <div>
-                <h4>{{ t('imBinding.codeTitle') }}</h4>
-                <p>{{ t(bindingCodeHintKey, { channel: pendingRequest.channel_name || platformLabel(pendingRequest.platform) }) }}</p>
-              </div>
-              <t-tag theme="warning" variant="light">{{ t('imBinding.codeExpires', { time: expiresAtText }) }}</t-tag>
-            </div>
-            <button type="button" class="code-value" @click="copyCode">
-              <code>{{ pendingRequest.code }}</code>
-              <t-icon name="file-copy" />
-            </button>
-            <t-alert theme="info" :message="t(bindingNoticeKey)" />
-          </div>
-
-          <t-alert v-else-if="requestState === 'expired'" theme="warning" :message="t('imBinding.expired')" />
-        </section>
-
-        <section v-else class="binding-create no-channels">
-          <t-icon name="chat-message" size="46px" />
-          <h3>{{ t('imBinding.noChannelsTitle') }}</h3>
-          <p>{{ t('imBinding.noChannels') }}</p>
-        </section>
-
-        <section class="binding-list-section">
-          <div class="list-heading">
-            <h3>{{ t('imBinding.currentBindings') }}</h3>
-            <span>{{ bindings.length }}</span>
-          </div>
-          <div v-if="bindings.length" class="binding-list">
-            <article v-for="binding in bindings" :key="binding.id" class="binding-card">
-              <img :src="platformLogo(binding.platform)" :alt="platformLabel(binding.platform)" />
-              <div class="binding-card__copy">
-                <div class="binding-card__title">
-                  <strong>{{ binding.channel_name || platformLabel(binding.platform) }}</strong>
-                  <span class="platform-name">{{ platformLabel(binding.platform) }}</span>
-                  <t-tag size="small" variant="light">
-                    {{ t(binding.chat_type === 'group' ? 'imBinding.groupBinding' : 'imBinding.privateBinding') }}
-                  </t-tag>
-                </div>
-                <p>
-                  {{ t(binding.chat_type === 'group' ? 'imBinding.groupConversation' : 'imBinding.externalAccount') }}：
-                  {{ bindingDisplayName(binding) }}
-                </p>
-                <p>{{ t('imBinding.workspaceLabel') }}：{{ binding.tenant_name }}</p>
-              </div>
-              <t-button size="small" variant="outline" theme="danger" @click="confirmRevoke(binding)">
-                {{ t('imBinding.revoke') }}
+                {{ t('imBinding.generate') }}
               </t-button>
-            </article>
-          </div>
-          <div v-else class="empty-bindings">
-            <t-icon name="user-clear" size="36px" />
-            <p>{{ t('imBinding.noBindings') }}</p>
-          </div>
-        </section>
-      </div>
+            </div>
 
-      <div v-else-if="!loading" class="no-channels">
-        <t-icon name="chat-message" size="46px" />
-        <h3>{{ t('imBinding.noChannelsTitle') }}</h3>
-        <p>{{ t('imBinding.noChannels') }}</p>
-      </div>
+            <div v-if="pendingRequest?.code" class="binding-code">
+              <div class="binding-code__header">
+                <div>
+                  <h4>{{ t('imBinding.codeTitle') }}</h4>
+                  <p>{{ t(bindingCodeHintKey, { channel: pendingRequest.channel_name || platformLabel(pendingRequest.platform) }) }}</p>
+                </div>
+                <t-tag theme="warning" variant="light">{{ t('imBinding.codeExpires', { time: expiresAtText }) }}</t-tag>
+              </div>
+              <button type="button" class="code-value" @click="copyCode">
+                <code>{{ pendingRequest.code }}</code>
+                <t-icon name="file-copy" />
+              </button>
+              <t-alert theme="info" :message="t(bindingNoticeKey)" />
+            </div>
+
+            <t-alert v-else-if="requestState === 'expired'" theme="warning" :message="t('imBinding.expired')" />
+          </section>
+
+          <section v-else-if="!loading" class="binding-create no-channels">
+            <t-icon name="chat-message" size="46px" />
+            <h3>{{ t('imBinding.noChannelsTitle') }}</h3>
+            <p>{{ t('imBinding.noChannels') }}</p>
+          </section>
+        </t-tab-panel>
+
+        <t-tab-panel
+          value="bindings"
+          :label="`${t('imBinding.currentBindings')} (${bindings.length})`"
+          :destroy-on-hide="false"
+        >
+          <section class="binding-list-section">
+            <div v-if="bindings.length" class="binding-list">
+              <article v-for="binding in bindings" :key="binding.id" class="binding-card">
+                <img :src="platformLogo(binding.platform)" :alt="platformLabel(binding.platform)" />
+                <div class="binding-card__copy">
+                  <div class="binding-card__title">
+                    <strong>{{ binding.channel_name || platformLabel(binding.platform) }}</strong>
+                    <span class="platform-name">{{ platformLabel(binding.platform) }}</span>
+                    <t-tag size="small" variant="light">
+                      {{ t(binding.chat_type === 'group' ? 'imBinding.groupBinding' : 'imBinding.privateBinding') }}
+                    </t-tag>
+                  </div>
+                  <p>
+                    {{ t(binding.chat_type === 'group' ? 'imBinding.groupConversation' : 'imBinding.externalAccount') }}：
+                    {{ bindingDisplayName(binding) }}
+                  </p>
+                  <p>{{ t('imBinding.workspaceLabel') }}：{{ binding.tenant_name }}</p>
+                </div>
+                <t-button size="small" variant="outline" theme="danger" @click="confirmRevoke(binding)">
+                  {{ t('imBinding.revoke') }}
+                </t-button>
+              </article>
+            </div>
+            <div v-else-if="!loading" class="empty-bindings">
+              <t-icon name="user-clear" size="36px" />
+              <p>{{ t('imBinding.noBindings') }}</p>
+            </div>
+          </section>
+        </t-tab-panel>
+      </t-tabs>
     </t-loading>
   </div>
 </template>
@@ -129,6 +126,7 @@ import qqbotLogo from '@/assets/img/im/qqbot.png'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
+const activeTab = ref('create')
 const channels = ref<BindableIMChannel[]>([])
 const bindings = ref<IMUserBinding[]>([])
 const loading = ref(false)
@@ -305,30 +303,35 @@ onUnmounted(stopPolling)
 
 <style scoped lang="less">
 .im-binding-panel {
+  min-width: 0;
   min-height: 260px;
 }
 
-.binding-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
-  gap: 18px;
+.binding-tabs {
+  min-width: 0;
+
+  :deep(.t-tabs__nav-item) {
+    font-size: 13px;
+  }
+
+  :deep(.t-tabs__content) {
+    padding-top: 18px;
+  }
 }
 
 .binding-create,
 .binding-list-section {
+  min-width: 0;
   padding: 20px;
   border: 1px solid var(--td-component-border);
   border-radius: 10px;
   background: var(--td-bg-color-container);
-
-  h3 {
-    margin: 0 0 16px;
-    font-size: 15px;
-  }
+  box-sizing: border-box;
 }
 
 .binding-form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 
   label {
@@ -344,16 +347,26 @@ onUnmounted(stopPolling)
 
 .channel-option {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
 
   img {
     width: 22px;
     height: 22px;
+    flex-shrink: 0;
     object-fit: contain;
   }
 
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   small {
+    flex-shrink: 0;
     margin-left: auto;
     color: var(--td-text-color-placeholder);
   }
@@ -361,6 +374,7 @@ onUnmounted(stopPolling)
 
 .binding-code {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   margin-top: 20px;
   padding-top: 18px;
@@ -369,9 +383,16 @@ onUnmounted(stopPolling)
 
 .binding-code__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+
+  > div {
+    flex: 1 1 240px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 
   h4,
   p {
@@ -392,52 +413,38 @@ onUnmounted(stopPolling)
 
 .code-value {
   display: flex;
+  min-width: 0;
   width: 100%;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 14px 16px;
   border: 1px dashed var(--td-brand-color);
   border-radius: 8px;
   color: var(--td-brand-color);
   background: var(--td-brand-color-light);
+  box-sizing: border-box;
   cursor: pointer;
 
   code {
+    min-width: 0;
     font-size: 18px;
     font-weight: 600;
     letter-spacing: 1px;
-  }
-}
-
-.list-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  h3 {
-    margin-right: auto;
-  }
-
-  span {
-    display: inline-flex;
-    min-width: 22px;
-    height: 22px;
-    align-items: center;
-    justify-content: center;
-    border-radius: 11px;
-    color: var(--td-text-color-secondary);
-    background: var(--td-bg-color-secondarycontainer);
-    font-size: 12px;
+    overflow-wrap: anywhere;
+    text-align: left;
   }
 }
 
 .binding-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 
 .binding-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 13px;
@@ -447,34 +454,38 @@ onUnmounted(stopPolling)
   > img {
     width: 34px;
     height: 34px;
+    flex-shrink: 0;
     object-fit: contain;
   }
 
   > button {
+    flex-shrink: 0;
     margin-left: auto;
   }
 }
 
 .binding-card__copy {
+  flex: 1 1 240px;
   min-width: 0;
 
   p {
     margin: 4px 0 0;
-    overflow: hidden;
     color: var(--td-text-color-secondary);
     font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 }
 
 .binding-card__title {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 
   strong {
+    min-width: 0;
     font-size: 13px;
+    overflow-wrap: anywhere;
   }
 
   .platform-name {
@@ -499,9 +510,4 @@ onUnmounted(stopPolling)
   }
 }
 
-@media (max-width: 1000px) {
-  .binding-layout {
-    grid-template-columns: 1fr;
-  }
-}
 </style>
