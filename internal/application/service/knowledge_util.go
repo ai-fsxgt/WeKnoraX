@@ -68,6 +68,16 @@ func isDataTableFileType(ext string) bool {
 	return ok
 }
 
+// resolveKnowledgeFileType returns the normalized file type, falling back to
+// the file name's extension for older records whose file_type is empty.
+func resolveKnowledgeFileType(fileName, fileType string) string {
+	ft := normalizeFileExtension(fileType)
+	if ft == "" && fileName != "" {
+		ft = getFileType(fileName)
+	}
+	return ft
+}
+
 // validateImportFileType applies the extension constraints shared by every
 // file import path and reports a user-facing reason when one is violated.
 func validateImportFileType(fileType string) error {

@@ -2404,6 +2404,11 @@ func (s *knowledgeService) ReparseKnowledge(
 		return nil, err
 	}
 
+	// 表格类文件已停止解析：在清理已有数据之前拒绝，避免删除仍可检索的历史内容
+	if isDataTableFileType(resolveKnowledgeFileType(existing.FileName, existing.FileType)) {
+		return nil, werrors.NewBadRequestError(ErrDataTableNotParse.Error())
+	}
+
 	// Allocate a fresh span tree attempt up front. Doing this BEFORE
 	// the cleanup + enqueue means: (a) the UI immediately sees a new
 	// attempt with all five stages back to "pending" instead of the
@@ -3257,6 +3262,18 @@ func (s *knowledgeService) processDocumentLocked(ctx context.Context, payload ty
 		logger.Warnf(ctx, "Unexpected parse status: %s for knowledge: %s", knowledge.ParseStatus, payload.KnowledgeID)
 	}
 
+	// 表格类文件已停止解析：在标记为处理中之前直接标记失败，不进入 docreader，也不重试
+	if isDataTableFileType(resolveKnowledgeFileType(knowledge.FileName, knowledge.FileType)) {
+		logger.Infof(ctx, "Data table file parsing is disabled, skipping: %s", knowledge.ID)
+		knowledge.ParseStatus = types.ParseStatusFailed
+		knowledge.ErrorMessage = ErrDataTableNotParse.Error()
+		knowledge.UpdatedAt = time.Now()
+		if err := s.repo.UpdateKnowledge(ctx, knowledge); err != nil {
+			logger.Errorf(ctx, "failed to mark data table knowledge as failed: %v", err)
+		}
+		return nil
+	}
+
 	// 获取知识库信息
 	kb, err := s.kbService.GetKnowledgeBaseByID(ctx, payload.KnowledgeBaseID)
 	if err != nil {
@@ -3298,16 +3315,6 @@ func (s *knowledgeService) processDocumentLocked(ctx context.Context, payload ty
 		}
 	}
 	ctx = withAttempt(ctx, attempt)
-
-	// 表格类文件已停止解析：直接标记失败，不进入 docreader，也不重试
-	if isDataTableFileType(knowledge.FileType) {
-		logger.Infof(ctx, "Data table file parsing is disabled, skipping: %s", knowledge.ID)
-		knowledge.ParseStatus = types.ParseStatusFailed
-		knowledge.ErrorMessage = ErrDataTableNotParse.Error()
-		knowledge.UpdatedAt = time.Now()
-		s.repo.UpdateKnowledge(ctx, knowledge)
-		return nil
-	}
 
 	// 检查多模态配置（仅对文件导入）
 	if payload.FilePath != "" && !payload.EnableMultimodel && IsImageType(payload.FileType) {

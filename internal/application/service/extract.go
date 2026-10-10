@@ -165,10 +165,7 @@ func enqueueDataTableSummaryIfNeeded(
 	knowledgeID string,
 	fileName, fileType, summaryModelID, embeddingModelID string,
 ) {
-	ft := normalizeFileExtension(fileType)
-	if ft == "" && fileName != "" {
-		ft = getFileType(fileName)
-	}
+	ft := resolveKnowledgeFileType(fileName, fileType)
 	if !isDataTableFileType(ft) {
 		return
 	}
