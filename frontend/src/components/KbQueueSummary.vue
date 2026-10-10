@@ -10,7 +10,7 @@ let loading = false
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 async function refresh() {
-  if (loading) return
+  if (loading || document.hidden) return
   loading = true
   try {
     summary.value = await getRuntimeQueueSummary()
@@ -22,13 +22,28 @@ async function refresh() {
   }
 }
 
-onMounted(() => {
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function handleVisibilityChange() {
+  stopPolling()
+  if (document.hidden) return
   refresh()
   pollTimer = setInterval(refresh, 5000)
+}
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  handleVisibilityChange()
 })
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  stopPolling()
 })
 </script>
 
