@@ -158,6 +158,10 @@ func (c *Connector) fetchStream(
 			continue
 		}
 		detail, err := cli.getNote(ctx, item.ID)
+		if errors.Is(err, datasource.ErrResourceNotFound) {
+			delete(seen, item.ID)
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
