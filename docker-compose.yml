@@ -376,7 +376,7 @@ services:
     # 修改 DOCREADER_REPLICAS 后执行 `docker compose up -d docreader`，再重启 app 才会用上新副本。
     # 每个副本内存上限 8G，按宿主机内存评估副本数。
     deploy:
-      replicas: ${DOCREADER_REPLICAS:-2}
+      replicas: ${DOCREADER_REPLICAS:-1}
     mem_limit: 8g
     memswap_limit: 8g
     # docreader gRPC ships without auth/TLS and is only consumed by the app
