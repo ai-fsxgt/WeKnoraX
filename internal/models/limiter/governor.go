@@ -127,16 +127,24 @@ func RuntimeStats(ctx context.Context) ([]RuntimeStat, bool, error) {
 // single process with no Redis, so a shared distributed semaphore is neither
 // available nor needed — but background ingestion can still burst the whole
 // worker pool against one provider, so we still cap concurrency locally.
-// Waiters poll like the Redis limiter so a changed limit applies to them.
+// Waiters poll like the Redis limiter so a changed limit applies to them, and
+// are also woken at once when a slot frees.
 type localLimiter struct {
 	mu      sync.Mutex
 	active  map[string]int
 	tracked map[string]*trackedSemaphore
+	// released holds one channel per key; release closes and replaces it to
+	// wake every waiter of that key.
+	released map[string]chan struct{}
 }
 
 // NewLocalLimiter builds an in-process per-key concurrency limiter.
 func NewLocalLimiter() ModelConcurrencyLimiter {
-	return &localLimiter{active: make(map[string]int), tracked: make(map[string]*trackedSemaphore)}
+	return &localLimiter{
+		active:   make(map[string]int),
+		tracked:  make(map[string]*trackedSemaphore),
+		released: make(map[string]chan struct{}),
+	}
 }
 
 func (l *localLimiter) Acquire(ctx context.Context, key string, limit func() int) (func(), error) {
@@ -151,6 +159,9 @@ func (l *localLimiter) Acquire(ctx context.Context, key string, limit func() int
 		l.tracked[key] = tracked
 	}
 	tracked.limit.Store(limit)
+	if l.released[key] == nil {
+		l.released[key] = make(chan struct{})
+	}
 	l.mu.Unlock()
 	tracked.waiting.Add(1)
 	defer tracked.waiting.Add(-1)
@@ -176,10 +187,13 @@ func (l *localLimiter) Acquire(ctx context.Context, key string, limit func() int
 				once.Do(func() {
 					l.mu.Lock()
 					l.active[key]--
+					close(l.released[key])
+					l.released[key] = make(chan struct{})
 					l.mu.Unlock()
 				})
 			}, nil
 		}
+		released := l.released[key]
 		l.mu.Unlock()
 
 		timer.Reset(defaultPollInterval)
@@ -187,6 +201,8 @@ func (l *localLimiter) Acquire(ctx context.Context, key string, limit func() int
 		case <-ctx.Done():
 			// Fail open on cancellation, mirroring the Redis limiter.
 			return noop, nil
+		case <-released:
+			timer.Stop()
 		case <-timer.C:
 		}
 	}
