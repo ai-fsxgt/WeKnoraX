@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -176,6 +177,13 @@ func (c *Connector) fetchStream(
 	for _, id := range slices.Sorted(maps.Keys(baseline)) {
 		if seen[id] {
 			continue
+		}
+		_, err := cli.getNote(ctx, id)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, datasource.ErrResourceNotFound) {
+			return nil, err
 		}
 		accepted, err := handler.Emit(ctx, types.FetchedItem{ExternalID: id, IsDeleted: true})
 		if err != nil {

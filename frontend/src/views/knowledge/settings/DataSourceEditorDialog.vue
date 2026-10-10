@@ -894,7 +894,9 @@ function selectType(def: ConnectorDef) {
   form.value.type = def.type
   form.value.name = t(`datasource.connector.${def.type}`)
   form.value.config.credentials = {}
+  form.value.config.resource_ids = []
   form.value.config.settings = {}
+  selectedResourceIds.value = []
   if (def.type === 'poco') {
     form.value.config.settings = {
       base_url: '', content_parts: pocoContentParts.map(part => part.value),
