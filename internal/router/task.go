@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -48,6 +49,7 @@ type AsynqTaskParams struct {
 	MemoryService        interfaces.MemoryService
 	DeadLetterRepo       interfaces.TaskDeadLetterRepository
 	SpanTracker          service.SpanTracker
+	Cleaner              interfaces.ResourceCleaner
 }
 
 // defaultRedisOpTimeout is the previous hard-coded read timeout. The 100ms
@@ -318,12 +320,15 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 
 	// Run the same mux on every pool. Shared and dedicated servers intentionally
 	// overlap, but Redis dequeue is atomic, so each task still executes once.
+	// Pools are started without asynq's own signal handling; shutdown is driven
+	// by the process cleanup so every stop signal waits for unfinished tasks to
+	// be requeued before the process exits.
+	servers := []*asynq.Server{}
 	runPool := func(name string, srv *asynq.Server) {
-		go func() {
-			if err := srv.Run(mux); err != nil {
-				log.Fatalf("could not run %s asynq server: %v", name, err)
-			}
-		}()
+		if err := srv.Start(mux); err != nil {
+			log.Fatalf("could not run %s asynq server: %v", name, err)
+		}
+		servers = append(servers, srv)
 	}
 	runPool("core-pool", params.CoreServer)
 	runPool("postprocess-pool", params.PostProcessServer)
@@ -331,6 +336,19 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	runPool("maintenance-pool", params.MaintenanceServer)
 	runPool("shared-pool", params.SharedServer)
 	runPool("wiki-pool", params.WikiServer)
+
+	params.Cleaner.RegisterWithName("AsynqServers", func() error {
+		var wg sync.WaitGroup
+		for _, srv := range servers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				srv.Shutdown()
+			}()
+		}
+		wg.Wait()
+		return nil
+	})
 	return mux
 }
 

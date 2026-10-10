@@ -358,6 +358,8 @@ services:
     networks:
       - WeKnora-network
     restart: unless-stopped
+    # 优雅停机：HTTP 最长等待 30s，随后 asynq 将未完成任务放回队列
+    stop_grace_period: 1m
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
