@@ -96,13 +96,13 @@ kb.POST("/manual", g.OwnedKBOrAdmin(), g.KBAccessWrite("id"), handler.CreateManu
 
 ```
 pdf txt docx doc epub html htm mhtml md markdown
-png jpg jpeg gif csv xlsx xls pptx ppt json
+png jpg jpeg gif pptx ppt json
 mp3 wav m4a flac ogg
 ```
 
 此前 URL 导入维护着一份更短的独立白名单，导致「直接上传 xlsx 可以、URL 导入 xlsx 被拒」这类不一致（#2447）；现在统一由 `isSupportedImportExtension()` / `validateImportFileType()` 判定，视频类型会给出「暂不支持上传视频文件」的明确提示。
 
-表格类扩展名（`csv` / `xlsx` / `xls`，`dataTableFileExtensions`）在文档处理任务之后额外挂一个表摘要任务（`enqueueDataTableSummaryIfNeeded`）。
+表格类扩展名（`csv` / `xlsx` / `xls`，`dataTableFileExtensions`）已从导入白名单移除：上传与 URL 导入直接拒绝，`ReparseKnowledge` 在清理数据前拒绝，文档处理任务也会直接标记失败。
 
 图片、音频类文件的额外前置校验（对象存储配置是否完整、VLM / ASR 模型是否配置）与 `process_config` 校验一起收敛到 `resolveFileImportProcessConfig()`，上传与 URL 导入共用。
 
@@ -161,7 +161,7 @@ knowledge := &types.Knowledge{
 }
 ```
 
-对 CSV/Excel 数据表类知识，创建后还会额外入队 `TypeDataTableSummary`（`datatable:summary`）任务，生成 `table_summary` / `table_column` 类型的 Chunk 用于表格问答。
+对历史遗留的 CSV/Excel 数据表类知识（新上传已禁止），创建后曾额外入队 `TypeDataTableSummary`（`datatable:summary`）任务，生成 `table_summary` / `table_column` 类型的 Chunk 用于表格问答。
 
 ## 3. 文件存储层（FileService 与存储后端）
 

@@ -105,7 +105,7 @@ flowchart TB
 
 ## 功能清单
 
-- **文档接入**：文件上传（PDF/Word/PPT/Excel/Markdown/HTML/图片/音频等）、URL 抓取、手写 Markdown、整目录上传、飞书 / Lark / Notion / 语雀 / RSS 定时同步。
+- **文档接入**：文件上传（PDF/Word/PPT/Markdown/HTML/图片/音频等）、URL 抓取、手写 Markdown、整目录上传、飞书 / Lark / Notion / 语雀 / RSS 定时同步。
 - **文档理解**：版式分析、扫描件 OCR、表格抽取、图片多模态描述（VLM）、音频转写（ASR）、按文件类型选择解析引擎（`ParserEngineRules`，可接 MinerU / OpenDataLoader）。
 - **索引管道**：可配置分块（含父子分块与自适应策略）、向量索引、关键词全文索引、FAQ 索引、Wiki 生成、知识图谱抽取、预生成问题（question generation）。
 - **检索**：向量 + BM25 混合检索、RRF 融合、Rerank 重排、查询改写与扩展、意图识别（greeting/chitchat/web_search 等，见 `config/prompt_templates/intent_prompts.yaml`）。

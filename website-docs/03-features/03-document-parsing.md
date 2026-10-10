@@ -6,17 +6,18 @@
 
 | 类别 | 格式 |
 | --- | --- |
-| 文档 | PDF、Word（doc/docx）、PPT（ppt/pptx）、Excel（xls/xlsx）、EPUB |
-| 文本 | txt、Markdown、CSV、JSON |
+| 文档 | PDF、Word（doc/docx）、PPT（ppt/pptx）、EPUB |
+| 文本 | txt、Markdown、JSON |
 | 网页 | 在线 URL 抓取、本地 HTML / MHTML 归档 |
 | 图片 | jpg、png、gif、bmp、tiff、webp（需配置视觉模型才能理解内容） |
 | 音频 | mp3、wav、m4a、flac、ogg（需配置语音识别模型） |
+
+表格类文件（xls / xlsx / csv）暂不支持上传与解析，已有的表格类知识也不能重新解析。
 
 解析结果不理想时可以调整：
 
 - **PDF 版式还原差、表格错位**：在知识库的解析设置里为 `pdf` 指定其他解析引擎（MarkItDown / OpenDataLoader / MinerU）；
 - **扫描件没识别出文字**：确认已配置视觉模型，必要时强制走扫描件模式；
-- **Excel 首行是列名却被当成数据**：为 `xlsx`/`xls` 打开「首行作为表头」；
 - **个别段落切错**：不必重传整个文档，直接在分块列表里改，见[知识库与知识管理](02-knowledge-base.md)的分块编辑一节。
 
 以下是 docreader 的完整实现说明，供二次开发与排障参考。

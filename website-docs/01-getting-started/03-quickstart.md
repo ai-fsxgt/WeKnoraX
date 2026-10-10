@@ -59,7 +59,7 @@
 
 进入知识库，把文件拖进上传区，或者粘贴一个网页 URL。上传确认对话框里可以顺手指定标签和这一批文件的解析选项。
 
-支持的格式包括 PDF、Word、Excel、PPT、Markdown、HTML、EPUB、图片和音频等，完整清单见[文档解析服务](../03-features/03-document-parsing.md)。
+支持的格式包括 PDF、Word、PPT、Markdown、HTML、EPUB、图片和音频等（表格类 CSV / Excel 暂不支持上传解析），完整清单见[文档解析服务](../03-features/03-document-parsing.md)。
 
 <Screenshot
   src="/screenshots/quickstart-upload.png"
