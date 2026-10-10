@@ -1908,6 +1908,7 @@ func (h *KnowledgeHandler) RegenerateKnowledgeSummary(c *gin.Context) {
 // @Description  更新手工录入的Markdown知识内容
 // @Description  第三方集成凭证需 knowledge.write 和原文档知识库编辑权限
 // @Description  按文档ID更新完整正文；publish 提交异步索引，须查询处理状态
+// @Description  处理或删除中的文档拒绝更新，返回 HTTP 409
 // @Tags         知识管理
 // @Accept       json
 // @Produce      json
@@ -1915,6 +1916,7 @@ func (h *KnowledgeHandler) RegenerateKnowledgeSummary(c *gin.Context) {
 // @Param        request  body      types.ManualKnowledgePayload true  "手工知识内容"
 // @Success      200      {object}  map[string]interface{}       "更新后的知识"
 // @Failure      400      {object}  errors.AppError              "请求参数错误"
+// @Failure      409      {object}  errors.AppError              "文档正在处理、删除或状态已变化"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge/manual/{id} [put]

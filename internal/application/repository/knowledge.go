@@ -320,6 +320,38 @@ func (r *knowledgeRepository) UpdateKnowledge(ctx context.Context, knowledge *ty
 	return err
 }
 
+// UpdateManualKnowledgeIfIdle saves edited columns only when processing and
+// deletion are inactive. Publishing reserves pending in the same UPDATE.
+func (r *knowledgeRepository) UpdateManualKnowledgeIfIdle(
+	ctx context.Context, knowledge *types.Knowledge,
+) (bool, error) {
+	result := r.db.WithContext(ctx).
+		Model(&types.Knowledge{}).
+		Where("tenant_id = ? AND id = ? AND type = ?", knowledge.TenantID, knowledge.ID, types.KnowledgeTypeManual).
+		Where("parse_status NOT IN ?", []string{
+			types.ParseStatusPending, types.ParseStatusProcessing,
+			types.ParseStatusFinalizing, types.ParseStatusDeleting,
+		}).
+		Updates(map[string]interface{}{
+			"title":              knowledge.Title,
+			"metadata":           knowledge.Metadata,
+			"file_name":          knowledge.FileName,
+			"file_type":          knowledge.FileType,
+			"type":               knowledge.Type,
+			"source":             knowledge.Source,
+			"enable_status":      knowledge.EnableStatus,
+			"embedding_model_id": knowledge.EmbeddingModelID,
+			"parse_status":       knowledge.ParseStatus,
+			"description":        knowledge.Description,
+			"processed_at":       knowledge.ProcessedAt,
+			"updated_at":         knowledge.UpdatedAt,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
 // UpdateKnowledgeBatch updates knowledge items in batch
 func (r *knowledgeRepository) UpdateKnowledgeBatch(ctx context.Context, knowledgeList []*types.Knowledge) error {
 	if len(knowledgeList) == 0 {

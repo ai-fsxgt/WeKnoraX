@@ -1069,35 +1069,31 @@ func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 	existing.EnableStatus = "disabled"
 	existing.UpdatedAt = time.Now()
 	existing.EmbeddingModelID = kb.EmbeddingModelID
-
-	if status == types.ManualKnowledgeStatusDraft {
-		existing.ParseStatus = types.ManualKnowledgeStatusDraft
-		existing.Description = ""
-		existing.ProcessedAt = nil
-
-		if err := s.repo.UpdateKnowledge(ctx, existing); err != nil {
-			logger.Errorf(ctx, "Failed to persist manual draft: %v", err)
+	existing.Description = ""
+	existing.ProcessedAt = nil
+	existing.ParseStatus = types.ManualKnowledgeStatusDraft
+	if status == types.ManualKnowledgeStatusPublish {
+		existing.ParseStatus = types.ParseStatusPending
+		if _, err := ApplyKnowledgeProcessOverrides(ctx, kb, existing, payload.ProcessConfig, nil, nil); err != nil {
 			return nil, err
 		}
+	}
+
+	updated, err := s.repo.UpdateManualKnowledgeIfIdle(ctx, existing)
+	if err != nil {
+		logger.Errorf(ctx, "Failed to persist manual knowledge update: %v", err)
+		return nil, err
+	}
+	if !updated {
+		return nil, werrors.NewConflictError("文档正在处理、删除或状态已变化，无法更新")
+	}
+
+	if status == types.ManualKnowledgeStatusDraft {
 		recordKBActivity(ctx, s.audit, tenantID, existing.KnowledgeBaseID, types.AuditActionKnowledgeUpdated,
 			"knowledge", existing.ID, types.AuditOutcomeSuccess, map[string]any{
 				"title": existing.Title, "status": status,
 			})
 		return existing, nil
-	}
-
-	// Publish: persist pending status and enqueue async task for cleanup + re-indexing
-	existing.ParseStatus = "pending"
-	existing.Description = ""
-	existing.ProcessedAt = nil
-
-	if _, err := ApplyKnowledgeProcessOverrides(ctx, kb, existing, payload.ProcessConfig, nil, nil); err != nil {
-		return nil, err
-	}
-
-	if err := s.repo.UpdateKnowledge(ctx, existing); err != nil {
-		logger.Errorf(ctx, "Failed to persist manual knowledge before indexing: %v", err)
-		return nil, err
 	}
 
 	logger.Infof(ctx, "Manual knowledge updated, enqueuing async processing task, ID: %s", existing.ID)

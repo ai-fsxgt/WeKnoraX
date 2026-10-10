@@ -6874,7 +6874,7 @@
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "更新手工录入的Markdown知识内容\n第三方集成凭证需 knowledge.write 和原文档知识库编辑权限\n按文档ID更新完整正文；publish 提交异步索引，须查询处理状态",
+                "description": "更新手工录入的Markdown知识内容\n第三方集成凭证需 knowledge.write 和原文档知识库编辑权限\n按文档ID更新完整正文；publish 提交异步索引，须查询处理状态\n处理或删除中的文档拒绝更新，返回 HTTP 409",
                 "consumes": [
                     "application/json"
                 ],
@@ -6913,6 +6913,12 @@
                     },
                     "400": {
                         "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "409": {
+                        "description": "文档正在处理、删除或状态已变化",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }
