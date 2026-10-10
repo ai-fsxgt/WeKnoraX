@@ -6123,6 +6123,10 @@ export default {
     }
   },
   knowledgeBase: {
+    queueSummary: {
+      title: '전체 작업',
+      description: '모든 지식 베이스의 백그라운드 작업 수이며 5초마다 갱신됩니다. 대기 작업이 많으면 문서 파싱이 지연될 수 있습니다.'
+    },
     title: '지식베이스',
     fileContent: '파일 내용',
     name: '이름',

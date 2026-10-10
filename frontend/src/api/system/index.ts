@@ -640,6 +640,16 @@ export async function listSystemAuditLog(
 
 // ---- Runtime queue observability (system-scope) ----
 
+export interface RuntimeQueueSummaryResponse {
+  available: boolean
+  active: number
+  pending: number
+}
+
+export function getRuntimeQueueSummary(): Promise<RuntimeQueueSummaryResponse> {
+  return get('/api/v1/system/runtime/queue-summary')
+}
+
 /**
  * QueueStat mirrors types.QueueStat on the backend: a read-only depth
  * snapshot of one asynq queue. `pool` identifies the independent worker pool;

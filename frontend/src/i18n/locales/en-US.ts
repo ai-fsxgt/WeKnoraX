@@ -327,6 +327,10 @@ export default {
     sharedTooltip: 'Accessed from an external workspace via a shared space'
   },
   knowledgeBase: {
+    queueSummary: {
+      title: 'Global tasks',
+      description: 'Background task totals across all knowledge bases, updated every 5 seconds. A large backlog may delay document parsing.'
+    },
     title: 'Knowledge Base',
     fileContent: 'File Content',
     accessInfo: {

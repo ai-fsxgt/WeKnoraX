@@ -1909,6 +1909,13 @@ type RuntimeWorkerPool struct {
 	Utilization     float64 `json:"utilization"`      // Active / ClusterCapacity
 }
 
+// RuntimeQueueSummaryResponse exposes global task counts to workspace members.
+type RuntimeQueueSummaryResponse struct {
+	Available bool `json:"available"`
+	Active    int  `json:"active"`
+	Pending   int  `json:"pending"`
+}
+
 type RuntimeQueuesResponse struct {
 	Available             bool                       `json:"available"`
 	UpstreamConcurrency   int                        `json:"upstream_concurrency"`
@@ -1969,6 +1976,30 @@ func sameQueueWeights(left, right map[string]int) bool {
 		}
 	}
 	return true
+}
+
+// GetRuntimeQueueSummary godoc
+// @Summary      获取全局任务队列运行概览
+// @Description  返回所有任务队列的运行中和排队中总数，空间成员可见
+// @Tags         系统信息
+// @Produce      json
+// @Success      200  {object}  RuntimeQueueSummaryResponse
+// @Failure      500  {object}  map[string]interface{}
+// @Router       /system/runtime/queue-summary [get]
+func (h *SystemHandler) GetRuntimeQueueSummary(c *gin.Context) {
+	ctx := logger.CloneContext(c.Request.Context())
+	stats, supported, err := h.taskInspector.QueueStats(ctx)
+	if err != nil {
+		logger.Errorf(ctx, "get queue summary failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get queue summary"})
+		return
+	}
+	resp := RuntimeQueueSummaryResponse{Available: supported}
+	for _, stat := range stats {
+		resp.Active += stat.Active
+		resp.Pending += stat.Pending
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // GetRuntimeQueues godoc

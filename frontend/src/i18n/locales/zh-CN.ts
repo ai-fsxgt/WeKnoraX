@@ -6217,6 +6217,10 @@ export default {
     }
   },
   knowledgeBase: {
+    queueSummary: {
+      title: '全局任务',
+      description: '所有知识库的后台任务总数，每 5 秒更新。排队较多时，文档解析可能需要等待。'
+    },
     title: '知识库',
     fileContent: '文件内容',
     name: '名称',
