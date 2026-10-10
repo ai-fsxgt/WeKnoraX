@@ -41,3 +41,17 @@ Do not use browser automation or desktop UI automation for access, operations, o
 ## Security & Configuration
 
 Copy `.env.example` for local configuration and never commit `.env`, credentials, keys, or generated data. Report vulnerabilities privately through GitHub Security Advisories rather than public issues.
+
+## PR 审查流程（Codex 自动审查）
+
+PR 每次推送新提交后，Codex 会自动审查。用户要求“关注 PR 审查”时，按以下流程循环处理，**直到 Codex 在 PR 上给出 👍 反应才算可以合并**。
+
+1. **等待结果**：用 `gh` 轮询 PR 的 reviews、行内评论和 Codex 汇总评论，不要凭空猜测结果。
+2. **逐条判断**每条审查意见：
+    - **需要修复**：确实存在 bug、会引发错误，或违反本文件中的规则。
+    - **过度审查**：针对假设场景的防御性逻辑、与本次需求无关的重构或优化、个人风格偏好，或与本文件“禁止过度设计”的原则冲突。不修改，但要说明理由。
+3. **处理**：
+    - 有需要修复的意见：用最小改动修复，运行相关 lint / 类型检查，只提交相关文件，推送后会自动触发下一轮审查。
+    - 全部是过度审查：不提交任何文件，在 PR 上评论 `@codex review` 手动触发下一轮审查。
+4. **汇报**：每轮结束后向用户简要说明哪些意见修复了、哪些判定为过度审查，以及理由。
+5. **结束**：出现 👍 后停止，告知用户可以合并。
