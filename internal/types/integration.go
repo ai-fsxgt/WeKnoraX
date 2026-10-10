@@ -13,6 +13,8 @@ const (
 	IntegrationScopeKnowledgeRead = "knowledge.read"
 	// IntegrationScopeKnowledgeChat additionally grants knowledge-base chat operations.
 	IntegrationScopeKnowledgeChat = "knowledge.chat"
+	// IntegrationScopeKnowledgeWrite grants manual text creation and updates in writable knowledge bases.
+	IntegrationScopeKnowledgeWrite = "knowledge.write"
 
 	// IntegrationConnectionActive marks a usable user connection.
 	IntegrationConnectionActive = "active"
@@ -131,24 +133,28 @@ type IntegrationCredentialAccess struct {
 	KnowledgeBaseIDs             StringArray
 	KnowledgeBaseTenantIDs       map[string]uint64
 	KnowledgeBaseAccessTenantIDs map[string]uint64
+	KnowledgeBaseWriteIDs        StringArray
+	KnowledgeBaseTenantNames     map[uint64]string
 	Scopes                       StringArray
 }
 
 // NormalizeIntegrationScopes drops unknown values, deduplicates them and
-// makes knowledge.chat imply knowledge.read.
+// makes knowledge.chat and knowledge.write imply knowledge.read.
 func NormalizeIntegrationScopes(scopes []string) StringArray {
 	seen := make(map[string]bool, len(scopes)+1)
 	for _, scope := range scopes {
 		switch scope {
-		case IntegrationScopeKnowledgeRead, IntegrationScopeKnowledgeChat:
+		case IntegrationScopeKnowledgeRead, IntegrationScopeKnowledgeChat, IntegrationScopeKnowledgeWrite:
 			seen[scope] = true
 		}
 	}
-	if seen[IntegrationScopeKnowledgeChat] {
+	if seen[IntegrationScopeKnowledgeChat] || seen[IntegrationScopeKnowledgeWrite] {
 		seen[IntegrationScopeKnowledgeRead] = true
 	}
-	out := make(StringArray, 0, 2)
-	for _, scope := range []string{IntegrationScopeKnowledgeRead, IntegrationScopeKnowledgeChat} {
+	out := make(StringArray, 0, 3)
+	for _, scope := range []string{
+		IntegrationScopeKnowledgeRead, IntegrationScopeKnowledgeChat, IntegrationScopeKnowledgeWrite,
+	} {
 		if seen[scope] {
 			out = append(out, scope)
 		}

@@ -4792,6 +4792,7 @@ export default {
     scopes: {
       read: '读取与检索知识库',
       chat: '基于知识库问答',
+      write: '新增与更新文本知识',
     },
     secret: {
       title: '保存应用凭证',
@@ -4841,7 +4842,9 @@ export default {
       readTitle: '读取与检索已选空间的知识库',
       readDescription: '可读取所选空间中你当前有权访问的知识库，权限变化会实时生效。',
       chatTitle: '基于知识库发起问答',
-      chatDescription: '允许应用调用知识问答接口，但不能写入、修改或删除内容。',
+      chatDescription: '问答权限仅允许调用知识问答接口，内容写入需单独授权。',
+      writeTitle: '新增与更新已选空间的文本知识',
+      writeDescription: '允许应用在所选空间内，向你有编辑权限的文档知识库新增和更新文本知识。写入位置由你在第三方对话中指定或确认。',
       selectWorkspaces: '选择授权空间',
       selectWorkspacesHint: '可同时选择多个空间，以后可重新授权或撤销整个连接。',
       noWorkspaces: '当前没有允许此应用接入的空间',

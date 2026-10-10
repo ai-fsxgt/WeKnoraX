@@ -765,6 +765,11 @@ func (s *knowledgeService) CreateKnowledgeFromManual(ctx context.Context,
 		return nil, err
 	}
 
+	if permission, integration := types.IntegrationKnowledgeBasePermission(ctx, kbID, kb.TenantID); integration &&
+		permission != types.OrgRoleEditor {
+		return nil, werrors.NewForbiddenError("No permission to write manual knowledge")
+	}
+
 	if err := s.checkStorageEngineConfigured(ctx, kb); err != nil {
 		return nil, err
 	}
@@ -1025,6 +1030,12 @@ func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 	}
 	if !existing.IsManual() {
 		return nil, werrors.NewBadRequestError("仅支持手工知识的在线编辑")
+	}
+	permission, integration := types.IntegrationKnowledgeBasePermission(
+		ctx, existing.KnowledgeBaseID, existing.TenantID,
+	)
+	if integration && permission != types.OrgRoleEditor {
+		return nil, werrors.NewForbiddenError("No permission to write manual knowledge")
 	}
 
 	kb, err := s.kbService.GetKnowledgeBaseByID(ctx, existing.KnowledgeBaseID)

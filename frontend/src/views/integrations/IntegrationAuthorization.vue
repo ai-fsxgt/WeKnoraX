@@ -41,6 +41,13 @@
                 <p>{{ t('thirdPartyIntegration.authorization.chatDescription') }}</p>
               </div>
             </div>
+            <div v-if="authorization.scopes.includes('knowledge.write')" class="permission-row">
+              <t-icon name="edit" />
+              <div>
+                <strong>{{ t('thirdPartyIntegration.authorization.writeTitle') }}</strong>
+                <p>{{ t('thirdPartyIntegration.authorization.writeDescription') }}</p>
+              </div>
+            </div>
           </div>
         </section>
 

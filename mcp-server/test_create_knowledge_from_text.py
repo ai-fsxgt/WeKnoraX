@@ -44,14 +44,14 @@ class CreateKnowledgeFromTextTest(unittest.TestCase):
         self.assertNotIn("tag_ids", body)
         self.assertEqual(body["status"], "publish")
 
-    def test_tool_function_resolves_kb_id_and_forwards_status(self):
+    def test_tool_function_forwards_explicit_kb_id_and_status(self):
         with mock.patch.object(
             srv.client, "resolve_kb_id", return_value="uuid-1"
         ) as rid, mock.patch.object(
             srv.client, "create_knowledge_from_text", return_value={"ok": True}
         ) as method:
-            srv.create_knowledge_from_text("my-kb", "T", "C", status="draft")
-        rid.assert_called_once_with("my-kb")
+            srv.create_knowledge_from_text("uuid-1", "T", "C", status="draft")
+        rid.assert_not_called()
         method.assert_called_once_with("uuid-1", "T", "C", tag_ids=None, status="draft")
 
 

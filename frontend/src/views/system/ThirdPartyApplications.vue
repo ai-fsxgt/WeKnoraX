@@ -105,6 +105,9 @@
           <t-checkbox v-model="chatScope">
             {{ t(integrationScopeLabelKeys['knowledge.chat']) }}
           </t-checkbox>
+          <t-checkbox v-model="writeScope">
+            {{ t(integrationScopeLabelKeys['knowledge.write']) }}
+          </t-checkbox>
         </div>
 
         <div class="switch-row">
@@ -168,6 +171,7 @@ const editingId = ref('')
 const redirectURIText = ref('')
 const readScope = ref(true)
 const chatScope = ref(false)
+const writeScope = ref(false)
 const secretVisible = ref(false)
 const createdSecret = ref('')
 const secretClientID = ref('')
@@ -185,6 +189,7 @@ function resetForm() {
   redirectURIText.value = ''
   readScope.value = true
   chatScope.value = false
+  writeScope.value = false
 }
 
 function openCreate() {
@@ -200,6 +205,7 @@ function openEdit(app: IntegrationApplication) {
   redirectURIText.value = app.redirect_uris.join('\n')
   readScope.value = true
   chatScope.value = app.allowed_scopes.includes('knowledge.chat')
+  writeScope.value = app.allowed_scopes.includes('knowledge.write')
   drawerVisible.value = true
 }
 
@@ -216,9 +222,11 @@ function applicationInput(): IntegrationApplicationInput | null {
     name: form.name.trim(),
     description: form.description.trim(),
     redirect_uris: [...new Set(redirectUris)],
-    allowed_scopes: chatScope.value
-      ? ['knowledge.read', 'knowledge.chat']
-      : ['knowledge.read'],
+    allowed_scopes: [
+      'knowledge.read',
+      ...(chatScope.value ? ['knowledge.chat' as const] : []),
+      ...(writeScope.value ? ['knowledge.write' as const] : []),
+    ],
     enabled: form.enabled,
   }
 }
@@ -373,7 +381,7 @@ onMounted(loadApplications)
 .form-stack { display: grid; gap: 10px; }
 .form-stack > label, .switch-row label { margin-top: 8px; font-weight: 600; color: var(--td-text-color-primary); }
 .field-hint { margin: -2px 0 4px; color: var(--td-text-color-placeholder); font-size: 12px; line-height: 1.5; }
-.scope-options { display: flex; gap: 22px; padding: 12px; border-radius: 8px; background: var(--td-bg-color-secondarycontainer); }
+.scope-options { display: flex; flex-wrap: wrap; gap: 22px; padding: 12px; border-radius: 8px; background: var(--td-bg-color-secondarycontainer); }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px; }
 .switch-row .field-hint { margin: 4px 0 0; }
 .secret-field { display: grid; gap: 6px; margin-top: 16px; }

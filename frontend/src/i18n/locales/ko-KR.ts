@@ -4723,6 +4723,7 @@ export default {
     scopes: {
       read: '지식베이스 읽기 및 검색',
       chat: '지식베이스 기반 질의응답',
+      write: '텍스트 지식 생성 및 수정',
     },
     secret: {
       title: '앱 자격 증명 저장', copy: 'Client Secret 복사',
@@ -4757,7 +4758,9 @@ export default {
       credentialNotice: '앱에는 별도 자격 증명이 발급되며 로그인 Token과 OIDC 자격 증명은 공유되지 않습니다.',
       permissions: '앱 권한', readTitle: '선택한 워크스페이스의 지식 베이스 읽기 및 검색',
       readDescription: '선택한 워크스페이스에서 현재 접근 가능한 지식 베이스를 읽을 수 있으며 권한 변경은 즉시 적용됩니다.',
-      chatTitle: '지식 베이스 기반 질의응답', chatDescription: '지식 Q&A는 호출할 수 있지만 콘텐츠 작성, 수정, 삭제는 할 수 없습니다.',
+      chatTitle: '지식 베이스 기반 질의응답', chatDescription: '이 권한은 지식 Q&A만 허용합니다. 콘텐츠 작성에는 별도 승인이 필요합니다.',
+      writeTitle: '선택한 워크스페이스의 텍스트 지식 생성 및 수정',
+      writeDescription: '선택한 워크스페이스에서 편집 권한이 있는 문서 지식 베이스에 텍스트를 생성하고 수정할 수 있습니다. 외부 대화에서 저장 위치를 지정하거나 확인하세요.',
       selectWorkspaces: '워크스페이스 선택', selectWorkspacesHint: '여러 워크스페이스를 선택할 수 있으며 나중에 다시 승인하거나 연결을 취소할 수 있습니다.',
       noWorkspaces: '현재 이 앱을 허용하는 워크스페이스가 없습니다', footerHint: '유효 권한은 요청할 때마다 다시 계산됩니다.',
       deny: '거부', allow: '연결', submitFailed: '승인 결과 제출 실패', loadFailed: '승인 요청을 불러오지 못했습니다',

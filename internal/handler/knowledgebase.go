@@ -448,12 +448,11 @@ func (h *KnowledgeBaseHandler) validateAndGetKnowledgeBase(c *gin.Context) (*typ
 		logger.ErrorWithFields(ctx, err, nil)
 		return nil, id, 0, "", apperrors.NewInternalServerError(err.Error())
 	}
-	if principal, ok := types.PrincipalFromContext(ctx); ok &&
-		principal.Type == types.PrincipalIntegrationUser {
-		if scope, exists := types.TenantAPIKeyScopeFromContext(ctx); exists &&
-			scope.AllowsKnowledgeBase(id) && scope.KnowledgeBaseTenantIDs[id] == kb.TenantID {
-			return kb, id, kb.TenantID, types.OrgRoleViewer, nil
+	if permission, integration := types.IntegrationKnowledgeBasePermission(ctx, id, kb.TenantID); integration {
+		if permission == "" {
+			return nil, id, 0, "", apperrors.NewForbiddenError("Permission denied to access this knowledge base")
 		}
+		return kb, id, kb.TenantID, permission, nil
 	}
 
 	// Check 1: Verify tenant ownership (owner has full access)
@@ -531,6 +530,7 @@ func (h *KnowledgeBaseHandler) validateAndGetKnowledgeBase(c *gin.Context) (*typ
 // GetKnowledgeBase godoc
 // @Summary      获取知识库详情
 // @Description  根据ID获取知识库详情。当使用共享智能体时，可传 agent_id 以校验该智能体是否有权访问该知识库。
+// @Description  第三方集成凭证的元数据包含 tenant_name 和 can_write
 // @Tags         知识库
 // @Accept       json
 // @Produce      json
@@ -551,7 +551,8 @@ func (h *KnowledgeBaseHandler) GetKnowledgeBase(c *gin.Context) {
 	}
 	if principal, ok := types.PrincipalFromContext(c.Request.Context()); ok &&
 		principal.Type == types.PrincipalIntegrationUser {
-		c.JSON(http.StatusOK, gin.H{"success": true, "data": service.BuildIntegrationKnowledgeBaseView(kb)})
+		scope, _ := types.TenantAPIKeyScopeFromContext(c.Request.Context())
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": service.BuildIntegrationKnowledgeBaseView(kb, scope)})
 		return
 	}
 	// Fill counts (knowledge_count, chunk_count, is_processing) so hover/detail shows correct numbers
@@ -571,6 +572,7 @@ func (h *KnowledgeBaseHandler) GetKnowledgeBase(c *gin.Context) {
 // ListKnowledgeBases godoc
 // @Summary      获取知识库列表
 // @Description  获取当前空间的所有知识库；或当传入 agent_id（共享智能体）时，校验权限后返回该智能体配置的知识库范围（用于 @ 提及）
+// @Description  第三方集成凭证返回已授权空间的知识库，包含 tenant_name 和 can_write
 // @Tags         知识库
 // @Accept       json
 // @Produce      json
@@ -594,7 +596,7 @@ func (h *KnowledgeBaseHandler) ListKnowledgeBases(c *gin.Context) {
 		kbs = filterKnowledgeBasesForAPIKeyScope(ctx, kbs)
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
-			"data":    service.BuildIntegrationKnowledgeBaseViews(kbs),
+			"data":    service.BuildIntegrationKnowledgeBaseViews(kbs, scope),
 		})
 		return
 	}
@@ -1433,7 +1435,8 @@ func (h *KnowledgeBaseHandler) ListMoveTargets(c *gin.Context) {
 
 	data := interface{}(targets)
 	if principal, ok := types.PrincipalFromContext(ctx); ok && principal.Type == types.PrincipalIntegrationUser {
-		data = service.BuildIntegrationKnowledgeBaseViews(targets)
+		scope, _ := types.TenantAPIKeyScopeFromContext(ctx)
+		data = service.BuildIntegrationKnowledgeBaseViews(targets, scope)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
