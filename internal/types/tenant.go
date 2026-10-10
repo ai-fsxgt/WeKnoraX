@@ -322,9 +322,10 @@ func (c *CredentialsConfig) Scan(value interface{}) error {
 type ParserEngineConfig struct {
 	// ChatParserEngineRules selects parser engines for session-scoped chat
 	// documents. Knowledge bases keep their own rules in ChunkingConfig.
-	ChatParserEngineRules []ParserEngineRule `json:"chat_parser_engine_rules,omitempty"`
-	MinerUEndpoint        string             `json:"mineru_endpoint"` // MinerU 自建服务端点
-	MinerUAPIKey          string             `json:"mineru_api_key"`  // MinerU 云 API Key
+	ChatParserEngineRules  []ParserEngineRule `json:"chat_parser_engine_rules,omitempty"`
+	MinerUEndpoint         string             `json:"mineru_endpoint"`                      // MinerU 自建服务端点
+	MinerUSelfHostedAPIKey string             `json:"mineru_self_hosted_api_key,omitempty"` // MinerU 自建服务 API Key
+	MinerUAPIKey           string             `json:"mineru_api_key"`                       // MinerU 云 API Key
 
 	// MinerU 自建解析参数
 	MinerUModel         string `json:"mineru_model,omitempty"`          // backend: pipeline, vlm-*, hybrid-*
@@ -413,6 +414,9 @@ func (c *ParserEngineConfig) ToOverridesMap() map[string]string {
 	m := make(map[string]string)
 	if c.MinerUEndpoint != "" {
 		m["mineru_endpoint"] = c.MinerUEndpoint
+	}
+	if c.MinerUSelfHostedAPIKey != "" {
+		m["mineru_self_hosted_api_key"] = c.MinerUSelfHostedAPIKey
 	}
 	if c.MinerUAPIKey != "" {
 		m["mineru_api_key"] = c.MinerUAPIKey

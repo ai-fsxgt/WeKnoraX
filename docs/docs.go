@@ -19510,6 +19510,10 @@ const docTemplate = `{
                 "mineru_parse_method": {
                     "type": "string"
                 },
+                "mineru_self_hosted_api_key": {
+                    "description": "MinerU 自建服务 API Key",
+                    "type": "string"
+                },
                 "mineru_vlm_server_url": {
                     "description": "vLLM 服务器地址 (vlm-http-client / hybrid-http-client)",
                     "type": "string"

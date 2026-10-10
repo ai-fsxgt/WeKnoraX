@@ -32,6 +32,7 @@ var (
 // MinerUReader calls a self-hosted MinerU API to read/convert documents.
 type MinerUReader struct {
 	endpoint      string
+	apiKey        string
 	backend       string // "pipeline", "vlm-*", "hybrid-*"
 	vlmServerURL  string // vLLM server URL for vlm-http-client / hybrid-http-client
 	formulaEnable bool
@@ -50,6 +51,7 @@ func NewMinerUReader(overrides map[string]string) *MinerUReader {
 
 	c := &MinerUReader{
 		endpoint:      strings.TrimRight(overrides["mineru_endpoint"], "/"),
+		apiKey:        strings.TrimSpace(overrides["mineru_self_hosted_api_key"]),
 		backend:       stringOr(overrides["mineru_model"], "pipeline"),
 		vlmServerURL:  overrides["mineru_vlm_server_url"],
 		formulaEnable: parseBoolOr(overrides["mineru_enable_formula"], true),
@@ -238,6 +240,9 @@ func (c *MinerUReader) callFileParse(
 		return "", nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 
 	client := utils.NewSSRFSafeHTTPClient(utils.SSRFSafeHTTPClientConfig{
 		Timeout:      mineruTimeout,
@@ -359,7 +364,7 @@ func validateMinerUOutboundURL(rawURL string) error {
 }
 
 // PingMinerU checks if the self-hosted MinerU service is reachable.
-func PingMinerU(endpoint string) (bool, string) {
+func PingMinerU(endpoint, apiKey string) (bool, string) {
 	endpoint = strings.TrimRight(endpoint, "/")
 	if endpoint == "" {
 		return false, "未配置 MinerU 端点"
@@ -367,11 +372,18 @@ func PingMinerU(endpoint string) (bool, string) {
 	if err := validateMinerUOutboundURL(endpoint); err != nil {
 		return false, err.Error()
 	}
+	req, err := http.NewRequest(http.MethodGet, endpoint+"/docs", nil)
+	if err != nil {
+		return false, fmt.Sprintf("MinerU 请求创建失败: %v", err)
+	}
+	if apiKey = strings.TrimSpace(apiKey); apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	client := utils.NewSSRFSafeHTTPClient(utils.SSRFSafeHTTPClientConfig{
 		Timeout:      5 * time.Second,
 		MaxRedirects: 5,
 	})
-	resp, err := client.Get(endpoint + "/docs")
+	resp, err := client.Do(req)
 	if err != nil {
 		return false, fmt.Sprintf("MinerU 服务不可达: %v", err)
 	}

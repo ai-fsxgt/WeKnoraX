@@ -5645,6 +5645,8 @@ export default {
       saveSuccess: '저장 성공',
       saveFailed: '저장 실패',
       mineruEndpointPlaceholder: '예: https://your-mineru.example.com',
+      mineruSelfHostedApiKeyPlaceholder: 'API Key (선택 사항)',
+      mineruSelfHostedApiKeyHint: 'Bearer 접두사 없이 키만 입력하세요. 비워 두면 저장된 키가 유지됩니다.',
       defaultPipeline: '기본 pipeline',
       languagePlaceholder: '예: ch, en, ja (기본 ch)',
       mineruCloudApiKeyPlaceholder: 'MinerU 클라우드 API Key',
