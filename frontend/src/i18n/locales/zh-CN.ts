@@ -5739,6 +5739,8 @@ export default {
       saveSuccess: '保存成功',
       saveFailed: '保存失败',
       mineruEndpointPlaceholder: '如 https://your-mineru.example.com',
+      mineruSelfHostedApiKeyPlaceholder: 'API Key（可选）',
+      mineruSelfHostedApiKeyHint: '仅填写密钥，无需 Bearer 前缀；已保存的密钥留空时保持不变。',
       defaultPipeline: '默认 pipeline',
       languagePlaceholder: '如 ch、en、ja（默认 ch）',
       mineruCloudApiKeyPlaceholder: 'MinerU 云服务 API Key',

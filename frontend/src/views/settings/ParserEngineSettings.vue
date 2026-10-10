@@ -226,6 +226,18 @@
             />
           </div>
           <div class="form-item">
+            <label class="form-label">API Key</label>
+            <t-input
+              v-model="config.mineru_self_hosted_api_key"
+              type="password"
+              :placeholder="$t('settings.parser.mineruSelfHostedApiKeyPlaceholder')"
+              clearable
+            >
+              <template #prefix-icon><t-icon name="lock-on" /></template>
+            </t-input>
+            <p class="form-desc">{{ $t('settings.parser.mineruSelfHostedApiKeyHint') }}</p>
+          </div>
+          <div class="form-item">
             <label class="form-label">Backend</label>
             <t-select v-model="config.mineru_model" :placeholder="$t('settings.parser.defaultPipeline')" clearable>
               <t-option value="pipeline" label="pipeline" />
@@ -397,6 +409,7 @@ const DEFAULT_PARSER_CONFIG: ParserEngineConfig = {
   docreader_addr: '',
   docreader_transport: 'grpc',
   mineru_endpoint: '',
+  mineru_self_hosted_api_key: '',
   mineru_api_key: '',
   mineru_model: 'pipeline',
   mineru_vlm_server_url: '',
@@ -529,6 +542,7 @@ async function loadConfig() {
       docreader_addr: data?.docreader_addr ?? DEFAULT_PARSER_CONFIG.docreader_addr ?? '',
       docreader_transport: data?.docreader_transport ?? DEFAULT_PARSER_CONFIG.docreader_transport ?? 'grpc',
       mineru_endpoint: data?.mineru_endpoint ?? DEFAULT_PARSER_CONFIG.mineru_endpoint ?? '',
+      mineru_self_hosted_api_key: data?.mineru_self_hosted_api_key ?? DEFAULT_PARSER_CONFIG.mineru_self_hosted_api_key ?? '',
       mineru_api_key: data?.mineru_api_key ?? DEFAULT_PARSER_CONFIG.mineru_api_key ?? '',
       mineru_model: data?.mineru_model ?? DEFAULT_PARSER_CONFIG.mineru_model ?? '',
       mineru_vlm_server_url: data?.mineru_vlm_server_url ?? DEFAULT_PARSER_CONFIG.mineru_vlm_server_url ?? '',
@@ -567,6 +581,7 @@ function buildConfigPayload(): ParserEngineConfig {
     docreader_addr: config.value.docreader_addr?.trim() ?? '',
     docreader_transport: (config.value.docreader_transport ?? 'grpc').trim() || 'grpc',
     mineru_endpoint: config.value.mineru_endpoint?.trim() ?? '',
+    mineru_self_hosted_api_key: config.value.mineru_self_hosted_api_key?.trim() ?? '',
     mineru_api_key: config.value.mineru_api_key?.trim() ?? '',
     mineru_model: config.value.mineru_model?.trim() ?? '',
     mineru_vlm_server_url: config.value.mineru_vlm_server_url?.trim() ?? '',

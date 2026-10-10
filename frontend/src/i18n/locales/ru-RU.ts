@@ -5655,6 +5655,8 @@ export default {
       saveSuccess: 'Сохранено',
       saveFailed: 'Ошибка сохранения',
       mineruEndpointPlaceholder: 'напр. https://your-mineru.example.com',
+      mineruSelfHostedApiKeyPlaceholder: 'API Key (необязательно)',
+      mineruSelfHostedApiKeyHint: 'Введите ключ без префикса Bearer. Пустое поле сохраняет ранее заданный ключ.',
       defaultPipeline: 'Pipeline по умолчанию',
       languagePlaceholder: 'напр. ch, en, ja (по умолчанию ch)',
       mineruCloudApiKeyPlaceholder: 'MinerU Cloud API Key',

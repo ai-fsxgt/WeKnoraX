@@ -1377,6 +1377,8 @@ export default {
       saveSuccess: 'Saved successfully',
       saveFailed: 'Save failed',
       mineruEndpointPlaceholder: 'e.g. https://your-mineru.example.com',
+      mineruSelfHostedApiKeyPlaceholder: 'API Key (optional)',
+      mineruSelfHostedApiKeyHint: 'Enter the key without the Bearer prefix. Leaving this blank keeps the saved key.',
       defaultPipeline: 'Default pipeline',
       languagePlaceholder: 'e.g. ch, en, ja (default ch)',
       mineruCloudApiKeyPlaceholder: 'MinerU Cloud API Key',

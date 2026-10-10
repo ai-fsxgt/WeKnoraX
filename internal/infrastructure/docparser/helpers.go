@@ -3,12 +3,21 @@ package docparser
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
 )
+
+// remoteParserEngineOverrides excludes credentials used only by the local MinerU reader.
+// Copy the map so remote engine checks do not remove the key needed by local checks.
+func remoteParserEngineOverrides(overrides map[string]string) map[string]string {
+	remoteOverrides := maps.Clone(overrides)
+	delete(remoteOverrides, "mineru_self_hosted_api_key")
+	return remoteOverrides
+}
 
 // stringOr returns val (trimmed) if non-empty, otherwise fallback.
 func stringOr(val, fallback string) string {

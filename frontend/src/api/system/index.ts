@@ -118,6 +118,7 @@ export interface ParserEngineConfig {
   docreader_addr?: string
   docreader_transport?: string
   mineru_endpoint?: string
+  mineru_self_hosted_api_key?: string
   mineru_api_key?: string
   // MinerU 自建参数
   mineru_model?: string

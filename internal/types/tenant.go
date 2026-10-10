@@ -322,9 +322,10 @@ func (c *CredentialsConfig) Scan(value interface{}) error {
 type ParserEngineConfig struct {
 	// ChatParserEngineRules selects parser engines for session-scoped chat
 	// documents. Knowledge bases keep their own rules in ChunkingConfig.
-	ChatParserEngineRules []ParserEngineRule `json:"chat_parser_engine_rules,omitempty"`
-	MinerUEndpoint        string             `json:"mineru_endpoint"` // MinerU 自建服务端点
-	MinerUAPIKey          string             `json:"mineru_api_key"`  // MinerU 云 API Key
+	ChatParserEngineRules  []ParserEngineRule `json:"chat_parser_engine_rules,omitempty"`
+	MinerUEndpoint         string             `json:"mineru_endpoint"`                      // MinerU 自建服务端点
+	MinerUSelfHostedAPIKey string             `json:"mineru_self_hosted_api_key,omitempty"` // MinerU 自建服务 API Key
+	MinerUAPIKey           string             `json:"mineru_api_key"`                       // MinerU 云 API Key
 
 	// MinerU 自建解析参数
 	MinerUModel         string `json:"mineru_model,omitempty"`          // backend: pipeline, vlm-*, hybrid-*
@@ -414,6 +415,9 @@ func (c *ParserEngineConfig) ToOverridesMap() map[string]string {
 	if c.MinerUEndpoint != "" {
 		m["mineru_endpoint"] = c.MinerUEndpoint
 	}
+	if c.MinerUSelfHostedAPIKey != "" {
+		m["mineru_self_hosted_api_key"] = c.MinerUSelfHostedAPIKey
+	}
 	if c.MinerUAPIKey != "" {
 		m["mineru_api_key"] = c.MinerUAPIKey
 	}
@@ -500,7 +504,19 @@ func (c *ParserEngineConfig) Value() (driver.Value, error) {
 	if c == nil {
 		return nil, nil
 	}
-	return json.Marshal(c)
+	out := *c
+	if out.MinerUSelfHostedAPIKey != "" && !strings.HasPrefix(out.MinerUSelfHostedAPIKey, utils.EncPrefix) {
+		key := utils.GetAESKey()
+		if key == nil {
+			return nil, fmt.Errorf("encrypt mineru_self_hosted_api_key: SYSTEM_AES_KEY must be exactly 32 bytes")
+		}
+		encrypted, err := utils.EncryptAESGCM(out.MinerUSelfHostedAPIKey, key)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt mineru_self_hosted_api_key: %w", err)
+		}
+		out.MinerUSelfHostedAPIKey = encrypted
+	}
+	return json.Marshal(out)
 }
 
 // Scan implements the sql.Scanner interface for ParserEngineConfig
@@ -512,6 +528,8 @@ func (c *ParserEngineConfig) Scan(value interface{}) error {
 	if !ok {
 		return nil
 	}
+	// Keep the ciphertext until MinerU uses the key so a decryption failure
+	// does not prevent the workspace from loading.
 	return json.Unmarshal(b, c)
 }
 

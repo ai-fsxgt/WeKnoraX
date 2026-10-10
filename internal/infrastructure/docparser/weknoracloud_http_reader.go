@@ -78,7 +78,7 @@ func (p *WeKnoraCloudSignedDocumentReader) Read(ctx context.Context, req *types.
 		RequestID: req.RequestID,
 		Config: &httpReadConfig{
 			ParserEngine:          req.ParserEngine,
-			ParserEngineOverrides: req.ParserEngineOverrides,
+			ParserEngineOverrides: remoteParserEngineOverrides(req.ParserEngineOverrides),
 		},
 	}
 	if len(req.FileContent) > 0 {
