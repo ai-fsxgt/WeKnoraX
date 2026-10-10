@@ -15,6 +15,11 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
+const (
+	checkpointItemInterval = 50
+	checkpointTimeInterval = 30 * time.Second
+)
+
 var _ datasource.FullSyncStreamingConnector = (*Connector)(nil)
 
 // Connector imports completed Poco notes as composed Markdown documents.
@@ -83,7 +88,7 @@ func (c *Connector) FetchIncremental(
 	return handler.items, next, err
 }
 
-// FetchStream imports changed notes and checkpoints each accepted item.
+// FetchStream imports changed notes and checkpoints progress in batches.
 func (c *Connector) FetchStream(
 	ctx context.Context, ds *types.DataSourceConfig, cursor *types.SyncCursor, handler datasource.StreamHandler,
 ) (*types.SyncCursor, error) {
@@ -126,12 +131,29 @@ func (c *Connector) fetchStream(
 		state = syncCursor{SourceKey: sourceKey, Items: make(map[string]string)}
 	}
 	baseline := maps.Clone(state.Items)
+	processed := 0
+	lastCheckpoint := time.Now()
+	checkpoint := func(force bool) error {
+		if !force && processed < checkpointItemInterval && time.Since(lastCheckpoint) < checkpointTimeInterval {
+			return nil
+		}
+		cursor, err := encodedCursor(state)
+		if err != nil {
+			return err
+		}
+		if err := handler.Checkpoint(ctx, cursor); err != nil {
+			return err
+		}
+		processed = 0
+		lastCheckpoint = time.Now()
+		return nil
+	}
 	if forceFull {
 		state.PendingFullIDs = make(map[string]bool, len(state.Items))
 		for id := range state.Items {
 			state.PendingFullIDs[id] = true
 		}
-		if err := checkpoint(ctx, handler, state); err != nil {
+		if err := checkpoint(true); err != nil {
 			return nil, err
 		}
 	}
@@ -176,7 +198,8 @@ func (c *Connector) fetchStream(
 			state.Items[item.ID] = signaturePrefix + ":" + detail.UpdatedAt.Format(time.RFC3339Nano)
 			delete(state.PendingFullIDs, item.ID)
 		}
-		if err := checkpoint(ctx, handler, state); err != nil {
+		processed++
+		if err := checkpoint(false); err != nil {
 			return nil, err
 		}
 	}
@@ -199,19 +222,15 @@ func (c *Connector) fetchStream(
 			delete(state.Items, id)
 			delete(state.PendingFullIDs, id)
 		}
-		if err := checkpoint(ctx, handler, state); err != nil {
+		processed++
+		if err := checkpoint(false); err != nil {
 			return nil, err
 		}
 	}
-	return encodedCursor(state)
-}
-
-func checkpoint(ctx context.Context, handler datasource.StreamHandler, state syncCursor) error {
-	cursor, err := encodedCursor(state)
-	if err != nil {
-		return err
+	if err := checkpoint(true); err != nil {
+		return nil, err
 	}
-	return handler.Checkpoint(ctx, cursor)
+	return encodedCursor(state)
 }
 
 func encodedCursor(state syncCursor) (*types.SyncCursor, error) {
