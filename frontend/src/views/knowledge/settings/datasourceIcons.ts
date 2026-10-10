@@ -6,6 +6,7 @@ import yuqueIcon from '@/assets/img/datasource-yuque.ico'
 import rssIcon from '@/assets/img/datasource-rss.svg'
 import imaIcon from '@/assets/img/datasource-ima.png'
 import confluenceIcon from '@/assets/img/datasource-confluence.png'
+import pocoIcon from '@/assets/img/datasource-poco.png'
 
 export const datasourceIconMap: Record<string, string> = {
   feishu: feishuIcon,
@@ -19,6 +20,7 @@ export const datasourceIconMap: Record<string, string> = {
   gitlab: gitlabIcon,
   ima: imaIcon,
   confluence: confluenceIcon,
+  poco: pocoIcon,
 }
 
 export function getDatasourceIconUrl(type: string): string | undefined {
