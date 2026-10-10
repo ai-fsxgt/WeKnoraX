@@ -32,8 +32,8 @@ services:
     ports:
       - "${APP_PORT:-8080}:8080"
     volumes:
-      - data-files:/data/files
-      - docreader-tmp:/tmp/docreader:ro
+      - ./data/data-files:/data/files:z
+      - ./data/docreader-tmp:/tmp/docreader:ro,z
       - /var/run/docker.sock:/var/run/docker.sock
       - ./config/config.yaml:/app/config/config.yaml
       # Optional: mount custom skills directory (allows adding skills without rebuilding image)
@@ -388,7 +388,7 @@ services:
     expose:
       - "50051"
     volumes:
-      - docreader-tmp:/tmp/docreader
+      - ./data/docreader-tmp:/tmp/docreader:z
     environment:
       # ========== 基础 ==========
       - TZ=${TZ:-Asia/Shanghai}
@@ -502,7 +502,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ./data/postgres-data:/var/lib/postgresql/data:z
     networks:
       - WeKnora-network
     healthcheck:
@@ -524,12 +524,12 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     volumes:
-      - redis-data:/data
+      - ./data/redis-data:/data:z
     restart: always
     networks:
       - WeKnora-network
 
-  # One-shot init: copy the read-only template settings.yml into a named volume
+  # One-shot init: copy the read-only template settings.yml into the runtime directory
   # before searxng starts. Necessary because the searxng entrypoint sed-replaces
   # `ultrasecretkey` in /etc/searxng/settings.yml in place; bind-mounting the
   # repo file directly would write the resolved SEARXNG_SECRET back into the
@@ -540,7 +540,7 @@ services:
     command: ["sh", "-c", "cp /template/settings.yml /etc/searxng/settings.yml && chmod 0644 /etc/searxng/settings.yml"]
     volumes:
       - ./docker/searxng/settings.yml:/template/settings.yml:ro
-      - searxng_config:/etc/searxng
+      - ./data/searxng_config:/etc/searxng:z
     restart: "no"
     networks:
       - WeKnora-network
@@ -556,7 +556,7 @@ services:
     ports:
       - "${SEARXNG_BIND:-127.0.0.1}:${SEARXNG_PORT:-8888}:8080"
     volumes:
-      - searxng_config:/etc/searxng
+      - ./data/searxng_config:/etc/searxng:z
     environment:
       - SEARXNG_BASE_URL=http://localhost:${SEARXNG_PORT:-8888}/
       - INSTANCE_NAME=weknora-searxng
@@ -594,7 +594,7 @@ services:
       - MINIO_ROOT_PASSWORD=${MINIO_SECRET_ACCESS_KEY:-minioadmin}
     command: server --console-address ":9001" /data
     volumes:
-      - minio_data:/data
+      - ./data/minio_data:/data:z
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -610,7 +610,8 @@ services:
     mem_limit: 8g
     memswap_limit: 8g
     volumes:
-      - neo4j-data:/data
+      - ./data/neo4j-data:/data:z
+      - ./data/neo4j-logs:/logs:z
     environment:
       - NEO4J_AUTH=${NEO4J_USERNAME:-neo4j}/${NEO4J_PASSWORD:-password}
       - NEO4J_apoc_export_file_enabled=true
@@ -631,7 +632,7 @@ services:
       - "${QDRANT_REST_PORT:-6333}:6333"
       - "${QDRANT_PORT:-6334}:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      - ./data/qdrant_data:/qdrant/storage:z
     networks:
       - WeKnora-network
     restart: unless-stopped
@@ -660,7 +661,7 @@ services:
       - "19530:19530"
       - "9091:9091"
     volumes:
-      - milvus_data:/var/lib/milvus
+      - ./data/milvus_data:/var/lib/milvus:z
     networks:
       - WeKnora-network
     restart: unless-stopped
@@ -683,7 +684,7 @@ services:
       - "9035:8080"
       - "50052:50051"
     volumes:
-      - weaviate_data:/var/lib/weaviate
+      - ./data/weaviate_data:/var/lib/weaviate:z
     networks:
       - WeKnora-network
     restart: unless-stopped
@@ -717,8 +718,8 @@ services:
       - "${DORIS_FE_HTTP_PORT:-8030}:8030"
       - "${DORIS_FE_MYSQL_PORT:-9030}:9030"
     volumes:
-      - doris_fe_meta:/opt/apache-doris/fe/doris-meta
-      - doris_fe_log:/opt/apache-doris/fe/log
+      - ./data/doris_fe_meta:/opt/apache-doris/fe/doris-meta:z
+      - ./data/doris_fe_log:/opt/apache-doris/fe/log:z
     networks:
       - WeKnora-network
     restart: unless-stopped
@@ -737,8 +738,8 @@ services:
     ports:
       - "${DORIS_BE_HTTP_PORT:-8040}:8040"
     volumes:
-      - doris_be_storage:/opt/apache-doris/be/storage
-      - doris_be_log:/opt/apache-doris/be/log
+      - ./data/doris_be_storage:/opt/apache-doris/be/storage:z
+      - ./data/doris_be_log:/opt/apache-doris/be/log:z
     networks:
       - WeKnora-network
     restart: unless-stopped
@@ -820,8 +821,8 @@ services:
       CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-clickhouse}
       CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-clickhouse}
     volumes:
-      - langfuse_clickhouse_data:/var/lib/clickhouse
-      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+      - ./data/langfuse_clickhouse_data:/var/lib/clickhouse:z
+      - ./data/langfuse_clickhouse_logs:/var/log/clickhouse-server:z
     healthcheck:
       test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
       interval: 5s
@@ -850,7 +851,7 @@ services:
       # 9101：MinIO 控制台（可选，方便排障）
       - "${LANGFUSE_MINIO_CONSOLE_PORT:-9101}:9001"
     volumes:
-      - langfuse_minio_data:/data
+      - ./data/langfuse_minio_data:/data:z
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -1004,22 +1005,3 @@ services:
 networks:
   WeKnora-network:
     driver: bridge
-
-volumes:
-  postgres-data:
-  redis-data:
-  data-files:
-  docreader-tmp:
-  minio_data:
-  neo4j-data:
-  qdrant_data:
-  milvus_data:
-  weaviate_data:
-  doris_fe_meta:
-  doris_fe_log:
-  doris_be_storage:
-  doris_be_log:
-  langfuse_clickhouse_data:
-  langfuse_clickhouse_logs:
-  langfuse_minio_data:
-  searxng_config:

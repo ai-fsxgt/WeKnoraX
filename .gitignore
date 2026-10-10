@@ -34,10 +34,7 @@ WeKnora-lite
 cmd/desktop/build/bin/
 /models/
 test/data/mswag.txt
-data/files/
-data/weknora.db
-data/weknora.db-wal
-data/weknora.db-shm
+/data/
 skills-lock.json
 
 web/
