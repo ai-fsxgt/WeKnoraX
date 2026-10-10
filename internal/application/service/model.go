@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/asr"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/embedding"
+	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/provider"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
@@ -31,6 +33,11 @@ type modelService struct {
 	ollamaService *ollama.OllamaService
 	pooler        embedding.EmbedderPooler
 	tenantService interfaces.TenantService
+	// updateMu serialises UpdateModel's DB write and runtime limit publish so
+	// the governor always ends with the limit of the last committed edit. The
+	// credential read-modify-write paths hold it too, so their whole-row write
+	// cannot restore a stale limit.
+	updateMu sync.Mutex
 }
 
 // NewModelService creates a new model service instance
@@ -256,6 +263,8 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 	}
 
 	// Update model in repository
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	err = s.repo.Update(ctx, model)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -264,6 +273,9 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 		})
 		return err
 	}
+	// Push the edited cap to the governor so running and queued background
+	// calls honour it immediately, not just clients built after this edit.
+	limiter.SetModelLimit(model.ID, model.Parameters.MaxConcurrency)
 
 	logger.Infof(ctx, "Model updated successfully: %s", model.ID)
 	return nil
@@ -277,6 +289,8 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 func (s *modelService) UpdateModelCredentials(
 	ctx context.Context, id string, apiKey, appSecret *string,
 ) (*types.Model, error) {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	tenantID := types.MustTenantIDFromContext(ctx)
 	existing, err := s.repo.GetByID(ctx, tenantID, id)
 	if err != nil {
@@ -315,6 +329,8 @@ func (s *modelService) UpdateModelCredentials(
 
 // ClearModelCredential removes a single credential field. Idempotent.
 func (s *modelService) ClearModelCredential(ctx context.Context, id, field string) error {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	tenantID := types.MustTenantIDFromContext(ctx)
 	existing, err := s.repo.GetByID(ctx, tenantID, id)
 	if err != nil {
