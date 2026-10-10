@@ -3270,6 +3270,7 @@ func (s *knowledgeService) processDocumentLocked(ctx context.Context, payload ty
 		knowledge.UpdatedAt = time.Now()
 		if err := s.repo.UpdateKnowledge(ctx, knowledge); err != nil {
 			logger.Errorf(ctx, "failed to mark data table knowledge as failed: %v", err)
+			return err
 		}
 		return nil
 	}
