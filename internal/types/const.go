@@ -73,6 +73,9 @@ const (
 	// concurrency governor uses this to throttle only background LLM traffic,
 	// leaving interactive chat latency untouched. See WithBackgroundTask.
 	BackgroundTaskContextKey ContextKey = "BackgroundTask"
+	// ManualKnowledgeVersionContextKey restricts processing writes to one
+	// manual document version, including detached subtask finalization.
+	ManualKnowledgeVersionContextKey ContextKey = "ManualKnowledgeVersion"
 	// LLMCallPurposeContextKey labels the product-level reason for a model
 	// request (for example agent_round or wiki_page_modify).
 	LLMCallPurposeContextKey ContextKey = "LLMCallPurpose"

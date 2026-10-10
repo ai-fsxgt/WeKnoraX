@@ -20,6 +20,7 @@ from typing import Any, Dict
 import urllib3
 import requests
 from mcp.server import MCPServer
+from mcp.types import ToolAnnotations
 from requests.exceptions import RequestException
 from upload_paths import resolve_upload_file_path, set_active_transport
 
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Configuration - Load from environment variables with defaults
 WEKNORA_BASE_URL = os.getenv("WEKNORA_BASE_URL", "http://localhost:8080/api/v1")
 WEKNORA_API_KEY = os.getenv("WEKNORA_API_KEY", "")
-INTEGRATION_READ_ONLY = WEKNORA_API_KEY.strip().startswith("wkic_")
+IS_INTEGRATION = WEKNORA_API_KEY.strip().startswith("wkic_")
 # Chat SSE read timeout in seconds. LLM responses can be slow; default 300s.
 try:
     WEKNORA_CHAT_TIMEOUT = int(os.getenv("WEKNORA_CHAT_TIMEOUT", "300"))
@@ -217,7 +218,7 @@ class WeKnoraClient:
 
     def list_knowledge_bases(self) -> Dict:
         """List all knowledge bases"""
-        return self._request("GET", "/knowledge-bases")
+        return self._request("GET", "/knowledge-bases", timeout=30)
 
     def list_shared_knowledge_bases(self) -> Dict:
         """List knowledge bases shared from other workspaces"""
@@ -359,9 +360,9 @@ class WeKnoraClient:
     ) -> Dict:
         """Create a knowledge entry from raw Markdown text (manual knowledge).
 
-        ``status`` defaults to ``"publish"`` so the entry is chunked, embedded
-        and made searchable immediately, which suits API/MCP callers that have
-        no UI to publish drafts. Pass ``"draft"`` to save without indexing.
+        ``status`` defaults to ``"publish"`` to enqueue indexing.
+        Check parse_status with get_knowledge before reporting it as searchable.
+        Pass ``"draft"`` to save without indexing.
         """
         data = {
             "title": title,
@@ -372,6 +373,20 @@ class WeKnoraClient:
             data["tag_ids"] = tag_ids
         return self._request(
             "POST", f"/knowledge-bases/{kb_id}/knowledge/manual", json=data
+        )
+
+    def update_knowledge_from_text(
+        self,
+        knowledge_id: str,
+        title: str,
+        content: str,
+        status: str = "publish",
+    ) -> Dict:
+        """Replace the full Markdown content of an existing manual document."""
+        return self._request(
+            "PUT",
+            f"/knowledge/manual/{knowledge_id}",
+            json={"title": title, "content": content, "status": status},
         )
 
     def list_knowledge(self, kb_id: str, page: int = 1, page_size: int = 20) -> Dict:
@@ -630,14 +645,31 @@ mcp = MCPServer("weknora-server", version="1.2.0")
 # Initialize WeKnora API client with configuration
 client = WeKnoraClient(WEKNORA_BASE_URL, WEKNORA_API_KEY)
 
+TEXT_CREATE_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=False,
+    idempotentHint=False,
+    openWorldHint=False,
+)
+TEXT_UPDATE_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=True,
+    idempotentHint=False,
+    openWorldHint=False,
+)
 
-def weknora_tool(*, integration_read_only: bool = False):
+
+def weknora_tool(
+    *,
+    integration_read_only: bool = False,
+    annotations: ToolAnnotations | None = None,
+):
     """Register a tool unless the active integration credential forbids it."""
 
     def decorator(func):
-        if INTEGRATION_READ_ONLY and not integration_read_only:
+        if IS_INTEGRATION and not integration_read_only:
             return func
-        return mcp.tool()(func)
+        return mcp.tool(annotations=annotations)(func)
 
     return decorator
 
@@ -700,7 +732,14 @@ def create_knowledge_base(
 
 @weknora_tool(integration_read_only=True)
 def list_knowledge_bases() -> dict:
-    """List knowledge bases currently available to this credential."""
+    """List knowledge bases currently available to this credential.
+
+    Integration results include id, name, description, tenant_id, tenant_name,
+    type and can_write. Use can_write to find writable document knowledge bases.
+    Match the user's requested workspace and knowledge base. If the destination
+    is unspecified or names are ambiguous, ask the user to choose before writing.
+    Reuse a confirmed destination only within the current task.
+    """
     return client.list_knowledge_bases()
 
 
@@ -782,7 +821,7 @@ def create_knowledge_from_url(
     return client.create_knowledge_from_url(kb_id, url, enable_multimodel)
 
 
-@weknora_tool()
+@weknora_tool(annotations=TEXT_CREATE_ANNOTATIONS)
 def create_knowledge_from_text(
     kb_id: str,
     title: str,
@@ -792,15 +831,41 @@ def create_knowledge_from_text(
 ) -> dict:
     """Create a knowledge entry from raw Markdown text.
 
-    Use this when you have the document content directly (e.g. an abstract or
-    pasted text) instead of a file path or URL. ``kb_id`` may be a UUID or a
-    knowledge-base name (resolved automatically). ``title`` and ``content``
-    are required. ``status`` defaults to ``"publish"`` so the entry is indexed
-    and searchable immediately; pass ``"draft"`` to save without indexing.
+    kb_id is the explicit ID from list_knowledge_bases, never a name or default.
+    For integration credentials, choose a document knowledge base with can_write.
+    The user must have specified or confirmed the destination in this task;
+    ask when the destination is unspecified or names are ambiguous.
+    title and content are required. status defaults to publish, which submits
+    asynchronous indexing. The response contains the document ID and parse_status.
+    Use get_knowledge to check completion; pending/processing is not searchable
+    yet, and failed includes error_message. Use draft to save without indexing.
+    Keep the returned document ID for subsequent updates; do not create duplicates.
     """
     return client.create_knowledge_from_text(
-        client.resolve_kb_id(kb_id), title, content, tag_ids=tag_ids, status=status
+        kb_id, title, content, tag_ids=tag_ids, status=status
     )
+
+
+@weknora_tool(annotations=TEXT_UPDATE_ANNOTATIONS)
+def update_knowledge_from_text(
+    knowledge_id: str,
+    title: str,
+    content: str,
+    status: str = "publish",
+) -> dict:
+    """Replace the full Markdown content of an existing manual document.
+
+    knowledge_id is the explicit document ID returned by creation or get_knowledge.
+    Read the existing document first when editing it. Preserve content the user
+    did not ask to change and submit the complete revised text. Its knowledge base
+    stays the same; do not identify documents by title or create a new one instead.
+    Wait for pending, processing or finalizing indexing to finish before updating.
+    For integrations, the document's knowledge base must still have can_write.
+    status defaults to publish, which submits asynchronous reindexing. Check
+    parse_status using get_knowledge before reporting completion. If permission
+    is denied, report it; never switch to another knowledge base automatically.
+    """
+    return client.update_knowledge_from_text(knowledge_id, title, content, status)
 
 
 @weknora_tool(integration_read_only=True)
@@ -1060,9 +1125,20 @@ def wiki_index_view(kb_id: str, limit: int = 50) -> dict:
 # ---------------------------------------------------------------------------
 
 
+async def register_integration_write_tools():
+    """Expose text writes only when this connection has a writable knowledge base."""
+    if not IS_INTEGRATION:
+        return
+    result = await asyncio.to_thread(client.list_knowledge_bases)
+    if any(kb.get("can_write") for kb in _normalize_kb_entries(result)):
+        mcp.add_tool(create_knowledge_from_text, annotations=TEXT_CREATE_ANNOTATIONS)
+        mcp.add_tool(update_knowledge_from_text, annotations=TEXT_UPDATE_ANNOTATIONS)
+
+
 async def run_stdio():
     """Run the MCP server using stdio transport."""
     set_active_transport("stdio")
+    await register_integration_write_tools()
     await mcp.run_stdio_async()
 
 
@@ -1070,6 +1146,7 @@ async def run_sse(host: str, port: int):
     """Run the MCP server using SSE transport (legacy MCP clients)."""
     set_active_transport("sse")
     auth_token = require_network_transport_auth("sse")
+    await register_integration_write_tools()
     try:
         import uvicorn
     except ImportError as e:
@@ -1094,6 +1171,7 @@ async def run_http(host: str, port: int):
     """Run the MCP server using Streamable HTTP transport (MCP 2025-03-26 spec)."""
     set_active_transport("http")
     auth_token = require_network_transport_auth("http")
+    await register_integration_write_tools()
     try:
         import uvicorn
     except ImportError as e:

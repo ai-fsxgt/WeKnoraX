@@ -650,7 +650,9 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 		s.skipStage(ctx, knowledge.ID, types.StageMultimodal, "skipped")
 		// If there are no multimodal tasks, enqueue the post process task immediately
 		lang := types.LanguageFromContextOrDefault(ctx)
+		manualVersion, _ := types.ManualKnowledgeVersionFromContext(ctx, knowledge.ID)
 		postProcessPayload := types.KnowledgePostProcessPayload{
+			ManualVersion:   manualVersion,
 			TenantID:        knowledge.TenantID,
 			KnowledgeID:     knowledge.ID,
 			KnowledgeBaseID: knowledge.KnowledgeBaseID,
@@ -993,6 +995,20 @@ func (s *knowledgeService) ProcessSummaryGeneration(ctx context.Context, t *asyn
 		logger.Errorf(ctx, "Failed to unmarshal summary generation payload: %v", err)
 		return nil // Don't retry on unmarshal error
 	}
+	process := func(lockCtx context.Context) error {
+		return s.processSummaryGeneration(lockCtx, payload)
+	}
+	if payload.Refresh {
+		return withManualKnowledgeProcessing(ctx, s.redisClient, s.repo.GetKnowledgeByIDOnly,
+			payload.TenantID, payload.KnowledgeID, payload.ManualVersion, process)
+	}
+	return withManualKnowledgeSubtask(ctx, s.redisClient, s.repo,
+		payload.TenantID, payload.KnowledgeID, payload.ManualVersion, "summary", process)
+}
+
+func (s *knowledgeService) processSummaryGeneration(
+	ctx context.Context, payload types.SummaryGenerationPayload,
+) (retErr error) {
 	logger.Infof(ctx, "Processing summary generation for knowledge: %s", payload.KnowledgeID)
 
 	// Set tenant and language context
@@ -1368,10 +1384,13 @@ func (s *knowledgeService) ProcessQuestionGeneration(ctx context.Context, t *asy
 		logger.Errorf(ctx, "Failed to unmarshal question generation payload: %v", err)
 		return nil // Don't retry on unmarshal error
 	}
-	if len(payload.ChunkIDs) > 0 || payload.ChunkID != "" {
-		return s.processQuestionGenerationForChunks(ctx, t, payload)
-	}
-	return s.processQuestionGenerationForKnowledge(ctx, t, payload)
+	return withManualKnowledgeSubtask(ctx, s.redisClient, s.repo,
+		payload.TenantID, payload.KnowledgeID, payload.ManualVersion, "question", func(lockCtx context.Context) error {
+			if len(payload.ChunkIDs) > 0 || payload.ChunkID != "" {
+				return s.processQuestionGenerationForChunks(lockCtx, t, payload)
+			}
+			return s.processQuestionGenerationForKnowledge(lockCtx, t, payload)
+		})
 }
 
 // processQuestionGenerationForKnowledge is the legacy whole-knowledge handler:
@@ -2403,6 +2422,29 @@ func (s *knowledgeService) ReparseKnowledge(
 		logger.Errorf(ctx, "Failed to load knowledge: %v", err)
 		return nil, err
 	}
+	if existing.IsManual() {
+		var knowledge *types.Knowledge
+		acquired, err := s.tryKnowledgeProcessingLock(ctx, tenantID, knowledgeID, func(lockCtx context.Context) error {
+			current, err := s.repo.GetKnowledgeByID(lockCtx, tenantID, knowledgeID)
+			if err != nil {
+				return err
+			}
+			knowledge, err = s.reparseKnowledge(lockCtx, current, processOverrides)
+			return err
+		})
+		if !acquired && err == nil {
+			return nil, werrors.NewConflictError("文档正在更新或处理，请稍后再试")
+		}
+		return knowledge, err
+	}
+	return s.reparseKnowledge(ctx, existing, processOverrides)
+}
+
+func (s *knowledgeService) reparseKnowledge(ctx context.Context, existing *types.Knowledge,
+	processOverrides *types.KnowledgeProcessOverrides,
+) (*types.Knowledge, error) {
+	knowledgeID := existing.ID
+	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
 
 	// 表格类文件已停止解析：在清理已有数据之前拒绝，避免删除仍可检索的历史内容
 	if isDataTableFileType(resolveKnowledgeFileType(existing.FileName, existing.FileType)) {
@@ -2472,15 +2514,24 @@ func (s *knowledgeService) ReparseKnowledge(
 			logger.Errorf(ctx, "Failed to get manual metadata for reparse: %v", metaErr)
 			return nil, werrors.NewBadRequestError("无法获取手工知识内容")
 		}
+		meta.Version++
+		if err := existing.SetManualVersion(meta.Version); err != nil {
+			return nil, err
+		}
 
 		resetKnowledgeForReparse(existing, kb)
 
-		if err := s.repo.UpdateKnowledge(ctx, existing); err != nil {
+		if err := s.repo.UpdateKnowledgeColumns(ctx, existing.ID, map[string]interface{}{
+			"metadata":               existing.Metadata,
+			"parse_status":           existing.ParseStatus,
+			"enable_status":          existing.EnableStatus,
+			"description":            existing.Description,
+			"processed_at":           existing.ProcessedAt,
+			"error_message":          existing.ErrorMessage,
+			"embedding_model_id":     existing.EmbeddingModelID,
+			"pending_subtasks_count": 0,
+		}); err != nil {
 			logger.Errorf(ctx, "Failed to update knowledge status before reparse: %v", err)
-			return nil, err
-		}
-		if err := s.repo.UpdateKnowledgeColumn(ctx, existing.ID, "pending_subtasks_count", 0); err != nil {
-			logger.Errorf(ctx, "Failed to reset pending_subtasks_count before reparse: %v", err)
 			return nil, err
 		}
 
@@ -3072,7 +3123,13 @@ func (s *knowledgeService) ProcessManualUpdate(ctx context.Context, t *asynq.Tas
 		logger.Errorf(ctx, "failed to unmarshal manual process task payload: %v", err)
 		return nil
 	}
+	return withManualKnowledgeProcessing(ctx, s.redisClient, s.repo.GetKnowledgeByIDOnly,
+		payload.TenantID, payload.KnowledgeID, payload.ManualVersion, func(lockCtx context.Context) error {
+			return s.processManualUpdate(lockCtx, payload)
+		})
+}
 
+func (s *knowledgeService) processManualUpdate(ctx context.Context, payload types.ManualProcessPayload) error {
 	ctx = logger.WithRequestID(ctx, payload.RequestId)
 	ctx = logger.WithField(ctx, "manual_process", payload.KnowledgeID)
 	ctx = context.WithValue(ctx, types.TenantIDContextKey, payload.TenantID)
@@ -3879,7 +3936,8 @@ func (s *knowledgeService) enqueueImageMultimodalTasks(
 	}
 
 	attempt := attemptFromCtx(ctx)
-	redisKey := fmt.Sprintf("multimodal:pending:%s", knowledge.ID)
+	manualVersion, _ := types.ManualKnowledgeVersionFromContext(ctx, knowledge.ID)
+	redisKey := multimodalPendingKey(knowledge.ID, manualVersion)
 	if s.redisClient != nil {
 		if err := s.redisClient.Set(ctx, redisKey, len(images), 24*time.Hour).Err(); err != nil {
 			logger.Warnf(ctx, "Failed to set multimodal pending count for %s: %v", knowledge.ID, err)
@@ -3902,6 +3960,7 @@ func (s *knowledgeService) enqueueImageMultimodalTasks(
 
 		lang := types.LanguageFromContextOrDefault(ctx)
 		payload := types.ImageMultimodalPayload{
+			ManualVersion:   manualVersion,
 			TenantID:        knowledge.TenantID,
 			KnowledgeID:     knowledge.ID,
 			KnowledgeBaseID: kb.ID,

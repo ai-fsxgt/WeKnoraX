@@ -16,7 +16,7 @@
 | 第三方 Agent 凭证 | 长期有效的 `wkic_...` 用户连接凭证 |
 | Agent 请求头 | `X-API-Key: wkic_...` |
 | 默认权限 | `knowledge.read` |
-| 可选权限 | `knowledge.chat`，同时隐含 `knowledge.read` |
+| 可选权限 | `knowledge.chat`、`knowledge.write`，均隐含 `knowledge.read` |
 | 权限计算 | 用户授权空间 ∩ 空间策略 ∩ 应用当前配置 ∩ 用户当前成员与知识库访问权 |
 | 连接撤销 | 用户撤销后立即失效，不等待缓存或 Token 到期 |
 | MCP 部署 | 每个用户连接使用独立进程或容器，不在共享进程中切换多个用户凭证 |
@@ -275,6 +275,33 @@ X-API-Key: wkic_xxx
 
 如果只需要第三方 Agent 自己生成答案，保持默认 `knowledge.read` 即可。
 
+### 5.4 可选文本写入权限
+
+第三方申请 `knowledge.read knowledge.write`，在应用配置、授权空间策略允许后，
+由用户确认授权。已有连接不会自动获得写权限，必须重新授权并替换凭证。
+
+`knowledge.write` 只开放普通文档知识库中 Markdown 知识的新增和更新：
+
+| 操作 | 接口 |
+| --- | --- |
+| 新增文本 | `POST /api/v1/knowledge-bases/{id}/knowledge/manual` |
+| 更新完整正文 | `PUT /api/v1/knowledge/manual/{id}` |
+| 查询处理状态 | `GET /api/v1/knowledge/{id}` |
+
+请求正文使用 `title`、`content`、`status`，发布时明确传 `status: "publish"`。
+发布和更新会提交异步索引任务，返回文档 ID 和 `parse_status`；只有处理完成后才能
+报告为可检索。失败时读取 `error_message`，不能把提交成功当作索引成功。
+
+知识库列表和详情额外返回 `tenant_name` 和 `can_write`。写权限按目标知识库逐一计算：
+应用与用户连接已授权写入、至少一个通向该知识库的已授权空间策略允许写入，并且用户
+在该空间有编辑权。自有空间中，管理员可编辑全部文档知识库，贡献者可编辑自己创建的
+知识库；访客只读。跨空间共享沿用组织共享的实际 Editor 权限及空间角色限制。
+
+写入位置由用户在第三方当前对话或任务中指定或确认。Agent 先读取可写列表，通过空间名、
+知识库名和描述匹配目标；未指定或同名有歧义时先询问。创建必须携带明确的知识库 ID，
+更新必须使用原文档 ID，不能按标题覆盖或自动创建另一份。确定的目标仅在当前任务中复用；
+权限失效时报告失败，不自动换库。该权限不授予文件上传、FAQ/Wiki 编辑、删除或知识库管理。
+
 ## 6. MCP 接入
 
 ### 6.1 推荐：独立 Python MCP
@@ -301,7 +328,7 @@ X-API-Key: wkic_xxx
 }
 ```
 
-检测到 `wkic_` 后，MCP 自动只注册以下读取工具：
+检测到 `wkic_` 后，MCP 注册以下读取工具：
 
 - `list_knowledge_bases`
 - `get_knowledge_base`
@@ -313,6 +340,10 @@ X-API-Key: wkic_xxx
 - `wiki_search`
 - `wiki_read_page`
 - `wiki_index_view`
+
+启动时若知识库列表中存在 `can_write: true`，额外注册 `create_knowledge_from_text`
+和 `update_knowledge_from_text`。MCP 工具说明要求先确定写入位置，再携带明确 ID 操作。
+重新授权并替换凭证后应重启 MCP；撤销或收紧权限会在后续写入请求中立即生效。
 
 Agent 应优先调用：
 
@@ -369,7 +400,7 @@ Skill 已明确要求：第三方连接使用 `wkic_`，不使用浏览器/OIDC 
 1. 用户连接仍为 active；
 2. 第三方应用仍启用；
 3. 至少一个用户授权的空间策略仍启用；
-4. Scope 仍存在于连接、应用和有效授权空间策略的交集；
+4. Scope 仍存在于连接和应用中，空间策略继续允许对应操作；文本写入按目标知识库的授权空间检查；
 5. 用户账号仍启用且仍是对应授权空间的成员；
 6. 知识库仍位于有效授权空间，并且用户当前仍有访问权；
 7. 授权空间接收的跨空间共享知识库仍具有 Viewer 或更高权限。

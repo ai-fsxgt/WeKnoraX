@@ -112,6 +112,8 @@ type IntegrationKnowledgeBaseView struct {
 	Description    string `json:"description,omitempty"`
 	TenantID       uint64 `json:"tenant_id"`
 	AccessTenantID uint64 `json:"access_tenant_id,omitempty"`
+	TenantName     string `json:"tenant_name"`
+	CanWrite       bool   `json:"can_write"`
 }
 
 // IntegrationTenantView exposes the workspace metadata needed by consent and launch pages.
@@ -185,13 +187,14 @@ type IntegrationConnectionView struct {
 
 // IntegrationService manages client registration, consent, credentials and effective access.
 type IntegrationService struct {
-	repo          interfaces.IntegrationRepository
-	userRepo      interfaces.UserRepository
-	kbRepo        interfaces.KnowledgeBaseRepository
-	kbShareRepo   interfaces.KBShareRepository
-	tenantService interfaces.TenantService
-	memberService interfaces.TenantMemberService
-	lastUsedTouch sync.Map
+	repo           interfaces.IntegrationRepository
+	userRepo       interfaces.UserRepository
+	kbRepo         interfaces.KnowledgeBaseRepository
+	kbShareRepo    interfaces.KBShareRepository
+	kbShareService interfaces.KBShareService
+	tenantService  interfaces.TenantService
+	memberService  interfaces.TenantMemberService
+	lastUsedTouch  sync.Map
 }
 
 // NewIntegrationService creates the third-party integration service.
@@ -202,10 +205,12 @@ func NewIntegrationService(
 	kbShareRepo interfaces.KBShareRepository,
 	tenantService interfaces.TenantService,
 	memberService interfaces.TenantMemberService,
+	kbShareService interfaces.KBShareService,
 ) *IntegrationService {
 	return &IntegrationService{
 		repo: repo, userRepo: userRepo, kbRepo: kbRepo, kbShareRepo: kbShareRepo,
 		tenantService: tenantService, memberService: memberService,
+		kbShareService: kbShareService,
 	}
 }
 
@@ -718,6 +723,8 @@ func (s *IntegrationService) ResolveCredentialAccess(
 		KnowledgeBaseIDs:             make(types.StringArray, 0),
 		KnowledgeBaseTenantIDs:       make(map[string]uint64),
 		KnowledgeBaseAccessTenantIDs: make(map[string]uint64),
+		KnowledgeBaseWriteIDs:        make(types.StringArray, 0),
+		KnowledgeBaseTenantNames:     make(map[uint64]string),
 	}
 	grantedTenantIDs, err := s.repo.ListConnectionTenantIDs(ctx, session.Connection.ID)
 	if err != nil {
@@ -743,6 +750,8 @@ func (s *IntegrationService) ResolveCredentialAccess(
 	}
 	baseScopes := intersectIntegrationScopes(session.Scopes, session.Application.AllowedScopes)
 	byID := make(map[string]*types.KnowledgeBase)
+	writable := make(map[string]bool)
+	writeAllowed := false
 	for _, tenantID := range grantedTenantIDs {
 		role, member := roleByTenant[tenantID]
 		if !member {
@@ -768,17 +777,33 @@ func (s *IntegrationService) ResolveCredentialAccess(
 			access.Scopes = intersectIntegrationScopes(access.Scopes, tenantScopes)
 		}
 		access.TenantRoles[tenantID] = role
+		canWrite := types.IntegrationScopesContain(tenantScopes, types.IntegrationScopeKnowledgeWrite)
+		writeAllowed = writeAllowed || canWrite
 		knowledgeBases, listErr := s.listAccessibleKnowledgeBases(ctx, tenantID)
 		if listErr != nil {
 			return nil, listErr
 		}
 		for _, kb := range knowledgeBases {
-			if kb != nil {
-				byID[kb.ID] = kb
-				if access.KnowledgeBaseAccessTenantIDs[kb.ID] == 0 || kb.TenantID == tenantID {
-					access.KnowledgeBaseAccessTenantIDs[kb.ID] = tenantID
-				}
+			if kb == nil {
+				continue
 			}
+			byID[kb.ID] = kb
+			if access.KnowledgeBaseAccessTenantIDs[kb.ID] == 0 || kb.TenantID == tenantID {
+				access.KnowledgeBaseAccessTenantIDs[kb.ID] = tenantID
+			}
+			if !canWrite || writable[kb.ID] || kb.Type != types.KnowledgeBaseTypeDocument ||
+				!role.HasPermission(types.TenantRoleContributor) {
+				continue
+			}
+			if kb.TenantID == tenantID {
+				writable[kb.ID] = role.HasPermission(types.TenantRoleAdmin) || kb.CreatorID == session.Connection.UserID
+				continue
+			}
+			permission, shared, permErr := s.kbShareService.CheckTenantKBPermission(ctx, kb.ID, tenantID, role)
+			if permErr != nil {
+				return nil, permErr
+			}
+			writable[kb.ID] = shared && permission.HasPermission(types.OrgRoleEditor)
 		}
 	}
 	access.KnowledgeBases = make([]*types.KnowledgeBase, 0, len(byID))
@@ -791,9 +816,26 @@ func (s *IntegrationService) ResolveCredentialAccess(
 		}
 		return access.KnowledgeBases[i].Name < access.KnowledgeBases[j].Name
 	})
+	tenantIDs := make([]uint64, 0, len(access.KnowledgeBases))
 	for _, kb := range access.KnowledgeBases {
 		access.KnowledgeBaseIDs = append(access.KnowledgeBaseIDs, kb.ID)
 		access.KnowledgeBaseTenantIDs[kb.ID] = kb.TenantID
+		tenantIDs = append(tenantIDs, kb.TenantID)
+		if writable[kb.ID] {
+			access.KnowledgeBaseWriteIDs = append(access.KnowledgeBaseWriteIDs, kb.ID)
+		}
+	}
+	if writeAllowed {
+		access.Scopes = types.NormalizeIntegrationScopes(append(access.Scopes, types.IntegrationScopeKnowledgeWrite))
+	}
+	if len(tenantIDs) > 0 {
+		tenants, lookupErr := s.tenantService.GetTenantsByIDs(ctx, normalizeIntegrationTenantIDs(tenantIDs))
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+		for tenantID, tenant := range tenants {
+			access.KnowledgeBaseTenantNames[tenantID] = tenant.Name
+		}
 	}
 	return access, nil
 }
@@ -900,7 +942,12 @@ func (s *IntegrationService) connectionView(
 	if err != nil {
 		return nil, err
 	}
-	view.KnowledgeBases = BuildIntegrationKnowledgeBaseViews(access.KnowledgeBases)
+	view.KnowledgeBases = BuildIntegrationKnowledgeBaseViews(access.KnowledgeBases, types.TenantAPIKeyScope{
+		KnowledgeBaseRestricted:  true,
+		KnowledgeBaseIDs:         access.KnowledgeBaseIDs,
+		KnowledgeBaseWriteIDs:    access.KnowledgeBaseWriteIDs,
+		KnowledgeBaseTenantNames: access.KnowledgeBaseTenantNames,
+	})
 	for index := range view.KnowledgeBases {
 		view.KnowledgeBases[index].AccessTenantID =
 			access.KnowledgeBaseAccessTenantIDs[view.KnowledgeBases[index].ID]
@@ -1063,7 +1110,8 @@ func validateScopes(scopes []string) (types.StringArray, error) {
 	for _, scope := range scopes {
 		scope = strings.TrimSpace(scope)
 		switch scope {
-		case types.IntegrationScopeKnowledgeRead, types.IntegrationScopeKnowledgeChat:
+		case types.IntegrationScopeKnowledgeRead, types.IntegrationScopeKnowledgeChat,
+			types.IntegrationScopeKnowledgeWrite:
 		default:
 			return nil, ErrIntegrationInvalidScope
 		}
@@ -1140,25 +1188,31 @@ func integrationTenantViewIDSet(tenants []IntegrationTenantView) map[uint64]bool
 }
 
 // BuildIntegrationKnowledgeBaseViews projects knowledge bases to the public integration contract.
-func BuildIntegrationKnowledgeBaseViews(knowledgeBases []*types.KnowledgeBase) []IntegrationKnowledgeBaseView {
+func BuildIntegrationKnowledgeBaseViews(
+	knowledgeBases []*types.KnowledgeBase, scope types.TenantAPIKeyScope,
+) []IntegrationKnowledgeBaseView {
 	result := make([]IntegrationKnowledgeBaseView, 0, len(knowledgeBases))
 	for _, kb := range knowledgeBases {
 		if kb == nil {
 			continue
 		}
-		result = append(result, BuildIntegrationKnowledgeBaseView(kb))
+		result = append(result, BuildIntegrationKnowledgeBaseView(kb, scope))
 	}
 	return result
 }
 
 // BuildIntegrationKnowledgeBaseView projects one knowledge base to the public integration contract.
-func BuildIntegrationKnowledgeBaseView(kb *types.KnowledgeBase) IntegrationKnowledgeBaseView {
+func BuildIntegrationKnowledgeBaseView(
+	kb *types.KnowledgeBase, scope types.TenantAPIKeyScope,
+) IntegrationKnowledgeBaseView {
 	return IntegrationKnowledgeBaseView{
 		ID:          kb.ID,
 		Name:        kb.Name,
 		Type:        kb.Type,
 		Description: kb.Description,
 		TenantID:    kb.TenantID,
+		TenantName:  scope.KnowledgeBaseTenantNames[kb.TenantID],
+		CanWrite:    scope.AllowsKnowledgeBaseWrite(kb.ID),
 	}
 }
 

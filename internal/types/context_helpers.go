@@ -48,6 +48,31 @@ func RequestIDFromContext(ctx context.Context) (string, bool) {
 	return v, ok && v != ""
 }
 
+type manualKnowledgeVersion struct {
+	knowledgeID string
+	version     int
+}
+
+// WithManualKnowledgeVersion binds processing writes to the task's document
+// version. It does not apply to other knowledge rows touched by the same task.
+func WithManualKnowledgeVersion(ctx context.Context, knowledgeID string, version int) context.Context {
+	return context.WithValue(ctx, ManualKnowledgeVersionContextKey, manualKnowledgeVersion{
+		knowledgeID: knowledgeID,
+		version:     version,
+	})
+}
+
+// ManualKnowledgeVersionFromContext returns this document's task version and
+// whether it was supplied. A supplied zero belongs only to non-manual tasks;
+// it must not authorize a callback to touch a manual document.
+func ManualKnowledgeVersionFromContext(ctx context.Context, knowledgeID string) (int, bool) {
+	v, ok := ctx.Value(ManualKnowledgeVersionContextKey).(manualKnowledgeVersion)
+	if !ok || v.knowledgeID != knowledgeID {
+		return 0, false
+	}
+	return v.version, true
+}
+
 // UserIDFromContext extracts the user ID string from ctx.
 func UserIDFromContext(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(UserIDContextKey).(string)

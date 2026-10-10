@@ -234,13 +234,13 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	// Install the dead-letter middleware FIRST so it sees the raw error
 	// returned by the handler, before any other middleware that might
 	// transform it. The middleware records one task_dead_letters row per
-	// task that exhausts its retry budget — operators can then SQL-query
+	// task that fails permanently — operators can then SQL-query
 	// failures by task type, scope, or tenant without scraping logs.
 	// Best-effort: a DB failure is logged and swallowed; the original task
 	// error always propagates upstream to asynq for retry/archival.
 	//
 	// The callback flips Knowledge.parse_status to "failed" the moment a
-	// document-related task exhausts its retry budget. Without this hook,
+	// document-related task fails permanently. Without this hook,
 	// a permanently-failing task left its parent knowledge stranded in
 	// "processing" until housekeeping cron caught it minutes later — the
 	// UI signal users actually see.
@@ -352,11 +352,12 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	return mux
 }
 
-// deadLetterKnowledgePayload extracts only the field we need from any
+// deadLetterKnowledgePayload extracts the fields needed from any
 // document-related asynq payload. Kept narrow so we don't accidentally
 // depend on the full payload schema and survive future field churn.
 type deadLetterKnowledgePayload struct {
-	KnowledgeID string `json:"knowledge_id,omitempty"`
+	KnowledgeID   string `json:"knowledge_id,omitempty"`
+	ManualVersion int    `json:"manual_version,omitempty"`
 	// Attempt threads through DocumentProcess / ManualProcess /
 	// KnowledgePostProcess payloads (added when span tracking shipped)
 	// — extracted here so the dead-letter callback can also close the
@@ -423,7 +424,8 @@ func newDeadLetterKnowledgeFailer(ks interfaces.KnowledgeService, tracker servic
 		if err := json.Unmarshal(t.Payload(), &probe); err != nil || probe.KnowledgeID == "" {
 			return
 		}
-		errMsg := "task " + t.Type() + " exhausted retries: " + taskErr.Error()
+		ctx = types.WithManualKnowledgeVersion(ctx, probe.KnowledgeID, probe.ManualVersion)
+		errMsg := "task " + t.Type() + " permanently failed: " + taskErr.Error()
 		// 8KB is the same cap the dead-letter row uses for last_error.
 		if len(errMsg) > 8192 {
 			errMsg = errMsg[:8192]
@@ -435,6 +437,9 @@ func newDeadLetterKnowledgeFailer(ks interfaces.KnowledgeService, tracker servic
 			"parse_status":  types.ParseStatusFailed,
 			"error_message": errMsg,
 		}); err != nil {
+			if errors.Is(err, types.ErrManualKnowledgeSuperseded) {
+				return
+			}
 			logger.Warnf(ctx, "dead-letter callback: failed to mark knowledge %s as failed: %v", probe.KnowledgeID, err)
 			return
 		}

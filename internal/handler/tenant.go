@@ -809,8 +809,10 @@ func validateTenantAPIKeyRequest(
 		return errors.NewValidationError("name is required")
 	}
 	for _, capability := range req.Capabilities {
-		if types.NormalizeAPIKeyCapability(types.APIKeyCapability(capability)) == types.APIKeyCapabilityKnowledgeChat {
-			return errors.NewValidationError("knowledge_chat capability is reserved for integration credentials")
+		normalized := types.NormalizeAPIKeyCapability(types.APIKeyCapability(capability))
+		switch normalized {
+		case types.APIKeyCapabilityKnowledgeChat, types.APIKeyCapabilityKnowledgeWrite:
+			return errors.NewValidationError(string(normalized) + " capability is reserved for integration credentials")
 		}
 	}
 	if req.FullAccess {

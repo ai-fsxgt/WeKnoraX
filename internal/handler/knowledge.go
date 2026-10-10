@@ -128,6 +128,12 @@ func (h *KnowledgeHandler) validateKnowledgeBaseAccessWithKBID(c *gin.Context, k
 		logger.ErrorWithFields(ctx, err, nil)
 		return nil, kbID, 0, "", errors.NewInternalServerError(err.Error())
 	}
+	if permission, integration := types.IntegrationKnowledgeBasePermission(ctx, kbID, kb.TenantID); integration {
+		if permission == "" {
+			return nil, kbID, 0, "", errors.NewForbiddenError("Permission denied to access this knowledge base")
+		}
+		return kb, kbID, kb.TenantID, permission, nil
+	}
 	if kb.TenantID == tenantID {
 		return kb, kbID, tenantID, types.OrgRoleAdmin, nil
 	}
@@ -172,6 +178,15 @@ func (h *KnowledgeHandler) resolveKnowledgeAndValidateKBAccess(c *gin.Context, k
 	}
 	if err := requireTenantAPIKeyKnowledgeBase(ctx, knowledge.KnowledgeBaseID); err != nil {
 		return nil, ctx, err
+	}
+	permission, integration := types.IntegrationKnowledgeBasePermission(
+		ctx, knowledge.KnowledgeBaseID, knowledge.TenantID,
+	)
+	if integration {
+		if permission == "" || !permission.HasPermission(requiredPermission) {
+			return nil, ctx, errors.NewForbiddenError("Permission denied to access this knowledge")
+		}
+		return knowledge, context.WithValue(ctx, types.TenantIDContextKey, knowledge.TenantID), nil
 	}
 
 	// Owner: knowledge belongs to caller's tenant
@@ -542,6 +557,8 @@ func (h *KnowledgeHandler) CreateKnowledgeFromURL(c *gin.Context) {
 // CreateManualKnowledge godoc
 // @Summary      手工创建知识
 // @Description  手工录入Markdown格式的知识内容
+// @Description  第三方集成凭证需 knowledge.write 和目标知识库编辑权限
+// @Description  publish 提交异步索引，须查询处理状态
 // @Tags         知识管理
 // @Accept       json
 // @Produce      json
@@ -1889,6 +1906,9 @@ func (h *KnowledgeHandler) RegenerateKnowledgeSummary(c *gin.Context) {
 // UpdateManualKnowledge godoc
 // @Summary      更新手工知识
 // @Description  更新手工录入的Markdown知识内容
+// @Description  第三方集成凭证需 knowledge.write 和原文档知识库编辑权限
+// @Description  按文档ID更新完整正文；publish 提交异步索引，须查询处理状态
+// @Description  处理或删除中的文档拒绝更新，返回 HTTP 409
 // @Tags         知识管理
 // @Accept       json
 // @Produce      json
@@ -1896,6 +1916,7 @@ func (h *KnowledgeHandler) RegenerateKnowledgeSummary(c *gin.Context) {
 // @Param        request  body      types.ManualKnowledgePayload true  "手工知识内容"
 // @Success      200      {object}  map[string]interface{}       "更新后的知识"
 // @Failure      400      {object}  errors.AppError              "请求参数错误"
+// @Failure      409      {object}  errors.AppError              "文档正在处理、删除或状态已变化"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge/manual/{id} [put]
@@ -1945,7 +1966,7 @@ func (h *KnowledgeHandler) UpdateManualKnowledge(c *gin.Context) {
 
 // ReparseKnowledge godoc
 // @Summary      重新解析知识
-// @Description  删除知识中现有的文档内容并重新解析，使用异步任务方式处理
+// @Description  删除知识中现有的文档内容并重新解析，使用异步任务方式处理。手工知识仍有任务运行时返回 409
 // @Tags         知识管理
 // @Accept       json
 // @Produce      json
@@ -1954,6 +1975,7 @@ func (h *KnowledgeHandler) UpdateManualKnowledge(c *gin.Context) {
 // @Success      200  {object}  map[string]interface{}  "重新解析任务已提交"
 // @Failure      400  {object}  errors.AppError         "请求参数错误"
 // @Failure      403  {object}  errors.AppError         "权限不足"
+// @Failure      409  {object}  errors.AppError         "手工知识正在更新或处理"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /knowledge/{id}/reparse [post]

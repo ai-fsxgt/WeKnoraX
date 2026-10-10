@@ -132,7 +132,7 @@ func (r *taskPendingOpsRepository) SeedKnowledgeFinalizingWithPendingOp(
 			return err
 		}
 
-		res := tx.Model(&types.Knowledge{}).
+		res := manualKnowledgeProcessingQuery(ctx, knowledgeID, tx.Model(&types.Knowledge{})).
 			Where(
 				"id = ? AND tenant_id = ? AND knowledge_base_id = ? AND parse_status = ?",
 				knowledgeID, op.TenantID, op.ScopeID, types.ParseStatusProcessing,

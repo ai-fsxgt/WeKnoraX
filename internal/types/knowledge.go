@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,6 +11,10 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// ErrManualKnowledgeSuperseded means a processing result no longer belongs
+// to the active document version, or the user cancelled/deleted that version.
+var ErrManualKnowledgeSuperseded = errors.New("manual knowledge processing superseded or aborted")
 
 const (
 	// KnowledgeTypeManual represents the manual knowledge type
@@ -347,6 +352,25 @@ func (k *Knowledge) SetManualMetadata(meta *ManualKnowledgeMetadata) error {
 		return err
 	}
 	k.Metadata = jsonValue
+	return nil
+}
+
+// SetManualVersion changes the processing generation without dropping parse
+// overrides or other metadata owned by the document pipeline.
+func (k *Knowledge) SetManualVersion(version int) error {
+	var metadata map[string]json.RawMessage
+	if err := json.Unmarshal(k.Metadata, &metadata); err != nil {
+		return err
+	}
+	if metadata == nil {
+		return fmt.Errorf("manual metadata is not an object")
+	}
+	metadata["version"] = json.RawMessage(fmt.Sprintf("%d", version))
+	value, err := json.Marshal(metadata)
+	if err != nil {
+		return err
+	}
+	k.Metadata = JSON(value)
 	return nil
 }
 

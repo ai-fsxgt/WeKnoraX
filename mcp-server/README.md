@@ -28,8 +28,8 @@ set WEKNORA_API_KEY=your_api_key_here
 
 第三方连接请把授权码换取到的 `wkic_...` 凭证配置为
 `WEKNORA_API_KEY`。不要使用浏览器 JWT 或 OIDC Token。使用 `wkic_`
-凭证时，MCP 会自动只注册读取工具，且每次调用都由 WeKnora 重新计算
-当前有效的知识库范围。
+凭证时，MCP 会注册读取工具，并在启动时查询当前可写知识库。存在可写知识库时，
+额外注册文本新增、更新工具；每次调用都由 WeKnora 重新校验当前权限。
 
 ### 3. 运行服务器
 
@@ -129,6 +129,7 @@ python test_module.py
 - `create_knowledge_from_file` - 从本地文件创建知识
 - `create_knowledge_from_url` - 从 URL 创建知识
 - `create_knowledge_from_text` - 从文本创建知识
+- `update_knowledge_from_text` - 按文档 ID 更新完整 Markdown 正文
 - `list_knowledge` - 列出知识
 - `get_knowledge` - 获取知识详情
 - `delete_knowledge` - 删除知识
@@ -151,12 +152,20 @@ python test_module.py
 - `list_chunks` - 列出知识块
 - `delete_chunk` - 删除知识块
 
-### 第三方连接只读工具
+### 第三方连接工具与写入位置
 
-当 `WEKNORA_API_KEY` 以 `wkic_` 开头时，只暴露
+当 `WEKNORA_API_KEY` 以 `wkic_` 开头时，默认暴露
 `list_knowledge_bases`、`get_knowledge_base`、`hybrid_search`、
 `knowledge_search`、`list_knowledge`、`get_knowledge`、`list_chunks` 和
-Wiki 读取工具。写入、会话、模型、空间及 Agent 管理工具不会注册。
+Wiki 读取工具。连接获得 `knowledge.write` 且当前存在可写文档知识库时，
+额外暴露 `create_knowledge_from_text` 和 `update_knowledge_from_text`。
+重新授权并替换凭证后，重启 MCP 以刷新工具列表。
+
+写入前调用 `list_knowledge_bases`，通过 `tenant_name`、`name`、`description`
+和 `can_write` 确定目标。用户未指定位置或名称有歧义时，先询问用户；已确定的位置
+仅在当前任务中复用。创建必须传列表中的 `kb_id`，更新必须传原文档的 `knowledge_id`，
+不能按标题猜测或自动换库。`publish` 会提交异步索引，应使用 `get_knowledge`
+查询 `parse_status` 和 `error_message`，处理完成后再告知用户可检索。
 
 ## 故障排除
 

@@ -21,6 +21,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -100,13 +101,15 @@ func NewChunkExtractTask(
 		logger.Warn(ctx, "NEO4J is not enabled, skip chunk extract task")
 		return false, nil
 	}
+	manualVersion, _ := types.ManualKnowledgeVersionFromContext(ctx, knowledgeID)
 	taskPayload := types.ExtractChunkPayload{
-		TenantID:    tenantID,
-		ChunkID:     chunkID,
-		ModelID:     modelID,
-		KnowledgeID: knowledgeID,
-		Attempt:     attempt,
-		ChunkIndex:  chunkIndex,
+		ManualVersion: manualVersion,
+		TenantID:      tenantID,
+		ChunkID:       chunkID,
+		ModelID:       modelID,
+		KnowledgeID:   knowledgeID,
+		Attempt:       attempt,
+		ChunkIndex:    chunkIndex,
 	}
 	langfuse.InjectTracing(ctx, &taskPayload)
 	payload, err := json.Marshal(taskPayload)
@@ -186,6 +189,7 @@ type ChunkExtractService struct {
 	// parent attempt's postprocess stage so the trace viewer shows real
 	// per-chunk graph extraction time rather than the upstream's enqueue.
 	spanTracker SpanTracker
+	redisClient *redis.Client
 }
 
 // NewChunkExtractService creates a new chunk extract service
@@ -197,6 +201,7 @@ func NewChunkExtractService(
 	chunkRepo interfaces.ChunkRepository,
 	graphEngine interfaces.RetrieveGraphRepository,
 	spanTracker SpanTracker,
+	redisClient *redis.Client,
 ) interfaces.TaskHandler {
 	return &ChunkExtractService{
 		template:          config.ExtractManager.ExtractGraph,
@@ -206,6 +211,7 @@ func NewChunkExtractService(
 		chunkRepo:         chunkRepo,
 		graphEngine:       graphEngine,
 		spanTracker:       spanTracker,
+		redisClient:       redisClient,
 	}
 }
 
@@ -223,6 +229,16 @@ func (s *ChunkExtractService) Handle(ctx context.Context, t *asynq.Task) error {
 		logger.Errorf(ctx, "failed to unmarshal task payload: %v", err)
 		return err
 	}
+	if p.KnowledgeID == "" {
+		return s.handleChunkExtract(ctx, p)
+	}
+	return withManualKnowledgeSubtask(ctx, s.redisClient, s.knowledgeRepo,
+		p.TenantID, p.KnowledgeID, p.ManualVersion, "graph", func(lockCtx context.Context) error {
+			return s.handleChunkExtract(lockCtx, p)
+		})
+}
+
+func (s *ChunkExtractService) handleChunkExtract(ctx context.Context, p types.ExtractChunkPayload) error {
 	ctx = logger.WithRequestID(ctx, uuid.New().String())
 	ctx = logger.WithField(ctx, "extract", p.ChunkID)
 	ctx = context.WithValue(ctx, types.TenantIDContextKey, p.TenantID)
