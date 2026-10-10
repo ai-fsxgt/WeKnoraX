@@ -183,7 +183,7 @@ jobs:
   reuse-images:
     needs: changes
     if: needs.changes.outputs.reuse != '[]'
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         include: ${{ fromJSON(needs.changes.outputs.reuse) }}
@@ -225,7 +225,7 @@ jobs:
   build-ui:
     needs: changes
     if: needs.changes.outputs.ui == 'true'
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -286,7 +286,7 @@ jobs:
   build-docreader:
     needs: changes
     if: needs.changes.outputs.docreader == 'true'
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -343,7 +343,7 @@ jobs:
   build-sandbox:
     needs: changes
     if: needs.changes.outputs.sandbox == 'true'
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -411,7 +411,7 @@ jobs:
   build-mcp:
     needs: changes
     if: needs.changes.outputs.mcp == 'true'
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -451,7 +451,7 @@ jobs:
   build-odl-hybrid:
     needs: changes
     if: needs.changes.outputs.odl-hybrid == 'true'
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -503,7 +503,7 @@ jobs:
   build-app:
     needs: changes
     if: needs.changes.outputs.app == 'true'
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout code
