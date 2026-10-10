@@ -12,6 +12,7 @@ show_help() {
 
 选项：
   --execute              正常停止项目容器，复制并校验数据
+  --list-old-volumes     仅显示旧卷名、实际存储目录和清理命令
   --compose-file FILE    编排文件，默认 ./docker-compose.yml
   --project-name NAME    原部署使用了 -p 时，指定同一个项目名
   --helper-image IMAGE   包含 Bash 和 GNU cp/tar/du 的镜像
@@ -23,6 +24,9 @@ show_help() {
 迁移后将挂载源改为预览显示的目录，容器内路径保持不变。
 SELinux 开启时，挂载增加 z；共享目录使用 z，保留已有 ro 设置。
 然后按原部署的启动命令启动服务。旧卷保留，验证成功后再自行删除。
+成功迁移后，旧卷清单保存到 ./data/old-docker-volumes.txt。
+--list-old-volumes 显示迁移清单；尚无清单时查询现有项目卷和容器挂载。
+没有迁移清单且旧容器已重建时，无法识别原匿名卷。
 失败时服务不会自动启动；原编排、原容器和旧卷仍然保留。
 本工具在 Docker 所在的 Linux 主机运行，使用当前用户的 Docker 连接。
 HELP
@@ -34,6 +38,7 @@ fail() {
 }
 
 EXECUTE=false
+LIST_OLD_VOLUMES=false
 COMPOSE_FILE=./docker-compose.yml
 PROJECT_NAME=
 HELPER_IMAGE=debian:bookworm-slim
@@ -45,6 +50,10 @@ while (($#)); do
   case "$1" in
     --execute)
       EXECUTE=true
+      shift
+      ;;
+    --list-old-volumes)
+      LIST_OLD_VOLUMES=true
       shift
       ;;
     --compose-file|--project-name|--helper-image)
@@ -66,6 +75,10 @@ while (($#)); do
   esac
 done
 
+if $EXECUTE && $LIST_OLD_VOLUMES; then
+  fail '--execute 与 --list-old-volumes 不能同时使用'
+fi
+
 [[ $(uname -s) == Linux ]] || fail '请在 Docker 所在的 Linux 主机运行'
 ((BASH_VERSINFO[0] >= 4)) || fail '需要 Bash 4 或更高版本'
 command -v docker >/dev/null || fail '未找到 Docker 命令'
@@ -73,6 +86,7 @@ command -v docker >/dev/null || fail '未找到 Docker 命令'
 COMPOSE_DIR=$(cd -- "$(dirname -- "$COMPOSE_FILE")" && pwd -P)
 COMPOSE_FILE="$COMPOSE_DIR/$(basename -- "$COMPOSE_FILE")"
 DATA_DIR="$COMPOSE_DIR/data"
+OLD_VOLUMES_FILE="$DATA_DIR/old-docker-volumes.txt"
 cd -- "$COMPOSE_DIR"
 
 # 不访问 DockerRootDir：Unix socket 同时覆盖常规安装与 rootless 安装。
@@ -84,6 +98,12 @@ else
 fi
 [[ $DOCKER_ENDPOINT == unix://* ]] || fail '需要本机 Docker Unix socket，不能通过远程连接迁移'
 [[ $(docker info --format '{{.OSType}}') == linux ]] || fail '需要 Linux Docker 引擎'
+
+if $LIST_OLD_VOLUMES && [[ -f "$OLD_VOLUMES_FILE" ]]; then
+  printf '以下为成功迁移时保存的旧卷清单，未检查当前容器引用：\n'
+  cat -- "$OLD_VOLUMES_FILE"
+  exit 0
+fi
 
 # 与项目现有启动脚本支持的两种 Compose 命令保持一致。
 if docker compose version >/dev/null 2>&1; then
@@ -108,6 +128,7 @@ PROJECT_NAME=$(docker inspect --format '{{index .Config.Labels "com.docker.compo
 
 declare -A VOLUMES=()
 declare -A VOLUME_KB=()
+declare -A VOLUME_PATHS=()
 # 从现有 Docker 卷读取标识，即使编排已经改为绑定挂载也能迁移。
 VOLUME_LIST=$(docker volume ls --filter "label=com.docker.compose.project=$PROJECT_NAME" \
   --format '{{.Label "com.docker.compose.volume"}} {{.Name}}')
@@ -145,6 +166,30 @@ while IFS=$'\t' read -r container_service mounted_volume mount_path; do
 done <<< "$MOUNTED_VOLUMES"
 ((${#VOLUMES[@]})) || fail '未找到属于本项目的数据卷'
 mapfile -t VOLUME_KEYS < <(printf '%s\n' "${!VOLUMES[@]}" | sort)
+for volume_key in "${VOLUME_KEYS[@]}"; do
+  VOLUME_PATHS[$volume_key]=$(docker volume inspect \
+    --format '{{.Mountpoint}}' "${VOLUMES[$volume_key]}")
+done
+
+show_old_volumes() {
+  local volume_key
+  printf '\n旧数据卷清单（新服务验证成功后再清理）：\n'
+  printf '项目：%s\n编排：%s\n' "$PROJECT_NAME" "$COMPOSE_FILE"
+  for volume_key in "${VOLUME_KEYS[@]}"; do
+    printf '\n  旧卷名：%s\n  旧数据目录：%s\n  迁移目标：%s\n' \
+      "${VOLUMES[$volume_key]}" "${VOLUME_PATHS[$volume_key]}" "$DATA_DIR/$volume_key"
+    printf '  清理命令：docker volume rm %q\n' "${VOLUMES[$volume_key]}"
+  done
+  printf '\n请通过 docker volume rm 清理旧卷，不要直接删除 Docker 存储目录。\n'
+  printf '仍被容器引用的卷无法删除，包括已停止的容器。\n'
+}
+
+if $LIST_OLD_VOLUMES; then
+  printf '未找到成功迁移清单；以下根据现有项目卷和容器挂载识别，尚未确认迁移状态。\n'
+  printf '若旧容器已重建，已脱离容器的原匿名卷无法识别，请对照之前的迁移输出。\n'
+  show_old_volumes
+  exit 0
+fi
 
 SELINUX=false
 SECURITY_OPTIONS=$(docker info --format '{{json .SecurityOptions}}')
@@ -162,6 +207,7 @@ if $SELINUX; then
   printf '\n已检测到 SELinux；复制挂载使用 z，修改编排时也需保留此选项。\n'
 fi
 if ! $EXECUTE; then
+  show_old_volumes
   printf '\n以上仅为预览。确认后加 --execute 执行；执行前停止新操作并等待解析任务结束。\n'
   exit 0
 fi
@@ -280,3 +326,5 @@ if $SELINUX; then
   printf 'SELinux 挂载示例：./data/docreader-tmp:/tmp/docreader:ro,z\n'
 fi
 printf '修改后按原启动命令启动服务；验证历史数据和新上传后，再单独删除旧卷释放根盘空间。\n'
+show_old_volumes | tee "$OLD_VOLUMES_FILE"
+printf '\n旧卷清单已保存：%s\n以后可加 --list-old-volumes 查看。\n' "$OLD_VOLUMES_FILE"
