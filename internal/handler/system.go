@@ -2043,6 +2043,8 @@ func (h *SystemHandler) GetRuntimeQueues(c *gin.Context) {
 		stats, supported, err := h.taskInspector.QueueStats(ctx)
 		if err != nil {
 			logger.Errorf(ctx, "get queue stats failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get queue stats"})
+			return
 		}
 		resp.Available = supported
 		if stats != nil {

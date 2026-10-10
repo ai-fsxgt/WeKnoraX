@@ -329,7 +329,7 @@ export default {
   knowledgeBase: {
     queueSummary: {
       title: 'Global tasks',
-      description: 'Background task totals across all knowledge bases, updated every 5 seconds. A large backlog may delay document parsing.'
+      description: 'Running and queued task counts across all system background queues, updated every 5 seconds.'
     },
     title: 'Knowledge Base',
     fileContent: 'File Content',
