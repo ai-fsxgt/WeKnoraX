@@ -514,6 +514,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 			logger.Infof(mapCtx, "wiki ingest: processing document '%s' (%s)", op.DocTitle, op.KnowledgeID)
 			result, updates, err := s.mapOneDocument(mapCtx, chatModel, payload, op, batchCtx)
 			if err != nil {
+				op.processingErr = err
 				mapMu.Lock()
 				ingestFailed++
 				failedOps = append(failedOps, op)

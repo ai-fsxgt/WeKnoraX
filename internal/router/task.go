@@ -234,13 +234,13 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	// Install the dead-letter middleware FIRST so it sees the raw error
 	// returned by the handler, before any other middleware that might
 	// transform it. The middleware records one task_dead_letters row per
-	// task that exhausts its retry budget — operators can then SQL-query
+	// task that fails permanently — operators can then SQL-query
 	// failures by task type, scope, or tenant without scraping logs.
 	// Best-effort: a DB failure is logged and swallowed; the original task
 	// error always propagates upstream to asynq for retry/archival.
 	//
 	// The callback flips Knowledge.parse_status to "failed" the moment a
-	// document-related task exhausts its retry budget. Without this hook,
+	// document-related task fails permanently. Without this hook,
 	// a permanently-failing task left its parent knowledge stranded in
 	// "processing" until housekeeping cron caught it minutes later — the
 	// UI signal users actually see.
@@ -425,7 +425,7 @@ func newDeadLetterKnowledgeFailer(ks interfaces.KnowledgeService, tracker servic
 			return
 		}
 		ctx = types.WithManualKnowledgeVersion(ctx, probe.KnowledgeID, probe.ManualVersion)
-		errMsg := "task " + t.Type() + " exhausted retries: " + taskErr.Error()
+		errMsg := "task " + t.Type() + " permanently failed: " + taskErr.Error()
 		// 8KB is the same cap the dead-letter row uses for last_error.
 		if len(errMsg) > 8192 {
 			errMsg = errMsg[:8192]

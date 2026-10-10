@@ -2,11 +2,13 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/middleware/asynqdl"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/google/uuid"
@@ -106,9 +108,12 @@ func (e *SyncTaskExecutor) Enqueue(task *asynq.Task, opts ...asynq.Option) (*asy
 					task.Type(), taskID, time.Since(start))
 				return
 			}
+			if errors.Is(lastErr, asynq.SkipRetry) {
+				break
+			}
 		}
 
-		logger.Errorf(ctx, "[SyncTask] Task failed (exhausted retries) type=%s id=%s elapsed=%v err=%v",
+		logger.Errorf(ctx, "[SyncTask] Task failed type=%s id=%s elapsed=%v err=%v",
 			task.Type(), taskID, time.Since(start), lastErr)
 	}()
 
@@ -131,31 +136,39 @@ type SyncTaskParams struct {
 	WikiIngest           interfaces.TaskHandler `name:"wikiIngest"`
 	TemporaryDocument    interfaces.TemporaryDocumentService
 	MemoryService        interfaces.MemoryService
+	DeadLetterRepo       interfaces.TaskDeadLetterRepository
 }
 
 // RegisterSyncHandlers registers all task handlers on the SyncTaskExecutor.
 // Used in Lite mode instead of RunAsynqServer.
 func RegisterSyncHandlers(params SyncTaskParams) {
-	params.Executor.RegisterHandler(types.TypeChunkExtract, params.ChunkExtractor.Handle)
-	params.Executor.RegisterHandler(types.TypeDataTableSummary, params.DataTableSummary.Handle)
-	params.Executor.RegisterHandler(types.TypeDocumentProcess, params.KnowledgeService.ProcessDocument)
-	params.Executor.RegisterHandler(types.TypeTemporaryDocumentProcess, params.TemporaryDocument.Process)
-	params.Executor.RegisterHandler(types.TypeManualProcess, params.KnowledgeService.ProcessManualUpdate)
-	params.Executor.RegisterHandler(types.TypeFAQImport, params.KnowledgeService.ProcessFAQImport)
-	params.Executor.RegisterHandler(types.TypeQuestionGeneration, params.KnowledgeService.ProcessQuestionGeneration)
-	params.Executor.RegisterHandler(types.TypeSummaryGeneration, params.KnowledgeService.ProcessSummaryGeneration)
-	params.Executor.RegisterHandler(types.TypeKBClone, params.KnowledgeService.ProcessKBClone)
-	params.Executor.RegisterHandler(types.TypeKnowledgeMove, params.KnowledgeService.ProcessKnowledgeMove)
-	params.Executor.RegisterHandler(types.TypeKnowledgeListDelete, params.KnowledgeService.ProcessKnowledgeListDelete)
-	params.Executor.RegisterHandler(types.TypeKnowledgeListReparse, params.KnowledgeService.ProcessKnowledgeListReparse)
-	params.Executor.RegisterHandler(types.TypeIndexDelete, params.TagService.ProcessIndexDelete)
-	params.Executor.RegisterHandler(types.TypeKBDelete, params.KnowledgeBaseService.ProcessKBDelete)
-	params.Executor.RegisterHandler(types.TypeImageMultimodal, params.ImageMultimodal.Handle)
-	params.Executor.RegisterHandler(types.TypeKnowledgePostProcess, params.KnowledgePostProcess.Handle)
-	params.Executor.RegisterHandler(types.TypeKnowledgeAutoTag, params.KnowledgeAutoTag.Handle)
-	params.Executor.RegisterHandler(types.TypeDataSourceSync, params.DataSourceService.ProcessSync)
-	params.Executor.RegisterHandler(types.TypeWikiIngest, params.WikiIngest.Handle)
-	params.Executor.RegisterHandler(types.TypeWikiFinalize, params.WikiIngest.Handle)
-	params.Executor.RegisterHandler(types.TypeMemoryExtract, params.MemoryService.Handle)
+	// Share terminal failure recording with Redis workers. The middleware
+	// reads the Lite executor's retry metadata before deciding to archive.
+	recordFailure := asynqdl.Middleware(params.DeadLetterRepo)
+	register := func(pattern string, handler func(context.Context, *asynq.Task) error) {
+		wrapped := recordFailure(asynq.HandlerFunc(handler))
+		params.Executor.RegisterHandler(pattern, wrapped.ProcessTask)
+	}
+	register(types.TypeChunkExtract, params.ChunkExtractor.Handle)
+	register(types.TypeDataTableSummary, params.DataTableSummary.Handle)
+	register(types.TypeDocumentProcess, params.KnowledgeService.ProcessDocument)
+	register(types.TypeTemporaryDocumentProcess, params.TemporaryDocument.Process)
+	register(types.TypeManualProcess, params.KnowledgeService.ProcessManualUpdate)
+	register(types.TypeFAQImport, params.KnowledgeService.ProcessFAQImport)
+	register(types.TypeQuestionGeneration, params.KnowledgeService.ProcessQuestionGeneration)
+	register(types.TypeSummaryGeneration, params.KnowledgeService.ProcessSummaryGeneration)
+	register(types.TypeKBClone, params.KnowledgeService.ProcessKBClone)
+	register(types.TypeKnowledgeMove, params.KnowledgeService.ProcessKnowledgeMove)
+	register(types.TypeKnowledgeListDelete, params.KnowledgeService.ProcessKnowledgeListDelete)
+	register(types.TypeKnowledgeListReparse, params.KnowledgeService.ProcessKnowledgeListReparse)
+	register(types.TypeIndexDelete, params.TagService.ProcessIndexDelete)
+	register(types.TypeKBDelete, params.KnowledgeBaseService.ProcessKBDelete)
+	register(types.TypeImageMultimodal, params.ImageMultimodal.Handle)
+	register(types.TypeKnowledgePostProcess, params.KnowledgePostProcess.Handle)
+	register(types.TypeKnowledgeAutoTag, params.KnowledgeAutoTag.Handle)
+	register(types.TypeDataSourceSync, params.DataSourceService.ProcessSync)
+	register(types.TypeWikiIngest, params.WikiIngest.Handle)
+	register(types.TypeWikiFinalize, params.WikiIngest.Handle)
+	register(types.TypeMemoryExtract, params.MemoryService.Handle)
 	logger.Infof(context.Background(), "[SyncTask] All task handlers registered (Lite mode, no Redis)")
 }

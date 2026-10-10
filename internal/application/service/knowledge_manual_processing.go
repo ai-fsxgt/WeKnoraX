@@ -9,6 +9,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -102,6 +103,10 @@ func withManualKnowledgeSubtask(
 func manualKnowledgeProcessingCurrent(knowledge *types.Knowledge, version int) (bool, error) {
 	if !knowledge.IsManual() {
 		return false, nil
+	}
+	if version <= 0 {
+		return false, fmt.Errorf("manual task requires a positive processing version: knowledge=%s version=%d: %w",
+			knowledge.ID, version, asynq.SkipRetry)
 	}
 	meta, err := knowledge.ManualMetadata()
 	if err != nil {

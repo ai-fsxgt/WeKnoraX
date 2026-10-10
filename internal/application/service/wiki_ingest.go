@@ -314,6 +314,8 @@ type WikiPendingOp struct {
 	// dbID is set by peekPendingList from task_pending_ops.id. Zero in
 	// constructions made outside the queue (e.g. legacy tests).
 	dbID int64 `json:"-"`
+	// processingErr is local to the current batch, never part of the payload.
+	processingErr error
 }
 
 // wikiIngestService handles the LLM-powered wiki generation pipeline.
@@ -1178,7 +1180,8 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 			// will see it again and we'll try once more.
 			continue
 		}
-		if count <= wikiMaxFailRetries {
+		nonRetryable := errors.Is(op.processingErr, asynq.SkipRetry)
+		if count <= wikiMaxFailRetries && !nonRetryable {
 			// Release the claim so the row is immediately eligible for the
 			// next trigger's ClaimBatch instead of waiting out
 			// wikiClaimStaleAfter. No-op in Lite mode (row was peeked, never
@@ -1192,7 +1195,7 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 			continue
 		}
 
-		// Exhausted in-batch retries — archive and remove. This is the
+		// Permanently failed — archive and remove. This is the
 		// terminal failure point for the op, so release its slot in the
 		// knowledge's finalizing counter (ingest ops only; retracts are
 		// for deleted knowledge that has no counter to drain). The
@@ -1200,7 +1203,12 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 		if op.Op == WikiOpIngest {
 			s.finalizeWikiSubtask(ctx, op.KnowledgeID, op.ManualVersion)
 		}
-		logger.Warnf(ctx, "wiki ingest: dropping op %s (%s) after %d failures (limit %d)", op.KnowledgeID, op.DocTitle, count, wikiMaxFailRetries)
+		lastError := fmt.Sprintf("exceeded wikiMaxFailRetries=%d (in-batch retries)", wikiMaxFailRetries)
+		if nonRetryable {
+			lastError = op.processingErr.Error()
+		}
+		logger.Warnf(ctx, "wiki ingest: dropping op %s (%s) after %d failures: %s",
+			op.KnowledgeID, op.DocTitle, count, lastError)
 		if s.deadLetterRepo != nil {
 			payloadBytes, _ := json.Marshal(op)
 			if dlErr := s.deadLetterRepo.Insert(ctx, &types.TaskDeadLetter{
@@ -1210,7 +1218,7 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 				ScopeID:   payload.KnowledgeBaseID,
 				RelatedID: op.KnowledgeID,
 				Payload:   payloadBytes,
-				LastError: fmt.Sprintf("exceeded wikiMaxFailRetries=%d (in-batch retries)", wikiMaxFailRetries),
+				LastError: lastError,
 				FailCount: count,
 			}); dlErr != nil {
 				logger.Warnf(ctx, "wiki ingest: failed to archive op %s to dead letters: %v", op.KnowledgeID, dlErr)
