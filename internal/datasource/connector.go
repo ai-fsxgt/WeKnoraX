@@ -226,6 +226,14 @@ var ConnectorMetadataRegistry = map[string]ConnectorMetadata{
 		AuthType:     "api_key",
 		Capabilities: []string{"incremental", "deletion_sync"},
 	},
+	types.ConnectorTypePoco: {
+		Type:         types.ConnectorTypePoco,
+		Name:         "Poco听记",
+		Description:  "Sync completed Poco notes as composed Markdown documents",
+		Priority:     3,
+		AuthType:     "password",
+		Capabilities: []string{"incremental", "deletion_sync"},
+	},
 	types.ConnectorTypeGitHub: {
 		Type:         types.ConnectorTypeGitHub,
 		Name:         "GitHub",

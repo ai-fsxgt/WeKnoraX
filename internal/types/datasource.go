@@ -38,6 +38,7 @@ const (
 	ConnectorTypeRSS         = "rss"
 	ConnectorTypeGitLab      = "gitlab"
 	ConnectorTypeIMA         = "ima"
+	ConnectorTypePoco        = "poco"
 
 	// Sync modes
 	SyncModeIncremental = "incremental"
@@ -259,7 +260,7 @@ func (d DataSourceConfig) HasConfiguredCredentials(connectorType string) bool {
 		}
 		s, ok := raw.(string)
 		return ok && strings.TrimSpace(s) != ""
-	case ConnectorTypeConfluence:
+	case ConnectorTypeConfluence, ConnectorTypePoco:
 		username, usernameOK := d.Credentials["username"].(string)
 		password, passwordOK := d.Credentials["password"].(string)
 		return usernameOK && passwordOK && strings.TrimSpace(username) != "" && password != ""

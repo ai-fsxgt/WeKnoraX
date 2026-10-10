@@ -111,7 +111,7 @@ function cancelReplaceCredentials() {
   clearConfluencePreview()
   const confluenceDraftChanged = form.value.type === 'confluence'
     && normalizeConfluenceBaseURL(form.value.config.settings.base_url) !== persistedConfluenceBaseURL.value
-  testResult.value = credentialsConfigured.value && !confluenceDraftChanged ? 'success' : ''
+  testResult.value = credentialsConfigured.value && !confluenceDraftChanged && !pocoSourceChanged() ? 'success' : ''
   testErrorMsg.value = ''
 }
 
@@ -159,6 +159,22 @@ const validatedConfluenceBaseURL = ref('')
 const persistedConfluenceBaseURL = ref('')
 const confluencePreviewBaseURL = ref('')
 const confluencePreviewResources = ref<Resource[] | null>(null)
+const validatedPocoSource = ref('')
+const pocoPreviewResources = ref<Resource[] | null>(null)
+const pocoContentParts = [
+  { value: 'transcript', labelKey: 'datasource.poco.transcript' },
+  { value: 'summary', labelKey: 'datasource.poco.summary' },
+  { value: 'key_points', labelKey: 'datasource.poco.keyPoints' },
+  { value: 'todo_items', labelKey: 'datasource.poco.todoItems' },
+]
+
+function pocoSourceKey(): string {
+  return String(form.value.config.settings.base_url || '').trim().replace(/\/+$/, '')
+}
+
+function pocoSourceChanged(): boolean {
+  return form.value.type === 'poco' && pocoSourceKey() !== validatedPocoSource.value
+}
 
 function normalizeConfluenceBaseURL(value: unknown): string {
   return String(value || '').trim().replace(/#.*$/, '').replace(/\/+$/, '')
@@ -203,6 +219,7 @@ function removeRssAuthHeader(idx: number) {
 }
 
 function needsConnectionTest(): boolean {
+  if (pocoSourceChanged()) return true
   if (confluenceBaseURLChanged()) return true
   if (form.value.type === 'confluence'
     && normalizeConfluenceBaseURL(form.value.config.settings.base_url) !== persistedConfluenceBaseURL.value
@@ -680,6 +697,18 @@ const connectorDefs = computed<ConnectorDef[]>(() => [
     ],
   },
   {
+    type: 'poco',
+    available: true,
+    docUrl: 'https://ai-agent.fsxgt.cn/docs/api/authentication',
+    permissionDocUrl: '',
+    permissionPageUrl: '',
+    requiredPermissions: [],
+    fields: [
+      { key: 'username', labelKey: 'datasource.poco.username', placeholder: '' },
+      { key: 'password', labelKey: 'datasource.poco.password', placeholder: '', secret: true },
+    ],
+  },
+  {
     type: 'rss',
     available: true,
     docUrl: '',
@@ -723,6 +752,7 @@ watch(visible, async (v) => {
   pendingRemoveCredentials.value = false
   resources.value = []
   clearConfluencePreview()
+  pocoPreviewResources.value = null
   selectedResourceIds.value = []
   expandedResourceIds.value = new Set()
   loadedChildrenIds.value = new Set()
@@ -748,10 +778,12 @@ watch(visible, async (v) => {
       type: props.dataSource.type,
       config: {
         credentials: {},
-        resource_ids: editConfig.resource_ids || [],
+        resource_ids: props.dataSource.type === 'poco' ? ['all_notes'] : (editConfig.resource_ids || []),
         settings: props.dataSource.type === 'rss'
           ? hydrateRssFeedUrlsFromConfig(editConfig)
-          : (editConfig.settings || {}),
+          : props.dataSource.type === 'poco'
+            ? { base_url: editConfig.settings.base_url, content_parts: [...editConfig.settings.content_parts] }
+            : (editConfig.settings || {}),
       },
       sync_schedule: props.dataSource.sync_schedule,
       sync_mode: props.dataSource.sync_mode,
@@ -762,6 +794,7 @@ watch(visible, async (v) => {
       ? normalizeConfluenceBaseURL(form.value.config.settings.base_url)
       : ''
     persistedConfluenceBaseURL.value = validatedConfluenceBaseURL.value
+    validatedPocoSource.value = props.dataSource.type === 'poco' ? pocoSourceKey() : ''
     selectedResourceIds.value = form.value.config?.resource_ids || []
     if (isGitLabConnector(form.value.type)) {
       const savedProjects = Array.isArray(form.value.config.settings.projects) ? form.value.config.settings.projects : []
@@ -797,6 +830,7 @@ watch(visible, async (v) => {
     }
     validatedConfluenceBaseURL.value = ''
     persistedConfluenceBaseURL.value = ''
+    validatedPocoSource.value = ''
   }
 })
 
@@ -804,6 +838,7 @@ watch(
   () => form.value.config.credentials,
   () => {
     if (form.value.type === 'confluence') clearConfluencePreview()
+    if (form.value.type === 'poco') pocoPreviewResources.value = null
     if (needsConnectionTest()) {
       testResult.value = ''
       testErrorMsg.value = ''
@@ -844,12 +879,33 @@ watch(
   },
 )
 
+watch(
+  () => form.value.config.settings.base_url,
+  () => {
+    if (!pocoSourceChanged()) return
+    pocoPreviewResources.value = null
+    testResult.value = ''
+    testErrorMsg.value = ''
+  },
+)
+
 function selectType(def: ConnectorDef) {
   if (!def.available) return
   form.value.type = def.type
   form.value.name = t(`datasource.connector.${def.type}`)
   form.value.config.credentials = {}
+  form.value.config.resource_ids = []
   form.value.config.settings = {}
+  selectedResourceIds.value = []
+  if (def.type === 'poco') {
+    form.value.config.settings = {
+      base_url: '', content_parts: pocoContentParts.map(part => part.value),
+    }
+    selectedResourceIds.value = ['all_notes']
+    form.value.config.resource_ids = [...selectedResourceIds.value]
+  }
+  validatedPocoSource.value = ''
+  pocoPreviewResources.value = null
   validatedConfluenceBaseURL.value = ''
   persistedConfluenceBaseURL.value = ''
   clearConfluencePreview()
@@ -863,6 +919,7 @@ async function testConnection() {
   syncRssAuthHeadersToCredentials()
   if (!validateRssFeedUrls()) return
   if (!validateConfluenceBaseURL()) return
+  if (!validatePocoSettings()) return
   const confluenceSourceChanged = confluenceBaseURLChanged()
   if (!isEdit.value || !credentialsConfigured.value || replaceCredentialsMode.value) {
     const fields = currentDef.value?.fields || []
@@ -880,7 +937,7 @@ async function testConnection() {
   testErrorMsg.value = ''
   try {
     let previewedResources: Resource[] | null = null
-    if (isEdit.value && tempDsId.value && form.value.type === 'confluence') {
+    if (isEdit.value && tempDsId.value && ['confluence', 'poco'].includes(form.value.type)) {
       const credentials = credentialPayload()
       const useDraftCredentials = credentialsInputVisible.value && Object.keys(credentials).length > 0
       const res = await previewResources(
@@ -900,6 +957,10 @@ async function testConnection() {
       await validateCredentials(form.value.type, creds, form.value.config.settings)
     }
     testResult.value = 'success'
+    if (form.value.type === 'poco') {
+      validatedPocoSource.value = pocoSourceKey()
+      pocoPreviewResources.value = previewedResources
+    }
     if (form.value.type === 'confluence') {
       if (confluenceSourceChanged) {
         selectedResourceIds.value = []
@@ -930,6 +991,17 @@ async function loadResources() {
     let loadedResources: Resource[]
     if (isEdit.value && form.value.type === 'confluence' && hasCurrentConfluencePreview()) {
       loadedResources = confluencePreviewResources.value || []
+    } else if (isEdit.value && form.value.type === 'poco' && tempDsId.value) {
+      if (pocoPreviewResources.value !== null && !pocoSourceChanged()) {
+        loadedResources = pocoPreviewResources.value
+      } else {
+        const credentials = credentialPayload()
+        const useDraftCredentials = credentialsInputVisible.value && Object.keys(credentials).length > 0
+        const res = await previewResources(
+          tempDsId.value, form.value.config.settings, useDraftCredentials ? credentials : undefined,
+        )
+        loadedResources = res?.data || res || []
+      }
     } else {
       if (!tempDsId.value) {
         const res = await createDataSource({
@@ -941,7 +1013,8 @@ async function loadResources() {
         const created = res?.data || res
         tempDsId.value = created.id
       } else if (!isEdit.value) {
-        await updateDataSource(tempDsId.value, {
+        const updateDraft = form.value.type === 'poco' ? updateDataSourceWithCredentials : updateDataSource
+        await updateDraft(tempDsId.value, {
           ...form.value,
           config: buildConfigPayload(),
           knowledge_base_id: props.kbId,
@@ -952,6 +1025,11 @@ async function loadResources() {
       loadedResources = res?.data || res || []
     }
     resources.value = loadedResources
+    if (form.value.type === 'poco') {
+      const availableIDs = new Set(loadedResources.map(resource => resource.external_id))
+      selectedResourceIds.value = selectedResourceIds.value.filter(id => availableIDs.has(id))
+      form.value.config.resource_ids = [...selectedResourceIds.value]
+    }
     // Any parent that already arrived with children (connectors returning the
     // full tree, e.g. Notion) needs no further lazy fetch.
     const parentsWithChildren = new Set<string>()
@@ -1095,6 +1173,7 @@ function validateStep1Fields(): boolean {
   syncRssAuthHeadersToCredentials()
   if (!validateRssFeedUrls()) return false
   if (!validateConfluenceBaseURL()) return false
+  if (!validatePocoSettings()) return false
   if (isEdit.value && credentialsConfigured.value && !replaceCredentialsMode.value) {
     return true
   }
@@ -1110,7 +1189,21 @@ function validateStep1Fields(): boolean {
   return true
 }
 
+function validatePocoSettings(): boolean {
+  if (form.value.type !== 'poco') return true
+  if (!String(form.value.config.settings.base_url || '').trim()) {
+    MessagePlugin.warning(`${t('datasource.poco.baseUrl')} ${t('datasource.isRequired')}`)
+    return false
+  }
+  if (!form.value.config.settings.content_parts?.length) {
+    MessagePlugin.warning(t('datasource.poco.contentRequired'))
+    return false
+  }
+  return true
+}
+
 async function nextStep() {
+  if (loadingResources.value) return
   if (step.value === 1) {
     if (!validateStep1Fields()) return
     if (needsConnectionTest() && testResult.value !== 'success') {
@@ -1136,6 +1229,10 @@ async function nextStep() {
   }
   if (step.value === 2 && form.value.type === 'confluence' && selectedResourceIds.value.length === 0) {
     MessagePlugin.warning(`${t('datasource.resourceType.confluenceSpace')} ${t('datasource.isRequired')}`)
+    return
+  }
+  if (step.value === 2 && form.value.type === 'poco' && selectedResourceIds.value.length === 0) {
+    MessagePlugin.warning(t('datasource.poco.resourceRequired'))
     return
   }
   step.value++
@@ -1165,7 +1262,7 @@ function prevStep() {
 // already carries them.
 //
 // Edit mode normally keeps credentials behind the credential subresource.
-// Confluence can opt into the atomic configuration endpoint when its address
+// Confluence and Poco use the atomic configuration endpoint when their address
 // and credentials must be validated and saved together.
 function buildConfigPayload(includeCredentials = false): Record<string, unknown> {
   syncGitLabProjectsToSettings()
@@ -1176,7 +1273,7 @@ function buildConfigPayload(includeCredentials = false): Record<string, unknown>
   }
 }
 
-// For connectors other than Confluence, commit newly configured credentials
+// For connectors without an atomic configuration update, commit new credentials
 // through the credential subresource before the main update.
 async function commitCredentialsIfNeeded(dsId: string): Promise<boolean> {
   if (!isEdit.value || (credentialsConfigured.value && !replaceCredentialsMode.value)) return true
@@ -1197,6 +1294,7 @@ async function commitCredentialsIfNeeded(dsId: string): Promise<boolean> {
 
 // --- Final submit ---
 async function handleSubmit() {
+  if (!validatePocoSettings()) return
   form.value.config.resource_ids = selectedResourceIds.value
   submitting.value = true
   try {
@@ -1204,23 +1302,24 @@ async function handleSubmit() {
 
     if (tempDsId.value) {
       const draftCredentials = credentialPayload()
-      const replaceConfluenceCredentials = isEdit.value && form.value.type === 'confluence'
+      const replaceConfigurationCredentials = (form.value.type === 'poco'
+        || (isEdit.value && form.value.type === 'confluence'))
         && (!credentialsConfigured.value || replaceCredentialsMode.value)
         && Object.keys(draftCredentials).length > 0
       const payload = {
         ...form.value,
-        config: buildConfigPayload(replaceConfluenceCredentials),
+        config: buildConfigPayload(replaceConfigurationCredentials),
         knowledge_base_id: props.kbId,
         status: 'active',
       } as any
-      if (replaceConfluenceCredentials) {
+      if (replaceConfigurationCredentials) {
         await updateDataSourceWithCredentials(tempDsId.value, payload)
         credentialsConfigured.value = true
         replaceCredentialsMode.value = false
         form.value.config.credentials = {}
       } else {
-        // Other connectors retain the credential subresource flow. Confluence
-        // only uses it when settings do not need an atomic credential change.
+        // The credential subresource handles updates that do not require
+        // saving the address and replacement credentials together.
         const credsOk = await commitCredentialsIfNeeded(tempDsId.value)
         if (!credsOk) {
           submitting.value = false
@@ -1364,6 +1463,7 @@ const drawerConfirmText = computed(() => {
     :hide-footer="step === 0"
     :confirm-text="drawerConfirmText"
     :confirm-loading="submitting || (step === 1 && testing)"
+    :confirm-disabled="loadingResources"
     storage-key="setting-drawer:width:datasource-editor"
     width="640px"
     @confirm="handleDrawerConfirm"
@@ -1572,6 +1672,15 @@ const drawerConfirmText = computed(() => {
         </div>
       </section>
 
+      <section v-if="form.type === 'poco'" class="setting-drawer__section">
+        <div class="form-item">
+          <label class="form-label required">{{ t('datasource.poco.baseUrl') }}</label>
+          <t-input v-model="form.config.settings.base_url" placeholder="http://10.6.181.90:8000"
+            autocomplete="off" spellcheck="false" />
+          <p class="form-desc">{{ t('datasource.poco.baseUrlHint') }}</p>
+        </div>
+      </section>
+
       <section class="setting-drawer__section">
         <h4 class="setting-drawer__section-title">{{ t('datasource.credentialsLabel') }}</h4>
 
@@ -1695,7 +1804,8 @@ const drawerConfirmText = computed(() => {
                 v-model="form.config.credentials[field.key]"
                 :placeholder="field.placeholder || t('credential.inputPlaceholder')"
                 :type="field.secret ? 'password' : 'text'"
-                autocomplete="off"
+                :autocomplete="form.type === 'poco' && field.secret ? 'new-password' : 'off'"
+                :name="form.type === 'poco' ? `poco-${tempDsId || 'new'}-${field.key}` : undefined"
                 spellcheck="false"
               >
                 <template v-if="field.secret" #prefix-icon><t-icon name="lock-on" /></template>
@@ -1732,6 +1842,14 @@ const drawerConfirmText = computed(() => {
           </div>
           <t-button variant="outline" @click="addGitLabProject"><template #icon><t-icon name="add" /></template>{{ t('datasource.gitlab.addProject') }}</t-button>
         </div>
+      </template>
+      <template v-else-if="form.type === 'poco'">
+        <h4 class="setting-drawer__section-title">{{ t('datasource.step.resources') }}</h4>
+        <p class="ds-resource-hint">{{ t('datasource.poco.resourceHint') }}</p>
+        <div v-if="loadingResources" class="ds-loading-center"><t-loading /></div>
+        <t-checkbox-group v-else v-model="selectedResourceIds">
+          <t-checkbox value="all_notes">{{ t('datasource.poco.allNotes') }}</t-checkbox>
+        </t-checkbox-group>
       </template>
       <template v-else>
       <h4 class="setting-drawer__section-title">{{ t('datasource.step.resources') }}</h4>
@@ -1900,6 +2018,20 @@ const drawerConfirmText = computed(() => {
 
     <!-- Step 3: Sync strategy -->
     <template v-if="step === 3">
+      <section v-if="form.type === 'poco'" class="setting-drawer__section">
+        <h4 class="setting-drawer__section-title">{{ t('datasource.poco.contentParts') }}</h4>
+        <t-checkbox-group v-model="form.config.settings.content_parts" class="poco-content-parts">
+          <t-checkbox
+            v-for="part in pocoContentParts"
+            :key="part.value"
+            :value="part.value"
+            :disabled="form.config.settings.content_parts.length === 1 && form.config.settings.content_parts.includes(part.value)"
+          >
+            {{ t(part.labelKey) }}
+          </t-checkbox>
+        </t-checkbox-group>
+        <p class="form-desc">{{ t('datasource.poco.contentPartsHint') }}</p>
+      </section>
       <section class="setting-drawer__section">
         <h4 class="setting-drawer__section-title">{{ t('datasource.syncScheduleLabel') }}</h4>
         <t-select v-model="form.sync_schedule">
@@ -1970,6 +2102,12 @@ const drawerConfirmText = computed(() => {
 
 <style scoped lang="less">
 @import './datasource-surface.less';
+
+.poco-content-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
 .ds-steps {
   display: flex;
   gap: 8px;
