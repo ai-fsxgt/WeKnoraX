@@ -545,7 +545,7 @@ jobs:
       - name: Build app Image
         uses: docker/build-push-action@v7
         with:
-          push: true
+          load: true
           provenance: false
           platforms: linux/amd64
           file: docker/Dockerfile.app
@@ -560,6 +560,15 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha,scope=build-app-linux-amd64
           cache-to: type=gha,scope=build-app-linux-amd64,mode=max
+
+      # docker push prints per-layer progress, so a stalled layer is visible in the log.
+      - name: Push app Image
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          while IFS= read -r tag; do
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"
 
       - name: Inspect image
         run: |
