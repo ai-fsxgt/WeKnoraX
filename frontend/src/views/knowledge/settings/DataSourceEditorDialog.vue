@@ -2021,7 +2021,12 @@ const drawerConfirmText = computed(() => {
       <section v-if="form.type === 'poco'" class="setting-drawer__section">
         <h4 class="setting-drawer__section-title">{{ t('datasource.poco.contentParts') }}</h4>
         <t-checkbox-group v-model="form.config.settings.content_parts" class="poco-content-parts">
-          <t-checkbox v-for="part in pocoContentParts" :key="part.value" :value="part.value">
+          <t-checkbox
+            v-for="part in pocoContentParts"
+            :key="part.value"
+            :value="part.value"
+            :disabled="form.config.settings.content_parts.length === 1 && form.config.settings.content_parts.includes(part.value)"
+          >
             {{ t(part.labelKey) }}
           </t-checkbox>
         </t-checkbox-group>
