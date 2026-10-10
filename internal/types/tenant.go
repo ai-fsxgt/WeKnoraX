@@ -504,7 +504,19 @@ func (c *ParserEngineConfig) Value() (driver.Value, error) {
 	if c == nil {
 		return nil, nil
 	}
-	return json.Marshal(c)
+	out := *c
+	if out.MinerUSelfHostedAPIKey != "" {
+		key := utils.GetAESKey()
+		if key == nil {
+			return nil, fmt.Errorf("encrypt mineru_self_hosted_api_key: SYSTEM_AES_KEY must be exactly 32 bytes")
+		}
+		encrypted, err := utils.EncryptAESGCM(out.MinerUSelfHostedAPIKey, key)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt mineru_self_hosted_api_key: %w", err)
+		}
+		out.MinerUSelfHostedAPIKey = encrypted
+	}
+	return json.Marshal(out)
 }
 
 // Scan implements the sql.Scanner interface for ParserEngineConfig
@@ -516,7 +528,15 @@ func (c *ParserEngineConfig) Scan(value interface{}) error {
 	if !ok {
 		return nil
 	}
-	return json.Unmarshal(b, c)
+	if err := json.Unmarshal(b, c); err != nil {
+		return err
+	}
+	plain, err := utils.DecryptStoredSecret(c.MinerUSelfHostedAPIKey)
+	if err != nil {
+		return fmt.Errorf("decrypt mineru_self_hosted_api_key: %w", err)
+	}
+	c.MinerUSelfHostedAPIKey = plain
+	return nil
 }
 
 // StorageEngineConfig holds tenant-level storage engine parameters for Local, MinIO, COS, TOS, S3, OSS, KS3, and OBS.

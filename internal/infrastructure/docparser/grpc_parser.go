@@ -124,7 +124,7 @@ func (p *GRPCDocumentReader) Read(ctx context.Context, req *types.ReadRequest) (
 		RequestId:   req.RequestID,
 		Config: &proto.ReadConfig{
 			ParserEngine:          req.ParserEngine,
-			ParserEngineOverrides: req.ParserEngineOverrides,
+			ParserEngineOverrides: remoteParserEngineOverrides(req.ParserEngineOverrides),
 		},
 	}
 
@@ -247,7 +247,9 @@ func (p *GRPCDocumentReader) ListEngines(ctx context.Context, overrides map[stri
 		return nil, errNotConnected
 	}
 
-	resp, err := client.ListEngines(ctx, &proto.ListEnginesRequest{ConfigOverrides: overrides})
+	resp, err := client.ListEngines(ctx, &proto.ListEnginesRequest{
+		ConfigOverrides: remoteParserEngineOverrides(overrides),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("gRPC ListEngines failed: %w", err)
 	}

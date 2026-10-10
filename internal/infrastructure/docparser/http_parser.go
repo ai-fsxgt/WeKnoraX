@@ -134,7 +134,7 @@ func (p *HTTPDocumentReader) ListEngines(ctx context.Context, overrides map[stri
 		return nil, fmt.Errorf("docreader address failed SSRF validation: %w", err)
 	}
 
-	body := httpListEnginesRequest{ConfigOverrides: overrides}
+	body := httpListEnginesRequest{ConfigOverrides: remoteParserEngineOverrides(overrides)}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("http marshal list-engines request: %w", err)
@@ -210,7 +210,7 @@ func (p *HTTPDocumentReader) Read(ctx context.Context, req *types.ReadRequest) (
 		RequestID: req.RequestID,
 		Config: &httpReadConfig{
 			ParserEngine:          req.ParserEngine,
-			ParserEngineOverrides: req.ParserEngineOverrides,
+			ParserEngineOverrides: remoteParserEngineOverrides(req.ParserEngineOverrides),
 		},
 	}
 	if len(req.FileContent) > 0 {
