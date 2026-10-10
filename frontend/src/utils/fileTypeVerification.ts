@@ -13,15 +13,15 @@ const DEFAULT_VALID_TYPES = new Set([
   "jpg",
   "jpeg",
   "png",
-  "csv",
-  "xlsx",
-  "xls",
   "mp3",
   "wav",
   "m4a",
   "flac",
   "ogg",
 ]);
+
+// 表格类文件已停止解析，即使解析引擎声明支持也一律拒绝
+const BLOCKED_TYPES = new Set(["csv", "xlsx", "xls"]);
 
 export function shouldRejectKnowledgeFileType(
   filename: string,
@@ -35,5 +35,5 @@ export function shouldRejectKnowledgeFileType(
   const allowed = provided && provided.size > 0 ? provided : DEFAULT_VALID_TYPES;
   const type = filename.substring(filename.lastIndexOf(".") + 1).toLowerCase();
 
-  return !allowed.has(type);
+  return BLOCKED_TYPES.has(type) || !allowed.has(type);
 }

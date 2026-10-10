@@ -323,7 +323,7 @@ export default {
         },
         upload: {
           title: '파일 업로드',
-          desc: 'PDF, Word, Excel 등을 업로드하고 자동 파싱·벡터화.'
+          desc: 'PDF, Word, PPT 등을 업로드하고 자동 파싱·벡터화.'
         }
       }
     },

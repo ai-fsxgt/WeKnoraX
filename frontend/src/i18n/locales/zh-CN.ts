@@ -323,7 +323,7 @@ export default {
         },
         upload: {
           title: '上传文件',
-          desc: '将 PDF、Word、Excel 等文档上传至知识库，自动解析与向量化。'
+          desc: '将 PDF、Word、PPT 等文档上传至知识库，自动解析与向量化。'
         }
       }
     },

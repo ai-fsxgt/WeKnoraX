@@ -3299,6 +3299,16 @@ func (s *knowledgeService) processDocumentLocked(ctx context.Context, payload ty
 	}
 	ctx = withAttempt(ctx, attempt)
 
+	// 表格类文件已停止解析：直接标记失败，不进入 docreader，也不重试
+	if isDataTableFileType(knowledge.FileType) {
+		logger.Infof(ctx, "Data table file parsing is disabled, skipping: %s", knowledge.ID)
+		knowledge.ParseStatus = types.ParseStatusFailed
+		knowledge.ErrorMessage = ErrDataTableNotParse.Error()
+		knowledge.UpdatedAt = time.Now()
+		s.repo.UpdateKnowledge(ctx, knowledge)
+		return nil
+	}
+
 	// 检查多模态配置（仅对文件导入）
 	if payload.FilePath != "" && !payload.EnableMultimodel && IsImageType(payload.FileType) {
 		logger.GetLogger(ctx).WithField("knowledge_id", knowledge.ID).

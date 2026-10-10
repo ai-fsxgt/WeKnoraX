@@ -40,6 +40,8 @@ var (
 	ErrDuplicateURL = errors.New("URL already exists")
 	// ErrImageNotParse is returned when trying to update image information without enabling multimodel
 	ErrImageNotParse = errors.New("image not parse without enable multimodel")
+	// ErrDataTableNotParse is returned when a spreadsheet file (xlsx/xls/csv) reaches the parse pipeline
+	ErrDataTableNotParse = errors.New("不支持解析表格类文件（xlsx/xls/csv）")
 )
 
 // knowledgeService implements the knowledge service interface

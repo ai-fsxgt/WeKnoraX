@@ -323,7 +323,7 @@ export default {
         },
         upload: {
           title: 'Загрузка файлов',
-          desc: 'PDF, Word, Excel и др. с автоматическим разбором.'
+          desc: 'PDF, Word, PPT и др. с автоматическим разбором.'
         }
       }
     },
