@@ -35,7 +35,7 @@ jobs:
   # lints every module, since they share the root config.
   changes:
     name: detect lint modules
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       modules: ${{ steps.detect.outputs.modules }}
     steps:
