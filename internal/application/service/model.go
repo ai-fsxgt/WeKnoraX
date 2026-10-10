@@ -34,7 +34,9 @@ type modelService struct {
 	pooler        embedding.EmbedderPooler
 	tenantService interfaces.TenantService
 	// updateMu serialises UpdateModel's DB write and runtime limit publish so
-	// the governor always ends with the limit of the last committed edit.
+	// the governor always ends with the limit of the last committed edit. The
+	// credential read-modify-write paths hold it too, so their whole-row write
+	// cannot restore a stale limit.
 	updateMu sync.Mutex
 }
 
@@ -287,6 +289,8 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 func (s *modelService) UpdateModelCredentials(
 	ctx context.Context, id string, apiKey, appSecret *string,
 ) (*types.Model, error) {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	tenantID := types.MustTenantIDFromContext(ctx)
 	existing, err := s.repo.GetByID(ctx, tenantID, id)
 	if err != nil {
@@ -325,6 +329,8 @@ func (s *modelService) UpdateModelCredentials(
 
 // ClearModelCredential removes a single credential field. Idempotent.
 func (s *modelService) ClearModelCredential(ctx context.Context, id, field string) error {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	tenantID := types.MustTenantIDFromContext(ctx)
 	existing, err := s.repo.GetByID(ctx, tenantID, id)
 	if err != nil {
