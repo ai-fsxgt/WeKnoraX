@@ -10,6 +10,7 @@ import os
 import signal
 import threading
 import traceback
+from multiprocessing.connection import wait
 from typing import Callable
 
 from docreader.models.document import Document
@@ -92,9 +93,18 @@ def parse_isolated(
         cancel()
 
     try:
-        status, payload = recv_conn.recv()
+        # 同时等待结果与子进程退出：解析器用 fork 创建的孙进程会继承管道写端，
+        # 子进程被杀后仅等管道可能永远收不到 EOF。
+        if proc.sentinel in wait([recv_conn, proc.sentinel]):
+            # 子进程已退出但尚未回收（僵尸保留 pid），先清理孙进程，关闭残留的管道写端
+            _kill_process_group(proc.pid)
+        result = recv_conn.recv() if recv_conn.poll() else None
     except EOFError:
-        # 子进程尚未被回收（僵尸状态保留 pid），清理其残留的孙进程是安全的
+        result = None
+    finally:
+        recv_conn.close()
+
+    if result is None:
         _kill_process_group(proc.pid)
         mark_finished()
         proc.join()
@@ -103,11 +113,10 @@ def parse_isolated(
         raise ParseProcessKilled(
             f"解析进程被系统终止（exitcode={proc.exitcode}），可能超出内存上限"
         )
-    finally:
-        recv_conn.close()
 
     mark_finished()
     proc.join()
+    status, payload = result
     if status == "error":
         raise RuntimeError(payload)
     return payload
