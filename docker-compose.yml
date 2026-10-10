@@ -371,8 +371,8 @@ services:
   docreader:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/weknora-docreader:${WEKNORA_VERSION:-latest}
     container_name: WeKnora-docreader
-    mem_limit: 16g
-    memswap_limit: 16g
+    mem_limit: 8g
+    memswap_limit: 8g
     # docreader gRPC ships without auth/TLS and is only consumed by the app
     # container over the WeKnora-network (DOCREADER_ADDR defaults to
     # docreader:50051), so we don't publish 50051 to the host. `expose` keeps
@@ -517,6 +517,8 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
     restart: always
     networks:
       - WeKnora-network
@@ -592,6 +594,7 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+    restart: unless-stopped
     networks:
       - WeKnora-network
 
@@ -998,6 +1001,7 @@ networks:
 
 volumes:
   postgres-data:
+  redis-data:
   data-files:
   docreader-tmp:
   minio_data:
