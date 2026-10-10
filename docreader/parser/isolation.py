@@ -89,22 +89,22 @@ def parse_isolated(
         with signal_lock:
             finished.set()
 
+    def reap_descendants() -> None:
+        # 解析器用 fork 创建的孙进程会继承管道写端，子进程退出后它们可能让 recv 一直阻塞；
+        # 子进程一退出（尚未回收，僵尸保留 pid）就清理整个进程组，关闭残留的写端。
+        wait([proc.sentinel])
+        with signal_lock:
+            if not finished.is_set():
+                _kill_process_group(proc.pid)
+
     if not register_cancel(cancel):
         cancel()
+    threading.Thread(target=reap_descendants, daemon=True).start()
 
     try:
-        # 同时等待结果与子进程退出：解析器用 fork 创建的孙进程会继承管道写端，
-        # 子进程被杀后仅等管道可能永远收不到 EOF。
-        if proc.sentinel in wait([recv_conn, proc.sentinel]):
-            # 子进程已退出但尚未回收（僵尸保留 pid），先清理孙进程，关闭残留的管道写端
-            _kill_process_group(proc.pid)
-        result = recv_conn.recv() if recv_conn.poll() else None
+        status, payload = recv_conn.recv()
     except EOFError:
-        result = None
-    finally:
-        recv_conn.close()
-
-    if result is None:
+        # 子进程尚未被回收（僵尸保留 pid），清理不持有管道的孙进程（如 LibreOffice）是安全的
         _kill_process_group(proc.pid)
         mark_finished()
         proc.join()
@@ -113,10 +113,11 @@ def parse_isolated(
         raise ParseProcessKilled(
             f"解析进程被系统终止（exitcode={proc.exitcode}），可能超出内存上限"
         )
+    finally:
+        recv_conn.close()
 
     mark_finished()
     proc.join()
-    status, payload = result
     if status == "error":
         raise RuntimeError(payload)
     return payload
