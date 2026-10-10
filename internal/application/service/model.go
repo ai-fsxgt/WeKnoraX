@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -32,6 +33,9 @@ type modelService struct {
 	ollamaService *ollama.OllamaService
 	pooler        embedding.EmbedderPooler
 	tenantService interfaces.TenantService
+	// updateMu serialises UpdateModel's DB write and runtime limit publish so
+	// the governor always ends with the limit of the last committed edit.
+	updateMu sync.Mutex
 }
 
 // NewModelService creates a new model service instance
@@ -257,6 +261,8 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 	}
 
 	// Update model in repository
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 	err = s.repo.Update(ctx, model)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
