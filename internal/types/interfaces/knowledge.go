@@ -241,6 +241,9 @@ type KnowledgeRepository interface {
 		tenantID uint64, kbID string, page *types.Pagination, filter types.KnowledgeListFilter,
 	) ([]*types.Knowledge, int64, error)
 	UpdateKnowledge(ctx context.Context, knowledge *types.Knowledge) error
+	// UpdateManualKnowledgeIfIdle atomically saves manual content and its status
+	// only when no processing or deletion is active. Returns whether the row was updated.
+	UpdateManualKnowledgeIfIdle(ctx context.Context, knowledge *types.Knowledge) (bool, error)
 	// UpdateKnowledgeBatch updates knowledge items in batch
 	UpdateKnowledgeBatch(ctx context.Context, knowledgeList []*types.Knowledge) error
 	DeleteKnowledge(ctx context.Context, tenantID uint64, id string) error

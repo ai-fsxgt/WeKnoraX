@@ -139,6 +139,23 @@ func (s *ImageMultimodalService) Handle(ctx context.Context, task *asynq.Task) e
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("unmarshal image multimodal payload: %w", err)
 	}
+	started := false
+	err := withManualKnowledgeProcessing(ctx, s.redisClient, s.knowledgeRepo.GetKnowledgeByIDOnly,
+		payload.TenantID, payload.KnowledgeID, payload.ManualVersion, func(lockCtx context.Context) error {
+			started = true
+			return s.handleImageMultimodal(lockCtx, payload)
+		})
+	if err != nil && !started && payload.ManualVersion > 0 && isFinalAsynqAttempt(ctx) {
+		finalizeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), finalizeSubtaskDetachedTimeout)
+		defer cancel()
+		s.checkAndFinalizeAllImages(finalizeCtx, payload)
+	}
+	return err
+}
+
+func (s *ImageMultimodalService) handleImageMultimodal(ctx context.Context,
+	payload types.ImageMultimodalPayload,
+) error {
 
 	logger.Infof(ctx, "[ImageMultimodal] Processing image: chunk=%s, url=%s, ocr=%v, caption=%v",
 		payload.ChunkID, payload.ImageURL, payload.EnableOCR, payload.EnableCaption)
@@ -647,13 +664,20 @@ func downloadImageFromURL(imageURL string) ([]byte, error) {
 	return secutils.DownloadBytes(imageURL)
 }
 
+func multimodalPendingKey(knowledgeID string, manualVersion int) string {
+	if manualVersion > 0 {
+		return fmt.Sprintf("multimodal:pending:%s:%d", knowledgeID, manualVersion)
+	}
+	return fmt.Sprintf("multimodal:pending:%s", knowledgeID)
+}
+
 func (s *ImageMultimodalService) checkAndFinalizeAllImages(ctx context.Context, payload types.ImageMultimodalPayload) {
 	if s.redisClient == nil {
 		s.enqueueKnowledgePostProcessTask(ctx, payload)
 		return
 	}
 
-	redisKey := fmt.Sprintf("multimodal:pending:%s", payload.KnowledgeID)
+	redisKey := multimodalPendingKey(payload.KnowledgeID, payload.ManualVersion)
 
 	pendingCount, err := s.redisClient.Decr(ctx, redisKey).Result()
 	if err != nil && err != redis.Nil {
@@ -684,6 +708,7 @@ func (s *ImageMultimodalService) enqueueKnowledgePostProcessTask(ctx context.Con
 	}
 
 	taskPayload := types.KnowledgePostProcessPayload{
+		ManualVersion:   payload.ManualVersion,
 		TenantID:        payload.TenantID,
 		KnowledgeID:     payload.KnowledgeID,
 		KnowledgeBaseID: payload.KnowledgeBaseID,

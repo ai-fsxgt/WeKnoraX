@@ -142,6 +142,12 @@
           >
             {{ t(integrationScopeLabelKeys['knowledge.chat']) }}
           </t-checkbox>
+          <t-checkbox
+            v-model="policyWrite"
+            :disabled="!selectedApplication?.allowed_scopes.includes('knowledge.write')"
+          >
+            {{ t(integrationScopeLabelKeys['knowledge.write']) }}
+          </t-checkbox>
         </div>
       </div>
     </SettingDrawer>
@@ -179,6 +185,7 @@ const selectedApplication = ref<IntegrationApplication | null>(null)
 const selectedPolicyItem = ref<TenantIntegrationApplicationView | null>(null)
 const policyRead = ref(true)
 const policyChat = ref(false)
+const policyWrite = ref(false)
 const policyForm = reactive({ enabled: true })
 
 const canManage = computed(() => authStore.canAccessAllTenants || authStore.hasRole('admin'))
@@ -218,6 +225,7 @@ function openPolicy(item: TenantIntegrationApplicationView) {
   const scopes = item.policy?.allowed_scopes || item.application.allowed_scopes
   policyRead.value = true
   policyChat.value = item.application.allowed_scopes.includes('knowledge.chat') && scopes.includes('knowledge.chat')
+  policyWrite.value = item.application.allowed_scopes.includes('knowledge.write') && scopes.includes('knowledge.write')
   policyVisible.value = true
 }
 
@@ -227,9 +235,11 @@ async function savePolicy() {
   try {
     await updateTenantIntegrationPolicy(selectedApplication.value.id, {
       enabled: policyForm.enabled,
-      allowed_scopes: policyChat.value
-        ? ['knowledge.read', 'knowledge.chat']
-        : ['knowledge.read'],
+      allowed_scopes: [
+        'knowledge.read',
+        ...(policyChat.value ? ['knowledge.chat' as const] : []),
+        ...(policyWrite.value ? ['knowledge.write' as const] : []),
+      ],
     })
     policyVisible.value = false
     MessagePlugin.success(t('thirdPartyIntegration.tenant.saved'))
@@ -305,6 +315,6 @@ onMounted(loadAll)
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .switch-row label { font-weight: 600; }
 .switch-row p { margin-top: 4px; font-size: 12px; }
-.scope-options { display: flex; gap: 22px; padding: 12px; border-radius: 8px; background: var(--td-bg-color-secondarycontainer); }
+.scope-options { display: flex; flex-wrap: wrap; gap: 22px; padding: 12px; border-radius: 8px; background: var(--td-bg-color-secondarycontainer); }
 @media (max-width: 760px) { .connection-row, .application-row { align-items: stretch; flex-direction: column; } .row-actions { justify-content: flex-end; } }
 </style>

@@ -84,6 +84,8 @@ const (
 	// by third-party knowledge integrations. It permits knowledge-base chat
 	// session state, but not custom-agent discovery or agent execution.
 	APIKeyCapabilityKnowledgeChat APIKeyCapability = "knowledge_chat"
+	// APIKeyCapabilityKnowledgeWrite permits only manual text creation and updates.
+	APIKeyCapabilityKnowledgeWrite APIKeyCapability = "knowledge_write"
 	// APIKeyCapabilityReadAgents lets a scoped key list and inspect agents
 	// without allowing chat sessions or agent authoring.
 	APIKeyCapabilityReadAgents APIKeyCapability = "read_agents"
@@ -178,6 +180,8 @@ func NormalizeAPIKeyCapability(c APIKeyCapability) APIKeyCapability {
 		return APIKeyCapabilityChat
 	case APIKeyCapabilityKnowledgeChat:
 		return APIKeyCapabilityKnowledgeChat
+	case APIKeyCapabilityKnowledgeWrite:
+		return APIKeyCapabilityKnowledgeWrite
 	case APIKeyCapabilityReadAgents:
 		return APIKeyCapabilityReadAgents
 	case APIKeyCapabilityIngest:
@@ -273,13 +277,15 @@ func (k *TenantAPIKey) AfterFind(tx *gorm.DB) error {
 
 // TenantAPIKeyScope is the request-context projection used by middleware.
 type TenantAPIKeyScope struct {
-	KeyID                   uint64
-	ScopeType               APIKeyScopeType
-	FullAccess              bool
-	KnowledgeBaseRestricted bool
-	KnowledgeBaseIDs        StringArray
-	KnowledgeBaseTenantIDs  map[string]uint64
-	Capabilities            StringArray
+	KeyID                    uint64
+	ScopeType                APIKeyScopeType
+	FullAccess               bool
+	KnowledgeBaseRestricted  bool
+	KnowledgeBaseIDs         StringArray
+	KnowledgeBaseTenantIDs   map[string]uint64
+	KnowledgeBaseWriteIDs    StringArray
+	KnowledgeBaseTenantNames map[uint64]string
+	Capabilities             StringArray
 }
 
 func WithTenantAPIKeyScope(ctx context.Context, scope TenantAPIKeyScope) context.Context {
@@ -306,13 +312,15 @@ func (s TenantAPIKeyScope) Normalize() TenantAPIKeyScope {
 		}
 	}
 	return TenantAPIKeyScope{
-		KeyID:                   s.KeyID,
-		ScopeType:               NormalizeAPIKeyScopeType(s.ScopeType),
-		FullAccess:              s.FullAccess,
-		KnowledgeBaseRestricted: s.KnowledgeBaseRestricted,
-		KnowledgeBaseIDs:        normalizeIDArray(s.KnowledgeBaseIDs),
-		KnowledgeBaseTenantIDs:  knowledgeBaseTenantIDs,
-		Capabilities:            NormalizeAPIKeyCapabilities(s.Capabilities),
+		KeyID:                    s.KeyID,
+		ScopeType:                NormalizeAPIKeyScopeType(s.ScopeType),
+		FullAccess:               s.FullAccess,
+		KnowledgeBaseRestricted:  s.KnowledgeBaseRestricted,
+		KnowledgeBaseIDs:         normalizeIDArray(s.KnowledgeBaseIDs),
+		KnowledgeBaseTenantIDs:   knowledgeBaseTenantIDs,
+		KnowledgeBaseWriteIDs:    normalizeIDArray(s.KnowledgeBaseWriteIDs),
+		KnowledgeBaseTenantNames: s.KnowledgeBaseTenantNames,
+		Capabilities:             NormalizeAPIKeyCapabilities(s.Capabilities),
 	}
 }
 
@@ -349,6 +357,38 @@ func (s TenantAPIKeyScope) AllowsKnowledgeBase(kbID string) bool {
 		}
 	}
 	return false
+}
+
+// AllowsKnowledgeBaseWrite checks the live, per-KB write grant of an integration.
+func (s TenantAPIKeyScope) AllowsKnowledgeBaseWrite(kbID string) bool {
+	if !s.AllowsKnowledgeBase(kbID) {
+		return false
+	}
+	for _, id := range s.KnowledgeBaseWriteIDs {
+		if id == kbID {
+			return true
+		}
+	}
+	return false
+}
+
+// IntegrationKnowledgeBasePermission resolves integration access independently
+// of the request's default workspace. An empty permission denies access.
+func IntegrationKnowledgeBasePermission(
+	ctx context.Context, kbID string, ownerTenantID uint64,
+) (OrgMemberRole, bool) {
+	principal, ok := PrincipalFromContext(ctx)
+	if !ok || principal.Type != PrincipalIntegrationUser {
+		return "", false
+	}
+	scope, ok := TenantAPIKeyScopeFromContext(ctx)
+	if !ok || !scope.AllowsKnowledgeBase(kbID) || scope.KnowledgeBaseTenantIDs[kbID] != ownerTenantID {
+		return "", true
+	}
+	if scope.AllowsKnowledgeBaseWrite(kbID) {
+		return OrgRoleEditor, true
+	}
+	return OrgRoleViewer, true
 }
 
 // IntegrationKnowledgeBaseTenantIDsFromContext returns the authorized owner

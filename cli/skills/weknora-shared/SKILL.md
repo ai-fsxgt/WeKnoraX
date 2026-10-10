@@ -22,8 +22,13 @@ credential; `auth status` / `doctor` confirm it. The steps below set up a
 For a third-party user connection, `WEKNORA_API_KEY` is the long-lived
 `wkic_...` credential returned by the authorization-code exchange. Send it only
 as `X-API-Key`; never substitute a browser JWT or an OIDC token. A `wkic_`
-credential is read-scoped to the connection's currently effective knowledge
-bases, so do not use it for create, update, upload, or delete commands.
+credential reads the connection's currently effective knowledge bases. With
+explicit `knowledge.write` authorization, it may create and update manual text
+through `/knowledge-bases/{id}/knowledge/manual` and `/knowledge/manual/{id}`.
+Use `weknora api /api/v1/knowledge-bases` to choose a knowledge base with
+`can_write` using its explicit ID; ask the user when the destination is
+unspecified or ambiguous. Upload, deletion and
+knowledge-base management remain outside this permission.
 
 Authentication is a **two-step sequence**. `weknora auth login` operates on the
 *active profile*, so the profile must exist first:

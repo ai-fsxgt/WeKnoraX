@@ -261,6 +261,11 @@ func apiKeyKnowledgeChat(base middleware.APIKeyRoutePolicy) middleware.APIKeyRou
 	return base.WithCapability(types.APIKeyCapabilityKnowledgeChat)
 }
 
+// apiKeyKnowledgeWrite admits only the third-party manual text write grant.
+func apiKeyKnowledgeWrite(base middleware.APIKeyRoutePolicy) middleware.APIKeyRoutePolicy {
+	return base.WithCapability(types.APIKeyCapabilityKnowledgeWrite)
+}
+
 // apiKeyReadAgents layers the "read_agents" capability on top of a base
 // policy so scoped integrations can inspect available agents without chat or
 // authoring permissions.

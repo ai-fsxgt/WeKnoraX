@@ -306,6 +306,19 @@ func (r *knowledgeRepository) RenameKnowledgeFolderPath(
 
 // UpdateKnowledge updates knowledge
 func (r *knowledgeRepository) UpdateKnowledge(ctx context.Context, knowledge *types.Knowledge) error {
+	if version, _ := types.ManualKnowledgeVersionFromContext(ctx, knowledge.ID); version > 0 {
+		// Processing owns these columns, not the editor's title or metadata.
+		return r.UpdateKnowledgeColumns(ctx, knowledge.ID, map[string]interface{}{
+			"parse_status":   knowledge.ParseStatus,
+			"enable_status":  knowledge.EnableStatus,
+			"summary_status": knowledge.SummaryStatus,
+			"description":    knowledge.Description,
+			"error_message":  knowledge.ErrorMessage,
+			"storage_size":   knowledge.StorageSize,
+			"processed_at":   knowledge.ProcessedAt,
+			"updated_at":     knowledge.UpdatedAt,
+		})
+	}
 	omit := omitFieldsOnUpdate
 	// Legacy/unit-test schemas created before custom_metadata should continue
 	// to support unrelated updates when the caller did not provide the field.
@@ -318,6 +331,38 @@ func (r *knowledgeRepository) UpdateKnowledge(ctx context.Context, knowledge *ty
 		Omit(omit...).
 		Updates(knowledge).Error
 	return err
+}
+
+// UpdateManualKnowledgeIfIdle saves edited columns only when processing and
+// deletion are inactive. Publishing reserves pending in the same UPDATE.
+func (r *knowledgeRepository) UpdateManualKnowledgeIfIdle(
+	ctx context.Context, knowledge *types.Knowledge,
+) (bool, error) {
+	result := r.db.WithContext(ctx).
+		Model(&types.Knowledge{}).
+		Where("tenant_id = ? AND id = ? AND type = ?", knowledge.TenantID, knowledge.ID, types.KnowledgeTypeManual).
+		Where("parse_status NOT IN ?", []string{
+			types.ParseStatusPending, types.ParseStatusProcessing,
+			types.ParseStatusFinalizing, types.ParseStatusDeleting,
+		}).
+		Updates(map[string]interface{}{
+			"title":              knowledge.Title,
+			"metadata":           knowledge.Metadata,
+			"file_name":          knowledge.FileName,
+			"file_type":          knowledge.FileType,
+			"type":               knowledge.Type,
+			"source":             knowledge.Source,
+			"enable_status":      knowledge.EnableStatus,
+			"embedding_model_id": knowledge.EmbeddingModelID,
+			"parse_status":       knowledge.ParseStatus,
+			"description":        knowledge.Description,
+			"processed_at":       knowledge.ProcessedAt,
+			"updated_at":         knowledge.UpdatedAt,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 // UpdateKnowledgeBatch updates knowledge items in batch
@@ -517,8 +562,23 @@ func (r *knowledgeRepository) UpdateKnowledgeColumn(
 	column string,
 	value interface{},
 ) error {
-	err := r.db.WithContext(ctx).Model(&types.Knowledge{}).Where("id = ?", id).Update(column, value).Error
-	return err
+	return r.UpdateKnowledgeColumns(ctx, id, map[string]interface{}{column: value})
+}
+
+// manualKnowledgeProcessingQuery scopes a worker's write to its active
+// metadata version. The JSON extraction/cast works in PostgreSQL and SQLite.
+func manualKnowledgeProcessingQuery(ctx context.Context, id string, query *gorm.DB) *gorm.DB {
+	version, supplied := types.ManualKnowledgeVersionFromContext(ctx, id)
+	if !supplied {
+		return query
+	}
+	if version == 0 {
+		return query.Where("type <> ?", types.KnowledgeTypeManual)
+	}
+	return query.Where("type = ? AND CAST(metadata->>'version' AS INTEGER) = ?", types.KnowledgeTypeManual, version).
+		Where("parse_status NOT IN ?", []string{
+			types.ParseStatusCancelled, types.ParseStatusDeleting, types.ManualKnowledgeStatusDraft,
+		})
 }
 
 // UpdateKnowledgeColumns writes multiple columns in a single UPDATE so callers
@@ -533,7 +593,15 @@ func (r *knowledgeRepository) UpdateKnowledgeColumns(
 	if len(values) == 0 {
 		return nil
 	}
-	return r.db.WithContext(ctx).Model(&types.Knowledge{}).Where("id = ?", id).Updates(values).Error
+	query := r.db.WithContext(ctx).Model(&types.Knowledge{}).Where("id = ?", id)
+	result := manualKnowledgeProcessingQuery(ctx, id, query).Updates(values)
+	if result.Error != nil {
+		return result.Error
+	}
+	if _, supplied := types.ManualKnowledgeVersionFromContext(ctx, id); supplied && result.RowsAffected == 0 {
+		return types.ErrManualKnowledgeSuperseded
+	}
+	return nil
 }
 
 // UpdateActiveDeletingKnowledgeColumns only touches rows that are still visible
@@ -580,7 +648,7 @@ func (r *knowledgeRepository) FinalizeSubtask(
 	//    guard is purely a safety net for accounting bugs — under normal
 	//    operation each subtask handler decrements at most once per task,
 	//    so the counter cannot go negative.
-	res := r.db.WithContext(ctx).Model(&types.Knowledge{}).
+	res := manualKnowledgeProcessingQuery(ctx, id, r.db.WithContext(ctx).Model(&types.Knowledge{})).
 		Where("id = ? AND pending_subtasks_count > 0", id).
 		Updates(map[string]interface{}{
 			"pending_subtasks_count": gorm.Expr("pending_subtasks_count - 1"),
@@ -602,7 +670,7 @@ func (r *knowledgeRepository) FinalizeSubtask(
 	//    the single authoritative, atomic check on the live row: only the
 	//    caller whose decrement actually brought the counter to zero matches,
 	//    and cancel/delete cannot be clobbered by a late promote.
-	promoteRes := r.db.WithContext(ctx).Model(&types.Knowledge{}).
+	promoteRes := manualKnowledgeProcessingQuery(ctx, id, r.db.WithContext(ctx).Model(&types.Knowledge{})).
 		Where("id = ? AND parse_status = ? AND pending_subtasks_count = 0",
 			id, types.ParseStatusFinalizing).
 		Updates(map[string]interface{}{
@@ -647,7 +715,7 @@ func (r *knowledgeRepository) SetFinalizing(
 		expectedSubtasks = 0
 	}
 	now := time.Now()
-	res := r.db.WithContext(ctx).Model(&types.Knowledge{}).
+	res := manualKnowledgeProcessingQuery(ctx, id, r.db.WithContext(ctx).Model(&types.Knowledge{})).
 		Where("id = ? AND parse_status = ?", id, types.ParseStatusProcessing).
 		Updates(map[string]interface{}{
 			"parse_status":           types.ParseStatusFinalizing,

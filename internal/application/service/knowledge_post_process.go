@@ -80,6 +80,15 @@ func (s *KnowledgePostProcessService) Handle(ctx context.Context, task *asynq.Ta
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("unmarshal knowledge post process payload: %w", err)
 	}
+	return withManualKnowledgeProcessing(ctx, s.redisClient, s.knowledgeRepo.GetKnowledgeByIDOnly,
+		payload.TenantID, payload.KnowledgeID, payload.ManualVersion, func(lockCtx context.Context) error {
+			return s.handlePostProcess(lockCtx, payload)
+		})
+}
+
+func (s *KnowledgePostProcessService) handlePostProcess(ctx context.Context,
+	payload types.KnowledgePostProcessPayload,
+) error {
 
 	logger.Infof(ctx, "[KnowledgePostProcess] Orchestrating post processing for knowledge: %s", payload.KnowledgeID)
 
@@ -498,6 +507,7 @@ func (s *KnowledgePostProcessService) enqueueAutoTagTask(
 		return false
 	}
 	taskPayload := types.KnowledgeAutoTagPayload{
+		ManualVersion:   payload.ManualVersion,
 		TenantID:        payload.TenantID,
 		KnowledgeBaseID: payload.KnowledgeBaseID,
 		KnowledgeID:     payload.KnowledgeID,
@@ -529,6 +539,7 @@ func (s *KnowledgePostProcessService) enqueueSummaryGenerationTask(ctx context.C
 	}
 
 	taskPayload := types.SummaryGenerationPayload{
+		ManualVersion:   payload.ManualVersion,
 		TenantID:        payload.TenantID,
 		KnowledgeBaseID: payload.KnowledgeBaseID,
 		KnowledgeID:     payload.KnowledgeID,
@@ -613,6 +624,7 @@ func (s *KnowledgePostProcessService) enqueueQuestionGenerationTasks(
 		}
 
 		taskPayload := types.QuestionGenerationPayload{
+			ManualVersion:   payload.ManualVersion,
 			TenantID:        payload.TenantID,
 			KnowledgeBaseID: payload.KnowledgeBaseID,
 			KnowledgeID:     payload.KnowledgeID,

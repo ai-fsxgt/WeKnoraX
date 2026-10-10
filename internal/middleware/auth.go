@@ -292,6 +292,9 @@ func authenticateIntegrationCredential(
 	if types.IntegrationScopesContain(access.Scopes, types.IntegrationScopeKnowledgeChat) {
 		capabilities = append(capabilities, string(types.APIKeyCapabilityKnowledgeChat))
 	}
+	if types.IntegrationScopesContain(access.Scopes, types.IntegrationScopeKnowledgeWrite) {
+		capabilities = append(capabilities, string(types.APIKeyCapabilityKnowledgeWrite))
+	}
 	applyAuthSession(c, authSession{
 		User:      user,
 		Principal: types.Principal{Type: types.PrincipalIntegrationUser, ID: connection.ID},
@@ -301,11 +304,13 @@ func authenticateIntegrationCredential(
 		// Integration credentials never inherit the human user's system-admin authority.
 		SystemAdmin: false,
 		APIKeyScope: &types.TenantAPIKeyScope{
-			ScopeType:               types.APIKeyScopeTenant,
-			KnowledgeBaseRestricted: true,
-			KnowledgeBaseIDs:        access.KnowledgeBaseIDs,
-			KnowledgeBaseTenantIDs:  access.KnowledgeBaseTenantIDs,
-			Capabilities:            capabilities,
+			ScopeType:                types.APIKeyScopeTenant,
+			KnowledgeBaseRestricted:  true,
+			KnowledgeBaseIDs:         access.KnowledgeBaseIDs,
+			KnowledgeBaseTenantIDs:   access.KnowledgeBaseTenantIDs,
+			KnowledgeBaseWriteIDs:    access.KnowledgeBaseWriteIDs,
+			KnowledgeBaseTenantNames: access.KnowledgeBaseTenantNames,
+			Capabilities:             capabilities,
 		},
 	})
 	return true

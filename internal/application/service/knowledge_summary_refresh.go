@@ -91,6 +91,16 @@ func enqueueSummaryRefresh(
 	if knowledge == nil || knowledge.SummaryStatus == "" || knowledge.SummaryStatus == types.SummaryStatusNone {
 		return nil
 	}
+	if knowledge.IsManual() {
+		meta, err := knowledge.ManualMetadata()
+		if err != nil {
+			return fmt.Errorf("read manual version for summary refresh: %w", err)
+		}
+		if meta == nil {
+			return fmt.Errorf("manual metadata missing for knowledge %s", knowledge.ID)
+		}
+		ctx = types.WithManualKnowledgeVersion(ctx, knowledge.ID, meta.Version)
+	}
 	markFailed := func() {
 		if repo != nil {
 			_ = repo.UpdateKnowledgeColumn(ctx, knowledge.ID, "summary_status", types.SummaryStatusFailed)
@@ -113,7 +123,9 @@ func enqueueSummaryRefresh(
 		tracker = noopSpanTracker{}
 	}
 	language := types.LanguageFromContextOrDefault(ctx)
+	manualVersion, _ := types.ManualKnowledgeVersionFromContext(ctx, knowledge.ID)
 	payload := types.SummaryGenerationPayload{
+		ManualVersion:   manualVersion,
 		TenantID:        knowledge.TenantID,
 		KnowledgeBaseID: knowledge.KnowledgeBaseID,
 		KnowledgeID:     knowledge.ID,

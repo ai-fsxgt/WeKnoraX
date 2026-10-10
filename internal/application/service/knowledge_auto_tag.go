@@ -13,6 +13,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -42,6 +43,7 @@ type KnowledgeAutoTagService struct {
 	chunkService  interfaces.ChunkService
 	modelService  interfaces.ModelService
 	spanTracker   SpanTracker
+	redisClient   *redis.Client
 }
 
 // NewKnowledgeAutoTagService creates the asynchronous automatic-tagging task handler.
@@ -52,6 +54,7 @@ func NewKnowledgeAutoTagService(
 	chunkService interfaces.ChunkService,
 	modelService interfaces.ModelService,
 	spanTracker SpanTracker,
+	redisClient *redis.Client,
 ) interfaces.TaskHandler {
 	return &KnowledgeAutoTagService{
 		knowledgeRepo: knowledgeRepo,
@@ -60,6 +63,7 @@ func NewKnowledgeAutoTagService(
 		chunkService:  chunkService,
 		modelService:  modelService,
 		spanTracker:   spanTracker,
+		redisClient:   redisClient,
 	}
 }
 
@@ -113,6 +117,13 @@ func (s *KnowledgeAutoTagService) Handle(ctx context.Context, task *asynq.Task) 
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 		return fmt.Errorf("unmarshal knowledge auto tag payload: %w", err)
 	}
+	return withManualKnowledgeProcessing(ctx, s.redisClient, s.knowledgeRepo.GetKnowledgeByIDOnly,
+		payload.TenantID, payload.KnowledgeID, payload.ManualVersion, func(lockCtx context.Context) error {
+			return s.handleAutoTag(lockCtx, payload)
+		})
+}
+
+func (s *KnowledgeAutoTagService) handleAutoTag(ctx context.Context, payload types.KnowledgeAutoTagPayload) error {
 	ctx = context.WithValue(ctx, types.TenantIDContextKey, payload.TenantID)
 	if payload.Language != "" {
 		ctx = context.WithValue(ctx, types.LanguageContextKey, payload.Language)

@@ -64,24 +64,44 @@ func detachedOperationContext(ctx context.Context) (context.Context, context.Can
 }
 
 func (l *localKeyedLocks) lock(key string) func() {
+	entry := l.ref(key)
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		l.unref(key, entry)
+	}
+}
+
+func (l *localKeyedLocks) tryLock(key string) (func(), bool) {
+	entry := l.ref(key)
+	if !entry.mu.TryLock() {
+		l.unref(key, entry)
+		return nil, false
+	}
+	return func() {
+		entry.mu.Unlock()
+		l.unref(key, entry)
+	}, true
+}
+
+func (l *localKeyedLocks) ref(key string) *localKeyedLock {
 	l.mu.Lock()
+	defer l.mu.Unlock()
 	entry := l.locks[key]
 	if entry == nil {
 		entry = &localKeyedLock{}
 		l.locks[key] = entry
 	}
 	entry.refs++
-	l.mu.Unlock()
+	return entry
+}
 
-	entry.mu.Lock()
-	return func() {
-		entry.mu.Unlock()
-		l.mu.Lock()
-		entry.refs--
-		if entry.refs == 0 {
-			delete(l.locks, key)
-		}
-		l.mu.Unlock()
+func (l *localKeyedLocks) unref(key string, entry *localKeyedLock) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	entry.refs--
+	if entry.refs == 0 {
+		delete(l.locks, key)
 	}
 }
 
@@ -96,4 +116,25 @@ func (s *knowledgeService) withKnowledgeProcessingLock(
 	fn func(context.Context) error,
 ) error {
 	return withServiceLock(ctx, s.redisClient, knowledgeProcessingLockKey(tenantID, knowledgeID), fn)
+}
+
+// tryKnowledgeProcessingLock lets an edit reject a still-running task instead
+// of holding an HTTP request open until its model calls finish.
+func (s *knowledgeService) tryKnowledgeProcessingLock(
+	ctx context.Context,
+	tenantID uint64,
+	knowledgeID string,
+	fn func(context.Context) error,
+) (bool, error) {
+	key := knowledgeProcessingLockKey(tenantID, knowledgeID)
+	if s.redisClient != nil {
+		return redislock.TryWithRenewableLock(ctx, s.redisClient, key,
+			serviceLockLease, serviceLockRenewInterval, fn)
+	}
+	unlock, acquired := serviceLocalLocks.tryLock(key)
+	if !acquired {
+		return false, nil
+	}
+	defer unlock()
+	return true, fn(ctx)
 }

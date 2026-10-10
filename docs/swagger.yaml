@@ -8759,7 +8759,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: 获取当前空间的所有知识库；或当传入 agent_id（共享智能体）时，校验权限后返回该智能体配置的知识库范围（用于 @ 提及）
+      description: "获取当前空间的所有知识库；或当传入 agent_id（共享智能体）时，校验权限后返回该智能体配置的知识库范围（用于 @ 提及）\n第三方集成凭证返回已授权空间的知识库，包含 tenant_name 和 can_write"
       parameters:
       - description: 共享智能体 ID（传入时返回该智能体可用的知识库）
         in: query
@@ -8844,7 +8844,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: 根据ID获取知识库详情。当使用共享智能体时，可传 agent_id 以校验该智能体是否有权访问该知识库。
+      description: "根据ID获取知识库详情。当使用共享智能体时，可传 agent_id 以校验该智能体是否有权访问该知识库。\n第三方集成凭证的元数据包含 tenant_name 和 can_write"
       parameters:
       - description: 知识库ID
         in: path
@@ -9880,7 +9880,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 手工录入Markdown格式的知识内容
+      description: "手工录入Markdown格式的知识内容\n第三方集成凭证需 knowledge.write 和目标知识库编辑权限\npublish 提交异步索引，须查询处理状态"
       parameters:
       - description: 知识库ID
         in: path
@@ -10615,7 +10615,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 删除知识中现有的文档内容并重新解析，使用异步任务方式处理
+      description: 删除知识中现有的文档内容并重新解析，使用异步任务方式处理。手工知识仍有任务运行时返回 409
       parameters:
       - description: 知识ID
         in: path
@@ -10641,6 +10641,10 @@ paths:
             $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
         "403":
           description: 权限不足
+          schema:
+            $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
+        "409":
+          description: 手工知识正在更新或处理
           schema:
             $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
       security:
@@ -10838,7 +10842,11 @@ paths:
     put:
       consumes:
       - application/json
-      description: 更新手工录入的Markdown知识内容
+      description: |-
+        更新手工录入的Markdown知识内容
+        第三方集成凭证需 knowledge.write 和原文档知识库编辑权限
+        按文档ID更新完整正文；publish 提交异步索引，须查询处理状态
+        处理或删除中的文档拒绝更新，返回 HTTP 409
       parameters:
       - description: 知识ID
         in: path
@@ -10861,6 +10869,10 @@ paths:
             type: object
         "400":
           description: 请求参数错误
+          schema:
+            $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
+        "409":
+          description: 文档正在处理、删除或状态已变化
           schema:
             $ref: '#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError'
       security:

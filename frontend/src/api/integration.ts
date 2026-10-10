@@ -1,6 +1,6 @@
 import { del, get, post, put } from '@/utils/request'
 
-export type IntegrationScope = 'knowledge.read' | 'knowledge.chat'
+export type IntegrationScope = 'knowledge.read' | 'knowledge.chat' | 'knowledge.write'
 
 export interface IntegrationApplication {
   id: string
@@ -34,6 +34,8 @@ export interface IntegrationKnowledgeBase {
   type: string
   tenant_id: number
   access_tenant_id?: number
+  tenant_name: string
+  can_write: boolean
 }
 
 export interface IntegrationTenant {

@@ -1986,6 +1986,7 @@ export default {
     scopes: {
       read: 'Read and search knowledge bases',
       chat: 'Ask questions using knowledge bases',
+      write: 'Create and update text knowledge',
     },
     secret: {
       title: 'Save app credentials', copy: 'Copy Client Secret',
@@ -2025,7 +2026,9 @@ export default {
       permissions: 'The app will be able to', readTitle: 'Read and search knowledge bases in selected workspaces',
       readDescription: 'The app can read knowledge bases you can currently access in the selected workspaces. Permission changes apply immediately.',
       chatTitle: 'Answer questions using knowledge bases',
-      chatDescription: 'The app may call knowledge Q&A, but cannot write, modify, or delete content.',
+      chatDescription: 'This permission allows knowledge Q&A only. Writing content requires separate authorization.',
+      writeTitle: 'Create and update text knowledge in selected workspaces',
+      writeDescription: 'Allow the app to create and update text in document knowledge bases you can edit within selected workspaces. Specify or confirm the destination in the third-party conversation.',
       selectWorkspaces: 'Select workspaces', selectWorkspacesHint: 'You can select multiple workspaces and reauthorize or revoke the connection later.',
       noWorkspaces: 'There are no workspaces that currently allow this app',
       footerHint: 'Effective permissions are recalculated on every request.', deny: 'Deny', allow: 'Connect',
