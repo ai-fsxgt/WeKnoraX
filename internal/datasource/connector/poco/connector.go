@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Tencent/WeKnora/internal/datasource"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -274,10 +276,21 @@ func fetchedNote(cfg *config, item note) types.FetchedItem {
 		}
 		sections = append(sections, "## "+heading+"\n\n"+strings.TrimSpace(content))
 	}
+	fileName := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || strings.ContainsRune(`/\"`, r) {
+			return '_'
+		}
+		return r
+	}, noteTitle(item))
+	const maxFileNameBytes = 180
+	for len(fileName) > maxFileNameBytes {
+		_, size := utf8.DecodeLastRuneInString(fileName)
+		fileName = fileName[:len(fileName)-size]
+	}
 	return types.FetchedItem{
 		ExternalID: item.ID, Title: noteTitle(item), Content: []byte(strings.Join(sections, "\n\n") + "\n"),
 		ContentType: "text/markdown", UpdatedAt: item.UpdatedAt,
-		FileName:         strings.NewReplacer("/", "_", "\\", "_").Replace(noteTitle(item)) + ".md",
+		FileName:         fileName + ".md",
 		SourceResourceID: allNotesID,
 		Metadata:         map[string]string{"channel": types.ConnectorTypePoco},
 	}
