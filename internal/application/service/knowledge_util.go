@@ -31,7 +31,7 @@ var supportedImportFileExtensions = map[string]struct{}{
 	"pdf": {}, "txt": {}, "docx": {}, "doc": {}, "epub": {},
 	"html": {}, "htm": {}, "mhtml": {}, "md": {}, "markdown": {},
 	"png": {}, "jpg": {}, "jpeg": {}, "gif": {},
-	"csv": {}, "xlsx": {}, "xls": {}, "pptx": {}, "ppt": {}, "json": {},
+	"pptx": {}, "ppt": {}, "json": {},
 	"mp3": {}, "wav": {}, "m4a": {}, "flac": {}, "ogg": {},
 }
 
@@ -66,6 +66,16 @@ func isValidFileType(filename string) bool {
 func isDataTableFileType(ext string) bool {
 	_, ok := dataTableFileExtensions[normalizeFileExtension(ext)]
 	return ok
+}
+
+// resolveKnowledgeFileType returns the normalized file type, falling back to
+// the file name's extension for older records whose file_type is empty.
+func resolveKnowledgeFileType(fileName, fileType string) string {
+	ft := normalizeFileExtension(fileType)
+	if ft == "" && fileName != "" {
+		ft = getFileType(fileName)
+	}
+	return ft
 }
 
 // validateImportFileType applies the extension constraints shared by every

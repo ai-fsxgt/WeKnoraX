@@ -218,12 +218,12 @@ healthcheck:
 
 ```bash
 docker ps | grep docreader
-docker logs WeKnora-docreader
+docker compose logs docreader
 ```
 
 ## 更多信息
 
 - 服务端口：50051（gRPC）
-- 容器名称：WeKnora-docreader
+- 容器名称：weknora-docreader-1、weknora-docreader-2 …（副本数由 DOCREADER_REPLICAS 控制，默认 2）
 - 网络：WeKnora-network
 - 重启策略：unless-stopped

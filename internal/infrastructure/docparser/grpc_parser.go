@@ -146,13 +146,24 @@ func (p *GRPCDocumentReader) Read(ctx context.Context, req *types.ReadRequest) (
 	return result, nil
 }
 
+// readCallOptions enables WaitForReady only when the caller set a deadline:
+// queued tasks wait for docreader to come back after a restart instead of
+// burning a retry on Unavailable, while synchronous callers without a deadline
+// keep failing fast rather than blocking indefinitely.
+func readCallOptions(ctx context.Context) []grpc.CallOption {
+	if _, ok := ctx.Deadline(); ok {
+		return []grpc.CallOption{grpc.WaitForReady(true)}
+	}
+	return nil
+}
+
 // readStream consumes the server-streaming ReadStream RPC: one meta frame
 // followed by one frame per image. Errors are returned verbatim so the caller
 // can inspect the gRPC status code (e.g. Unimplemented) for fallback.
 func (p *GRPCDocumentReader) readStream(
 	ctx context.Context, client proto.DocReaderClient, protoReq *proto.ReadRequest,
 ) (*types.ReadResult, error) {
-	stream, err := client.ReadStream(ctx, protoReq)
+	stream, err := client.ReadStream(ctx, protoReq, readCallOptions(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("gRPC ReadStream failed: %w", err)
 	}
@@ -202,7 +213,7 @@ func (p *GRPCDocumentReader) readStream(
 func (p *GRPCDocumentReader) readUnary(
 	ctx context.Context, client proto.DocReaderClient, protoReq *proto.ReadRequest,
 ) (*types.ReadResult, error) {
-	resp, err := client.Read(ctx, protoReq)
+	resp, err := client.Read(ctx, protoReq, readCallOptions(ctx)...)
 	if err != nil {
 		return nil, fmt.Errorf("gRPC Read failed: %w", err)
 	}

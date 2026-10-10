@@ -14,7 +14,7 @@ from grpc_health.v1.health import HealthServicer
 from docreader.auth import AuthInterceptor, TLSConfigError, load_tls_credentials
 from docreader import config
 from docreader.config import CONFIG
-from docreader.parser import Parser
+from docreader.parser.isolation import ParseProcessKilled, parse_isolated
 from docreader.proto import docreader_pb2_grpc
 from docreader.parser.registry import registry
 from docreader.proto.docreader_pb2 import (
@@ -26,7 +26,7 @@ from docreader.proto.docreader_pb2 import (
     ListEnginesResponse,
     ParserEngineInfo,
 )
-from docreader.utils.request import init_logging_request_id, request_id_context
+from docreader.utils.request import request_id_context, setup_stdout_logging
 
 _SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
 
@@ -38,20 +38,10 @@ def to_valid_utf8_text(s: Optional[str]) -> str:
     return s.encode("utf-8", errors="replace").decode("utf-8")
 
 
-for handler in logging.root.handlers[:]:
-    logging.root.removeHandler(handler)
-
-handler = logging.StreamHandler(sys.stdout)
-logging.root.addHandler(handler)
-
-_level_name = (os.environ.get("LOG_LEVEL") or "INFO").upper()
-_level = getattr(logging, _level_name, logging.INFO)
-logging.root.setLevel(_level)
+_level_name = setup_stdout_logging()
 
 logger = logging.getLogger(__name__)
 logger.info("Initializing server logging, level=%s", _level_name)
-
-init_logging_request_id()
 
 
 def _resolve_images(
@@ -147,14 +137,11 @@ def _iter_image_refs(images: dict):
 
 
 class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
-    def __init__(self):
-        super().__init__()
-        self.parser = Parser()
-
-    def _parse_request(self, request: ReadRequest):
+    def _parse_request(self, request: ReadRequest, request_id: str, context):
         """Run the parser for a ReadRequest, returning (result, source_desc).
 
-        Shared by the unary Read and streaming ReadStream RPCs.
+        Shared by the unary Read and streaming ReadStream RPCs. Parsing runs in
+        an isolated child process (see parser.isolation).
         """
         cfg = request.config
         parser_engine = cfg.parser_engine if cfg else ""
@@ -162,9 +149,12 @@ class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
 
         if request.url:
             logger.info("Read(URL): url=%s", request.url)
-            result = self.parser.parse_url(
-                request.url,
-                request.title,
+            result = parse_isolated(
+                "parse_url",
+                request_id,
+                context.add_callback,
+                url=request.url,
+                title=request.title,
                 parser_engine=parser_engine,
                 engine_overrides=engine_overrides,
             )
@@ -177,10 +167,13 @@ class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
             file_type,
             len(request.file_content),
         )
-        result = self.parser.parse_file(
-            request.file_name,
-            file_type,
-            request.file_content,
+        result = parse_isolated(
+            "parse_file",
+            request_id,
+            context.add_callback,
+            file_name=request.file_name,
+            file_type=file_type,
+            content=request.file_content,
             parser_engine=parser_engine,
             engine_overrides=engine_overrides,
         )
@@ -192,7 +185,7 @@ class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
 
         with request_id_context(request_id):
             try:
-                result, source_desc = self._parse_request(request)
+                result, source_desc = self._parse_request(request, request_id, context)
 
                 if not result or not result.content:
                     error_msg = f"Failed to parse: {source_desc}"
@@ -217,6 +210,9 @@ class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
                 )
                 return response
 
+            except ParseProcessKilled as e:
+                logger.error("%s", e)
+                context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, str(e))
             except Exception as e:
                 error_msg = f"Error reading document: {e}"
                 logger.error(error_msg)
@@ -235,7 +231,10 @@ class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
         with request_id_context(request_id):
             _c = to_valid_utf8_text
             try:
-                result, source_desc = self._parse_request(request)
+                result, source_desc = self._parse_request(request, request_id, context)
+            except ParseProcessKilled as e:
+                logger.error("%s", e)
+                context.abort(grpc.StatusCode.RESOURCE_EXHAUSTED, str(e))
             except Exception as e:
                 logger.error("Error reading document: %s", e)
                 logger.info("Traceback: %s", traceback.format_exc())

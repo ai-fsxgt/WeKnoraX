@@ -29,12 +29,12 @@ func TestIsSupportedImportExtension(t *testing.T) {
 		ext  string
 		want bool
 	}{
-		{name: "xlsx", ext: "xlsx", want: true},
-		{name: "xls", ext: "xls", want: true},
-		{name: "csv", ext: "csv", want: true},
-		{name: "dot prefix", ext: ".xlsx", want: true},
-		{name: "uppercase", ext: "XLSX", want: true},
-		{name: "surrounding space", ext: " xlsx ", want: true},
+		{name: "xlsx", ext: "xlsx", want: false},
+		{name: "xls", ext: "xls", want: false},
+		{name: "csv", ext: "csv", want: false},
+		{name: "dot prefix", ext: ".pdf", want: true},
+		{name: "uppercase", ext: "PDF", want: true},
+		{name: "surrounding space", ext: " pdf ", want: true},
 		{name: "pdf", ext: "pdf", want: true},
 		{name: "unsupported", ext: "exe", want: false},
 		{name: "video", ext: "mp4", want: false},

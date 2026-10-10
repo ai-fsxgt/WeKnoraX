@@ -42,7 +42,7 @@
 | 按批次解析配置 | 上传确认对话框或 `process_config` API 覆盖解析引擎、分块、多模态（VLM / ASR）、图谱抽取与问题生成；支持 reparse 时调整配置 |
 | 批量重新解析 | 一次为多篇文档重新排队解析，可携带批次级 `process_config` |
 | 数据源导入 | 飞书知识库 / 飞书云盘 / Lark / Notion / 语雀 / RSS 订阅自动同步（更多数据源开发中），支持增量与全量同步 |
-| 文档格式 | PDF / Word / Txt / Markdown / HTML / EPUB / MHTML / 图片 / CSV / Excel / PPT / JSON |
+| 文档格式 | PDF / Word / Txt / Markdown / HTML / EPUB / MHTML / 图片 / PPT / JSON（表格类 CSV / Excel 暂不支持上传解析） |
 | 检索策略 | BM25 稀疏召回 / Dense 稠密召回 / GraphRAG 图谱增强 / 父子分块 / pgvector HNSW 加速（1024 维）/ 多维度索引 |
 | 批量选择与打标签 | 知识库文档列表支持框选（marquee）多选，可批量重新解析、批量打标签（自动预选公共标签） |
 | 端到端测试 | 检索+生成全链路可视化，评估召回命中率、BLEU / ROUGE 等指标 |

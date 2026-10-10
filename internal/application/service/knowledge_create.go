@@ -289,7 +289,8 @@ func isFileURL(rawURL, fileName, fileType string) bool {
 	u, err := url.Parse(rawURL)
 	if err == nil {
 		ext := strings.ToLower(strings.TrimPrefix(path.Ext(u.Path), "."))
-		if ext != "" && isSupportedImportExtension(ext) {
+		// 表格类扩展名虽已禁止导入，仍按文件处理，由文件导入的类型校验明确拒绝，避免被当作网页抓取
+		if ext != "" && (isSupportedImportExtension(ext) || isDataTableFileType(ext)) {
 			return true
 		}
 	}

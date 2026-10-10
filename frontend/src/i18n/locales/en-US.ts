@@ -6532,7 +6532,7 @@ export default {
       capabilities: {
         upload: {
           title: 'Upload files',
-          desc: 'Upload PDF, Word, Excel, and more; automatic parsing and vectorization.'
+          desc: 'Upload PDF, Word, PPT, and more; automatic parsing and vectorization.'
         },
         url: {
           title: 'Import URLs',

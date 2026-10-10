@@ -96,10 +96,6 @@ func main() {
 			sig := <-signals
 			logger.Infof(context.Background(), "Received signal: %v, starting server shutdown...", sig)
 
-			// Close listener first to release port immediately,
-			// so the next process can bind during our graceful drain.
-			listener.Close()
-
 			shutdownTimeout := cfg.Server.ShutdownTimeout
 			if shutdownTimeout == 0 {
 				shutdownTimeout = 30 * time.Second

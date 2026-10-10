@@ -2404,6 +2404,11 @@ func (s *knowledgeService) ReparseKnowledge(
 		return nil, err
 	}
 
+	// 表格类文件已停止解析：在清理已有数据之前拒绝，避免删除仍可检索的历史内容
+	if isDataTableFileType(resolveKnowledgeFileType(existing.FileName, existing.FileType)) {
+		return nil, werrors.NewBadRequestError(ErrDataTableNotParse.Error())
+	}
+
 	// Allocate a fresh span tree attempt up front. Doing this BEFORE
 	// the cleanup + enqueue means: (a) the UI immediately sees a new
 	// attempt with all five stages back to "pending" instead of the
@@ -3257,6 +3262,19 @@ func (s *knowledgeService) processDocumentLocked(ctx context.Context, payload ty
 		logger.Warnf(ctx, "Unexpected parse status: %s for knowledge: %s", knowledge.ParseStatus, payload.KnowledgeID)
 	}
 
+	// 表格类文件已停止解析：在标记为处理中之前直接标记失败，不进入 docreader，也不重试
+	if isDataTableFileType(resolveKnowledgeFileType(knowledge.FileName, knowledge.FileType)) {
+		logger.Infof(ctx, "Data table file parsing is disabled, skipping: %s", knowledge.ID)
+		knowledge.ParseStatus = types.ParseStatusFailed
+		knowledge.ErrorMessage = ErrDataTableNotParse.Error()
+		knowledge.UpdatedAt = time.Now()
+		if err := s.repo.UpdateKnowledge(ctx, knowledge); err != nil {
+			logger.Errorf(ctx, "failed to mark data table knowledge as failed: %v", err)
+			return err
+		}
+		return nil
+	}
+
 	// 获取知识库信息
 	kb, err := s.kbService.GetKnowledgeBaseByID(ctx, payload.KnowledgeBaseID)
 	if err != nil {
@@ -3936,13 +3954,58 @@ func (s *knowledgeService) ProcessKnowledgeListReparse(ctx context.Context, t *a
 	ctx = context.WithValue(ctx, types.TenantIDContextKey, payload.TenantID)
 	ctx = context.WithValue(ctx, types.TenantInfoContextKey, tenant)
 
+	// Remember submitted IDs per task so an asynq retry of the same task skips
+	// them instead of resetting knowledge that is already being reparsed.
+	doneKey := ""
+	if s.redisClient != nil && taskID != "" {
+		doneKey = knowledgeListReparseDoneKeyPrefix + taskID
+	}
 	outcome, err := runKnowledgeListReparseSubmissions(payload.KnowledgeIDs, func(id string) error {
-		_, err := s.ReparseKnowledge(ctx, id, payload.ProcessConfig)
-		return err
+		if s.isListReparseSubmitted(ctx, doneKey, id) {
+			logger.Infof(ctx, "Knowledge %s already submitted by this task, skipping", secutils.SanitizeForLog(id))
+			return nil
+		}
+		if _, err := s.ReparseKnowledge(ctx, id, payload.ProcessConfig); err != nil {
+			return err
+		}
+		s.markListReparseSubmitted(ctx, doneKey, id)
+		return nil
 	})
 	logger.Infof(ctx, "Knowledge list reparse task finished: %d submitted, %d failed",
 		outcome.Submitted, outcome.Failed)
 	return err
+}
+
+const (
+	knowledgeListReparseDoneKeyPrefix = "knowledge_list_reparse_done:"
+	knowledgeListReparseDoneTTL       = 24 * time.Hour
+)
+
+// isListReparseSubmitted reports whether id was already submitted by this
+// list-reparse task. A Redis error resubmits the knowledge rather than skip it.
+func (s *knowledgeService) isListReparseSubmitted(ctx context.Context, doneKey, id string) bool {
+	if doneKey == "" {
+		return false
+	}
+	submitted, err := s.redisClient.SIsMember(ctx, doneKey, id).Result()
+	if err != nil {
+		logger.Warnf(ctx, "Failed to check list reparse progress for %s: %v", secutils.SanitizeForLog(id), err)
+		return false
+	}
+	return submitted
+}
+
+// markListReparseSubmitted records id as submitted by this list-reparse task.
+func (s *knowledgeService) markListReparseSubmitted(ctx context.Context, doneKey, id string) {
+	if doneKey == "" {
+		return
+	}
+	pipe := s.redisClient.TxPipeline()
+	pipe.SAdd(ctx, doneKey, id)
+	pipe.Expire(ctx, doneKey, knowledgeListReparseDoneTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		logger.Warnf(ctx, "Failed to record list reparse progress for %s: %v", secutils.SanitizeForLog(id), err)
+	}
 }
 
 type knowledgeListReparseOutcome struct {

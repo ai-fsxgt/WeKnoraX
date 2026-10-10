@@ -434,24 +434,11 @@ func TestResolveFileImportProcessConfig_AudioRequiresASR(t *testing.T) {
 	require.Error(t, err)
 }
 
-// The regression behind #2447: spreadsheets must clear the shared import gate
-// even when the caller sends no per-import overrides.
-func TestResolveFileImportProcessConfig_SpreadsheetAllowedWithoutOverrides(t *testing.T) {
-	t.Parallel()
-
-	kb := &types.KnowledgeBase{ChunkingConfig: types.ChunkingConfig{ChunkSize: 512}}
-	for _, ext := range []string{"xlsx", "xls", "csv"} {
-		eff, err := resolveFileImportProcessConfig(context.Background(), kb, ext, nil, nil)
-		require.NoErrorf(t, err, "ext=%s", ext)
-		require.Equal(t, 512, eff.ChunkingConfig.ChunkSize)
-	}
-}
-
 func TestResolveFileImportProcessConfig_RejectsUnsupportedAndUndeterminable(t *testing.T) {
 	t.Parallel()
 
 	kb := &types.KnowledgeBase{}
-	for _, ext := range []string{"exe", "mp4", "", unknownFileType} {
+	for _, ext := range []string{"exe", "mp4", "xlsx", "xls", "csv", "", unknownFileType} {
 		_, err := resolveFileImportProcessConfig(context.Background(), kb, ext, nil, nil)
 		require.Errorf(t, err, "ext=%s should be rejected", ext)
 	}
