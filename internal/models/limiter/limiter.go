@@ -33,8 +33,9 @@ type ModelConcurrencyLimiter interface {
 	// returns a release func that MUST be invoked to free the slot. On any
 	// backend error (or ctx cancellation) it fails open: release is a no-op and
 	// err is nil, so callers proceed without a slot rather than dropping the
-	// call.
-	Acquire(ctx context.Context, key string, limit int) (release func(), err error)
+	// call. limit is re-evaluated while waiting, so a runtime edit of the cap
+	// applies to callers already queued for a slot.
+	Acquire(ctx context.Context, key string, limit func() int) (release func(), err error)
 }
 
 // RuntimeStat is a point-in-time view of a model semaphore. Active is
@@ -54,9 +55,20 @@ type runtimeInspectable interface {
 }
 
 type trackedSemaphore struct {
-	limit   atomic.Int64
+	limit   atomic.Value // func() int
 	waiting atomic.Int64
 	name    atomic.Value // string
+}
+
+// currentLimit resolves the latest limit, so runtime stats reflect an edit
+// immediately. An entry created by SetModelName before its first Acquire has
+// no limit yet and reports 0.
+func (t *trackedSemaphore) currentLimit() int {
+	limit, _ := t.limit.Load().(func() int)
+	if limit == nil {
+		return 0
+	}
+	return limit()
 }
 
 // noop is the release returned on the fail-open / passthrough paths.
@@ -114,15 +126,15 @@ func NewRedisLimiter(rdb *redis.Client) ModelConcurrencyLimiter {
 	}
 }
 
-func (l *redisLimiter) Acquire(ctx context.Context, key string, limit int) (func(), error) {
-	if l == nil || l.rdb == nil || limit <= 0 || key == "" {
+func (l *redisLimiter) Acquire(ctx context.Context, key string, limit func() int) (func(), error) {
+	if l == nil || l.rdb == nil || limit() <= 0 || key == "" {
 		return noop, nil
 	}
 
 	zkey := keyPrefix + key
 	entry, _ := l.tracked.LoadOrStore(key, &trackedSemaphore{})
 	tracked := entry.(*trackedSemaphore)
-	tracked.limit.Store(int64(limit))
+	tracked.limit.Store(limit)
 	tracked.waiting.Add(1)
 	defer tracked.waiting.Add(-1)
 	token := uuid.NewString()
@@ -139,9 +151,14 @@ func (l *redisLimiter) Acquire(ctx context.Context, key string, limit int) (func
 	defer timer.Stop()
 
 	for {
+		n := limit()
+		if n <= 0 {
+			// Governance was disabled while waiting.
+			return noop, nil
+		}
 		now := time.Now().UnixMilli()
 		res, err := acquireScript.Run(ctx, l.rdb, []string{zkey},
-			now, limit, token, ttlMs).Int()
+			now, n, token, ttlMs).Int()
 		if err != nil {
 			// Fail open: a limiter outage must never block model traffic.
 			logger.Warnf(ctx, "[ModelLimiter] acquire failed for key=%s, failing open: %v", key, err)
@@ -181,7 +198,10 @@ func (l *redisLimiter) RuntimeStats(ctx context.Context) ([]RuntimeStat, error) 
 			return true
 		}
 		name, _ := tracked.name.Load().(string)
-		stats = append(stats, RuntimeStat{ModelID: modelID, Name: name, Active: active, Waiting: tracked.waiting.Load(), Limit: int(tracked.limit.Load())})
+		stats = append(stats, RuntimeStat{
+			ModelID: modelID, Name: name, Active: active,
+			Waiting: tracked.waiting.Load(), Limit: tracked.currentLimit(),
+		})
 		return true
 	})
 	sort.Slice(stats, func(i, j int) bool { return stats[i].ModelID < stats[j].ModelID })

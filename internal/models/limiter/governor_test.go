@@ -9,6 +9,10 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
+func fixedLimit(n int) func() int {
+	return func() int { return n }
+}
+
 func withBackground() context.Context {
 	return types.WithBackgroundTask(context.Background())
 }
@@ -56,13 +60,13 @@ func TestLocalLimiterCaps(t *testing.T) {
 	l := NewLocalLimiter()
 	ctx := context.Background()
 
-	r1, _ := l.Acquire(ctx, "k", 2)
-	r2, _ := l.Acquire(ctx, "k", 2)
+	r1, _ := l.Acquire(ctx, "k", fixedLimit(2))
+	r2, _ := l.Acquire(ctx, "k", fixedLimit(2))
 
 	// Third acquire must block while full.
 	done := make(chan func(), 1)
 	go func() {
-		r3, _ := l.Acquire(ctx, "k", 2)
+		r3, _ := l.Acquire(ctx, "k", fixedLimit(2))
 		done <- r3
 	}()
 	select {
@@ -85,8 +89,8 @@ func TestLocalLimiterCaps(t *testing.T) {
 func TestLocalLimiterIndependentKeys(t *testing.T) {
 	l := NewLocalLimiter()
 	ctx := context.Background()
-	ra, _ := l.Acquire(ctx, "a", 1)
-	rb, _ := l.Acquire(ctx, "b", 1) // different key: must not block
+	ra, _ := l.Acquire(ctx, "a", fixedLimit(1))
+	rb, _ := l.Acquire(ctx, "b", fixedLimit(1)) // different key: must not block
 	ra()
 	rb()
 }
@@ -95,12 +99,12 @@ func TestLocalLimiterIndependentKeys(t *testing.T) {
 func TestLocalLimiterFailOpen(t *testing.T) {
 	l := NewLocalLimiter()
 	ctx := context.Background()
-	if r, err := l.Acquire(ctx, "", 4); err != nil || r == nil {
+	if r, err := l.Acquire(ctx, "", fixedLimit(4)); err != nil || r == nil {
 		t.Fatal("empty key should fail open")
 	} else {
 		r()
 	}
-	if r, err := l.Acquire(ctx, "k", 0); err != nil || r == nil {
+	if r, err := l.Acquire(ctx, "k", fixedLimit(0)); err != nil || r == nil {
 		t.Fatal("limit<=0 should fail open")
 	} else {
 		r()
@@ -112,7 +116,7 @@ func TestLocalLimiterFailOpen(t *testing.T) {
 func TestLocalLimiterReleaseIdempotent(t *testing.T) {
 	l := NewLocalLimiter()
 	ctx := context.Background()
-	r1, _ := l.Acquire(ctx, "k", 1)
+	r1, _ := l.Acquire(ctx, "k", fixedLimit(1))
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() { defer wg.Done(); r1() }()
@@ -120,9 +124,9 @@ func TestLocalLimiterReleaseIdempotent(t *testing.T) {
 	wg.Wait()
 
 	// After idempotent release the single slot is free again.
-	r2, _ := l.Acquire(ctx, "k", 1)
+	r2, _ := l.Acquire(ctx, "k", fixedLimit(1))
 	done := make(chan struct{})
-	go func() { r3, _ := l.Acquire(ctx, "k", 1); r3(); close(done) }()
+	go func() { r3, _ := l.Acquire(ctx, "k", fixedLimit(1)); r3(); close(done) }()
 	select {
 	case <-done:
 		t.Fatal("a double-release must not leave the slot permanently free")

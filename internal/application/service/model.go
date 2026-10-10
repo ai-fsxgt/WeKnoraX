@@ -11,6 +11,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/asr"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/models/embedding"
+	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/provider"
 	"github.com/Tencent/WeKnora/internal/models/rerank"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
@@ -264,6 +265,9 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 		})
 		return err
 	}
+	// Push the edited cap to the governor so running and queued background
+	// calls honour it immediately, not just clients built after this edit.
+	limiter.SetModelLimit(model.ID, model.Parameters.MaxConcurrency)
 
 	logger.Infof(ctx, "Model updated successfully: %s", model.ID)
 	return nil
