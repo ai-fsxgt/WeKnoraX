@@ -195,6 +195,11 @@ func (c *MinerUReader) callFileParse(
 	fileName string,
 	fileType string,
 ) (string, map[string]string, error) {
+	apiKey, err := utils.DecryptStoredSecret(c.apiKey)
+	if err != nil {
+		return "", nil, fmt.Errorf("decrypt MinerU API key: %w", err)
+	}
+
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -240,8 +245,8 @@ func (c *MinerUReader) callFileParse(
 		return "", nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
-	if c.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 
 	client := utils.NewSSRFSafeHTTPClient(utils.SSRFSafeHTTPClientConfig{
@@ -372,11 +377,15 @@ func PingMinerU(endpoint, apiKey string) (bool, string) {
 	if err := validateMinerUOutboundURL(endpoint); err != nil {
 		return false, err.Error()
 	}
+	apiKey, err := utils.DecryptStoredSecret(strings.TrimSpace(apiKey))
+	if err != nil {
+		return false, fmt.Sprintf("MinerU API Key 解密失败: %v", err)
+	}
 	req, err := http.NewRequest(http.MethodGet, endpoint+"/docs", nil)
 	if err != nil {
 		return false, fmt.Sprintf("MinerU 请求创建失败: %v", err)
 	}
-	if apiKey = strings.TrimSpace(apiKey); apiKey != "" {
+	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	client := utils.NewSSRFSafeHTTPClient(utils.SSRFSafeHTTPClientConfig{
