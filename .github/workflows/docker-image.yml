@@ -20,7 +20,7 @@ env:
 
 jobs:
   changes:
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-latest' || 'self-hosted' }}
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
