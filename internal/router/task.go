@@ -352,11 +352,12 @@ func RunAsynqServer(params AsynqTaskParams) *asynq.ServeMux {
 	return mux
 }
 
-// deadLetterKnowledgePayload extracts only the field we need from any
+// deadLetterKnowledgePayload extracts the fields needed from any
 // document-related asynq payload. Kept narrow so we don't accidentally
 // depend on the full payload schema and survive future field churn.
 type deadLetterKnowledgePayload struct {
-	KnowledgeID string `json:"knowledge_id,omitempty"`
+	KnowledgeID   string `json:"knowledge_id,omitempty"`
+	ManualVersion int    `json:"manual_version,omitempty"`
 	// Attempt threads through DocumentProcess / ManualProcess /
 	// KnowledgePostProcess payloads (added when span tracking shipped)
 	// — extracted here so the dead-letter callback can also close the
@@ -423,6 +424,7 @@ func newDeadLetterKnowledgeFailer(ks interfaces.KnowledgeService, tracker servic
 		if err := json.Unmarshal(t.Payload(), &probe); err != nil || probe.KnowledgeID == "" {
 			return
 		}
+		ctx = types.WithManualKnowledgeVersion(ctx, probe.KnowledgeID, probe.ManualVersion)
 		errMsg := "task " + t.Type() + " exhausted retries: " + taskErr.Error()
 		// 8KB is the same cap the dead-letter row uses for last_error.
 		if len(errMsg) > 8192 {
@@ -435,6 +437,9 @@ func newDeadLetterKnowledgeFailer(ks interfaces.KnowledgeService, tracker servic
 			"parse_status":  types.ParseStatusFailed,
 			"error_message": errMsg,
 		}); err != nil {
+			if errors.Is(err, types.ErrManualKnowledgeSuperseded) {
+				return
+			}
 			logger.Warnf(ctx, "dead-letter callback: failed to mark knowledge %s as failed: %v", probe.KnowledgeID, err)
 			return
 		}

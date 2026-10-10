@@ -996,6 +996,45 @@ func (s *knowledgeService) createKnowledgeFromPassageInternal(ctx context.Contex
 func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 	knowledgeID string, payload *types.ManualKnowledgePayload,
 ) (*types.Knowledge, error) {
+	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
+	if _, err := s.loadManualKnowledgeForUpdate(ctx, knowledgeID); err != nil {
+		return nil, err
+	}
+	var knowledge *types.Knowledge
+	acquired, err := s.tryKnowledgeProcessingLock(ctx, tenantID, knowledgeID, func(lockCtx context.Context) error {
+		var err error
+		knowledge, err = s.updateManualKnowledgeLocked(lockCtx, knowledgeID, payload)
+		return err
+	})
+	if !acquired && err == nil {
+		return nil, werrors.NewConflictError("文档正在更新或处理，请稍后再试")
+	}
+	return knowledge, err
+}
+
+func (s *knowledgeService) loadManualKnowledgeForUpdate(
+	ctx context.Context, knowledgeID string,
+) (*types.Knowledge, error) {
+	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
+	knowledge, err := s.repo.GetKnowledgeByID(ctx, tenantID, knowledgeID)
+	if err != nil {
+		return nil, err
+	}
+	if !knowledge.IsManual() {
+		return nil, werrors.NewBadRequestError("仅支持手工知识的在线编辑")
+	}
+	permission, integration := types.IntegrationKnowledgeBasePermission(
+		ctx, knowledge.KnowledgeBaseID, knowledge.TenantID,
+	)
+	if integration && permission != types.OrgRoleEditor {
+		return nil, werrors.NewForbiddenError("No permission to write manual knowledge")
+	}
+	return knowledge, nil
+}
+
+func (s *knowledgeService) updateManualKnowledgeLocked(ctx context.Context,
+	knowledgeID string, payload *types.ManualKnowledgePayload,
+) (*types.Knowledge, error) {
 	logger.Info(ctx, "Start updating manual knowledge entry")
 	if payload == nil {
 		return nil, werrors.NewBadRequestError("请求内容不能为空")
@@ -1023,35 +1062,26 @@ func (s *knowledgeService) UpdateManualKnowledge(ctx context.Context,
 	}
 
 	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
-	existing, err := s.repo.GetKnowledgeByID(ctx, tenantID, knowledgeID)
+	existing, err := s.loadManualKnowledgeForUpdate(ctx, knowledgeID)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to load knowledge: %v", err)
 		return nil, err
 	}
-	if !existing.IsManual() {
-		return nil, werrors.NewBadRequestError("仅支持手工知识的在线编辑")
-	}
-	permission, integration := types.IntegrationKnowledgeBasePermission(
-		ctx, existing.KnowledgeBaseID, existing.TenantID,
-	)
-	if integration && permission != types.OrgRoleEditor {
-		return nil, werrors.NewForbiddenError("No permission to write manual knowledge")
-	}
-
 	kb, err := s.kbService.GetKnowledgeBaseByID(ctx, existing.KnowledgeBaseID)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to get knowledge base for manual update: %v", err)
 		return nil, err
 	}
 
-	var version int
-	if meta, err := existing.ManualMetadata(); err == nil && meta != nil {
-		version = meta.Version + 1
-	} else {
-		version = 1
+	previousMeta, err := existing.ManualMetadata()
+	if err != nil {
+		return nil, fmt.Errorf("read manual metadata for update: %w", err)
+	}
+	if previousMeta == nil {
+		return nil, werrors.NewBadRequestError("无法获取手工知识内容")
 	}
 
-	meta := types.NewManualKnowledgeMetadata(cleanContent, status, version)
+	meta := types.NewManualKnowledgeMetadata(cleanContent, status, previousMeta.Version+1)
 	if err := existing.SetManualMetadata(meta); err != nil {
 		logger.Errorf(ctx, "Failed to set manual metadata during update: %v", err)
 		return nil, err
@@ -1124,7 +1154,15 @@ func (s *knowledgeService) enqueueManualProcessing(ctx context.Context,
 	knowledge *types.Knowledge, content string, needCleanup bool,
 ) (string, error) {
 	requestID, _ := types.RequestIDFromContext(ctx)
+	meta, err := knowledge.ManualMetadata()
+	if err != nil {
+		return "", fmt.Errorf("read manual version for processing task: %w", err)
+	}
+	if meta == nil {
+		return "", fmt.Errorf("manual metadata missing for knowledge %s", knowledge.ID)
+	}
 	payload := types.ManualProcessPayload{
+		ManualVersion:   meta.Version,
 		RequestId:       requestID,
 		TenantID:        knowledge.TenantID,
 		KnowledgeID:     knowledge.ID,
@@ -1193,6 +1231,21 @@ func sanitizeManualDownloadFilename(title string) string {
 func (s *knowledgeService) triggerManualProcessing(ctx context.Context,
 	kb *types.KnowledgeBase, knowledge *types.Knowledge, content string, doSync bool,
 ) {
+	if !doSync {
+		version, _ := types.ManualKnowledgeVersionFromContext(ctx, knowledge.ID)
+		newCtx := logger.CloneContext(ctx)
+		go func() {
+			err := withManualKnowledgeProcessing(newCtx, s.redisClient, s.repo.GetKnowledgeByIDOnly,
+				knowledge.TenantID, knowledge.ID, version, func(lockCtx context.Context) error {
+					s.triggerManualProcessing(lockCtx, kb, knowledge, content, true)
+					return nil
+				})
+			if err != nil {
+				logger.Errorf(newCtx, "Manual processing failed for %s: %v", knowledge.ID, err)
+			}
+		}()
+		return
+	}
 	clean := strings.TrimSpace(content)
 	if clean == "" {
 		return
@@ -1276,11 +1329,5 @@ func (s *knowledgeService) triggerManualProcessing(ctx context.Context,
 		}
 	}
 
-	if doSync {
-		s.processChunks(ctx, kb, knowledge, parsed, opts)
-		return
-	}
-
-	newCtx := logger.CloneContext(ctx)
-	go s.processChunks(newCtx, kb, knowledge, parsed, opts)
+	s.processChunks(ctx, kb, knowledge, parsed, opts)
 }

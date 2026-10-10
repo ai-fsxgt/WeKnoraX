@@ -42,6 +42,15 @@ func (r *reparseFailureKnowledgeRepo) UpdateKnowledgeColumn(
 	return nil
 }
 
+func (r *reparseFailureKnowledgeRepo) UpdateKnowledgeColumns(
+	_ context.Context,
+	_ string,
+	_ map[string]interface{},
+) error {
+	r.updateCalls++
+	return nil
+}
+
 type reparseFailureKBService struct {
 	interfaces.KnowledgeBaseService
 	kb *types.KnowledgeBase

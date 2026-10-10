@@ -299,9 +299,10 @@ const (
 // unexported and excluded from JSON so the persisted payload does not
 // duplicate the column.
 type WikiPendingOp struct {
-	Op          string `json:"op"`
-	KnowledgeID string `json:"knowledge_id"`
-	Attempt     int    `json:"attempt,omitempty"`
+	Op            string `json:"op"`
+	KnowledgeID   string `json:"knowledge_id"`
+	Attempt       int    `json:"attempt,omitempty"`
+	ManualVersion int    `json:"manual_version,omitempty"`
 	// Ingest fields
 	Language string `json:"language,omitempty"`
 	// Retract fields
@@ -510,11 +511,13 @@ func newWikiIngestPendingOp(
 	attempt int,
 ) (*types.TaskPendingOp, error) {
 	lang := types.LanguageFromContextOrDefault(ctx)
+	manualVersion, _ := types.ManualKnowledgeVersionFromContext(ctx, knowledgeID)
 	op := WikiPendingOp{
-		Op:          WikiOpIngest,
-		KnowledgeID: knowledgeID,
-		Attempt:     attempt,
-		Language:    lang,
+		ManualVersion: manualVersion,
+		Op:            WikiOpIngest,
+		KnowledgeID:   knowledgeID,
+		Attempt:       attempt,
+		Language:      lang,
 	}
 	payloadBytes, err := json.Marshal(op)
 	if err != nil {
@@ -1130,11 +1133,14 @@ func (s *wikiIngestService) trimPendingList(ctx context.Context, ids []int64) er
 // already zero: FinalizeSubtask guards both the decrement (count > 0) and
 // the promote (parse_status = finalizing AND count = 0), so an op enqueued
 // before this accounting shipped is a harmless no-op.
-func (s *wikiIngestService) finalizeWikiSubtask(ctx context.Context, knowledgeID string) {
+func (s *wikiIngestService) finalizeWikiSubtask(
+	ctx context.Context, knowledgeID string, version int,
+) {
 	// Wiki is only finalized when its op reaches a terminal state, so this is
 	// always an intended drain (retErr=nil, final=true). Detached context: the
 	// wiki batch worker may be mid-shutdown or have a cancelled ctx when this
 	// runs; a swallowed failure would strand the parent in "finalizing".
+	ctx = types.WithManualKnowledgeVersion(ctx, knowledgeID, version)
 	finalizeSubtaskDetached(ctx, s.knowledgeRepo, knowledgeID, "wiki", nil, false, true)
 }
 
@@ -1192,7 +1198,7 @@ func (s *wikiIngestService) requeueFailedOps(ctx context.Context, payload WikiIn
 		// for deleted knowledge that has no counter to drain). The
 		// matching +1 was seeded by KnowledgePostProcess.SetFinalizing.
 		if op.Op == WikiOpIngest {
-			s.finalizeWikiSubtask(ctx, op.KnowledgeID)
+			s.finalizeWikiSubtask(ctx, op.KnowledgeID, op.ManualVersion)
 		}
 		logger.Warnf(ctx, "wiki ingest: dropping op %s (%s) after %d failures (limit %d)", op.KnowledgeID, op.DocTitle, count, wikiMaxFailRetries)
 		if s.deadLetterRepo != nil {
@@ -1226,9 +1232,10 @@ type wikiIngestPageRef struct {
 }
 
 type docIngestResult struct {
-	KnowledgeID string
-	DocTitle    string
-	Summary     string // one-line summary of the document (from summary page)
+	KnowledgeID   string
+	ManualVersion int
+	DocTitle      string
+	Summary       string // one-line summary of the document (from summary page)
 	// Pages records the wiki pages this document touched, carrying both
 	// the slug used for link/retract bookkeeping and its human-readable title.
 	Pages []wikiIngestPageRef
@@ -1305,12 +1312,13 @@ type WikiBatchContext struct {
 
 // SlugUpdate represents a single update operation for a specific slug
 type SlugUpdate struct {
-	Slug        string
-	Type        string        // "entity", "concept", "summary", "retract", "retractStale"
-	Item        extractedItem // For entity/concept
-	DocTitle    string
-	KnowledgeID string
-	SourceRef   string
+	Slug          string
+	Type          string        // "entity", "concept", "summary", "retract", "retractStale"
+	Item          extractedItem // For entity/concept
+	DocTitle      string
+	KnowledgeID   string
+	ManualVersion int
+	SourceRef     string
 	// Language is the already-resolved, human-readable language name the
 	// Reduce phase interpolates into the editor prompt (e.g. "Chinese
 	// (Simplified)"), NOT a locale code. Map resolves it once per document

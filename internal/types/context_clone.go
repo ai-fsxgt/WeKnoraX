@@ -71,6 +71,9 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// Dropping this key would let an agent that cannot read memory keep
 	// writing to it.
 	MemoryDisabledContextKey: true,
+	// This is a write restriction: a detached callback must not lose the
+	// document version that owns its results and finalizing counter.
+	ManualKnowledgeVersionContextKey: true,
 
 	// Marks model calls as coming from an asynq worker so the per-model chat
 	// concurrency governor throttles them, leaving interactive chat latency

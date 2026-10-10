@@ -7465,7 +7465,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "删除知识中现有的文档内容并重新解析，使用异步任务方式处理",
+                "description": "删除知识中现有的文档内容并重新解析，使用异步任务方式处理。手工知识仍有任务运行时返回 409",
                 "consumes": [
                     "application/json"
                 ],
@@ -7509,6 +7509,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "权限不足",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
+                        }
+                    },
+                    "409": {
+                        "description": "手工知识正在更新或处理",
                         "schema": {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_errors.AppError"
                         }

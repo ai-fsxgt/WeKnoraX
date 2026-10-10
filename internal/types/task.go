@@ -280,9 +280,10 @@ type MemoryExtractPayload struct {
 // ExtractChunkPayload represents the extract chunk task payload
 type ExtractChunkPayload struct {
 	TracingContext
-	TenantID uint64 `json:"tenant_id"`
-	ChunkID  string `json:"chunk_id"`
-	ModelID  string `json:"model_id"`
+	ManualVersion int    `json:"manual_version,omitempty"`
+	TenantID      uint64 `json:"tenant_id"`
+	ChunkID       string `json:"chunk_id"`
+	ModelID       string `json:"model_id"`
 	// KnowledgeID + Attempt link the per-chunk extract back to the parent
 	// parse attempt's postprocess stage so the worker can record a
 	// postprocess.graph.chunk[i] subspan. 0 / "" means "skip span
@@ -343,6 +344,7 @@ type FAQImportPayload struct {
 // QuestionGenerationPayload represents the question generation task payload
 type QuestionGenerationPayload struct {
 	TracingContext
+	ManualVersion   int    `json:"manual_version,omitempty"`
 	TenantID        uint64 `json:"tenant_id"`
 	KnowledgeBaseID string `json:"knowledge_base_id"`
 	KnowledgeID     string `json:"knowledge_id"`
@@ -387,6 +389,7 @@ type QuestionGenerationPayload struct {
 // SummaryGenerationPayload represents the summary generation task payload
 type SummaryGenerationPayload struct {
 	TracingContext
+	ManualVersion   int    `json:"manual_version,omitempty"`
 	TenantID        uint64 `json:"tenant_id"`
 	KnowledgeBaseID string `json:"knowledge_base_id"`
 	KnowledgeID     string `json:"knowledge_id"`
@@ -488,6 +491,7 @@ type KnowledgeMoveProgress struct {
 // Used for both create (publish) and update operations.
 type ManualProcessPayload struct {
 	TracingContext
+	ManualVersion   int    `json:"manual_version"`
 	RequestId       string `json:"request_id"`
 	TenantID        uint64 `json:"tenant_id"`
 	KnowledgeID     string `json:"knowledge_id"`
@@ -499,6 +503,7 @@ type ManualProcessPayload struct {
 // ImageMultimodalPayload represents the image multimodal processing task payload.
 type ImageMultimodalPayload struct {
 	TracingContext
+	ManualVersion   int    `json:"manual_version,omitempty"`
 	TenantID        uint64 `json:"tenant_id"`
 	KnowledgeID     string `json:"knowledge_id"`
 	KnowledgeBaseID string `json:"knowledge_base_id"`
@@ -522,6 +527,7 @@ type ImageMultimodalPayload struct {
 // KnowledgePostProcessPayload represents the knowledge post process task payload.
 type KnowledgePostProcessPayload struct {
 	TracingContext
+	ManualVersion   int    `json:"manual_version,omitempty"`
 	TenantID        uint64 `json:"tenant_id"`
 	KnowledgeID     string `json:"knowledge_id"`
 	KnowledgeBaseID string `json:"knowledge_base_id"`
@@ -533,6 +539,7 @@ type KnowledgePostProcessPayload struct {
 // classified against the latest set of existing tags in its knowledge base.
 type KnowledgeAutoTagPayload struct {
 	TracingContext
+	ManualVersion   int    `json:"manual_version,omitempty"`
 	TenantID        uint64 `json:"tenant_id"`
 	KnowledgeID     string `json:"knowledge_id"`
 	KnowledgeBaseID string `json:"knowledge_base_id"`

@@ -555,7 +555,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 				// "finalizing" until the housekeeping sweep marks it
 				// failed. The matching +1 was seeded by
 				// KnowledgePostProcess.SetFinalizing.
-				s.finalizeWikiSubtask(mapCtx, op.KnowledgeID)
+				s.finalizeWikiSubtask(mapCtx, op.KnowledgeID, op.ManualVersion)
 			}
 			return nil
 		})
@@ -629,11 +629,22 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 			)
 			// Serialize same-slug read-modify-write across concurrent batches
 			// (standard mode). runs fn directly in Lite mode.
-			acquired, lockErr := s.withSlugLock(reduceCtx, payload.KnowledgeBaseID, slug, func() error {
-				changed, affectedType, additionFailed, reduceErr = s.reduceSlugUpdates(
-					reduceCtx, chatModel, payload.KnowledgeBaseID, slug, updates, payload.TenantID, batchCtx, kidToWikiSpan)
-				return reduceErr
-			})
+			acquired := false
+			lockErr := s.withManualWikiUpdates(reduceCtx, payload.TenantID, updates,
+				func(lockCtx context.Context, currentUpdates []SlugUpdate) error {
+					if len(currentUpdates) == 0 {
+						acquired = true
+						return nil
+					}
+					var err error
+					acquired, err = s.withSlugLock(lockCtx, payload.KnowledgeBaseID, slug, func() error {
+						changed, affectedType, additionFailed, reduceErr = s.reduceSlugUpdates(
+							lockCtx, chatModel, payload.KnowledgeBaseID, slug, currentUpdates,
+							payload.TenantID, batchCtx, kidToWikiSpan)
+						return reduceErr
+					})
+					return err
+				})
 			if lockErr != nil {
 				collectUnapplied(updates)
 				// ctx cancelled (batch timeout / shutdown) — stop quietly.
@@ -788,7 +799,7 @@ func (s *wikiIngestService) ProcessWikiIngest(ctx context.Context, t *asynq.Task
 		// held — the retry (or the dead-letter drain in requeueFailedOps)
 		// releases it once the op reaches a real terminal state.
 		if _, unapplied := unappliedSlugKIDs[r.KnowledgeID]; !unapplied {
-			s.finalizeWikiSubtask(ctx, r.KnowledgeID)
+			s.finalizeWikiSubtask(ctx, r.KnowledgeID, r.ManualVersion)
 		}
 		if r.WikiSpan == nil {
 			continue
@@ -1148,7 +1159,86 @@ func (s *wikiIngestService) ProcessWikiFinalize(ctx context.Context, t *asynq.Ta
 	return nil
 }
 
+// withManualWikiUpdates keeps each manual source version stable while a
+// shared page is written. Sorted document locks avoid cross-slug lock cycles.
+func (s *wikiIngestService) withManualWikiUpdates(
+	ctx context.Context,
+	tenantID uint64,
+	updates []SlugUpdate,
+	fn func(context.Context, []SlugUpdate) error,
+) error {
+	ids := make(map[string]struct{})
+	for _, update := range updates {
+		if update.ManualVersion > 0 {
+			ids[update.KnowledgeID] = struct{}{}
+		}
+	}
+	orderedIDs := make([]string, 0, len(ids))
+	for id := range ids {
+		orderedIDs = append(orderedIDs, id)
+	}
+	sort.Strings(orderedIDs)
+	var lockNext func(context.Context, int) error
+	lockNext = func(lockCtx context.Context, index int) error {
+		if index < len(orderedIDs) {
+			return withServiceLock(lockCtx, s.redisClient, knowledgeProcessingLockKey(tenantID, orderedIDs[index]),
+				func(nextCtx context.Context) error { return lockNext(nextCtx, index+1) })
+		}
+		knowledgeByID := make(map[string]*types.Knowledge, len(orderedIDs))
+		for _, id := range orderedIDs {
+			knowledge, err := s.knowledgeRepo.GetKnowledgeByIDOnly(lockCtx, id)
+			if err != nil && !errors.Is(err, apprepo.ErrKnowledgeNotFound) {
+				return err
+			}
+			knowledgeByID[id] = knowledge
+		}
+		currentUpdates := make([]SlugUpdate, 0, len(updates))
+		for _, update := range updates {
+			if update.ManualVersion > 0 {
+				knowledge := knowledgeByID[update.KnowledgeID]
+				if knowledge == nil || knowledge.TenantID != tenantID {
+					continue
+				}
+				current, err := manualKnowledgeProcessingCurrent(knowledge, update.ManualVersion)
+				if err != nil {
+					return err
+				}
+				if !current {
+					continue
+				}
+			}
+			currentUpdates = append(currentUpdates, update)
+		}
+		return fn(lockCtx, currentUpdates)
+	}
+	return lockNext(ctx, 0)
+}
+
 func (s *wikiIngestService) mapOneDocument(
+	ctx context.Context,
+	chatModel chat.Chat,
+	payload WikiIngestPayload,
+	op WikiPendingOp,
+	batchCtx *WikiBatchContext,
+) (*docIngestResult, []SlugUpdate, error) {
+	var result *docIngestResult
+	var updates []SlugUpdate
+	err := withManualKnowledgeProcessing(ctx, s.redisClient, s.knowledgeRepo.GetKnowledgeByIDOnly,
+		payload.TenantID, op.KnowledgeID, op.ManualVersion, func(lockCtx context.Context) error {
+			var err error
+			result, updates, err = s.mapDocument(lockCtx, chatModel, payload, op, batchCtx)
+			return err
+		})
+	if result != nil {
+		result.ManualVersion = op.ManualVersion
+	}
+	for i := range updates {
+		updates[i].ManualVersion = op.ManualVersion
+	}
+	return result, updates, err
+}
+
+func (s *wikiIngestService) mapDocument(
 	ctx context.Context,
 	chatModel chat.Chat,
 	payload WikiIngestPayload,

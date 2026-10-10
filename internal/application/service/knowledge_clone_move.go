@@ -1175,6 +1175,23 @@ func (s *knowledgeService) moveOneKnowledge(
 	if err != nil {
 		return fmt.Errorf("failed to get knowledge %s: %w", knowledgeID, err)
 	}
+	if knowledge.IsManual() {
+		return s.withKnowledgeProcessingLock(ctx, tenantID, knowledgeID, func(lockCtx context.Context) error {
+			current, err := s.repo.GetKnowledgeByID(lockCtx, tenantID, knowledgeID)
+			if err != nil {
+				return err
+			}
+			return s.moveKnowledgeItem(lockCtx, current, sourceKB, targetKB, mode)
+		})
+	}
+	return s.moveKnowledgeItem(ctx, knowledge, sourceKB, targetKB, mode)
+}
+
+func (s *knowledgeService) moveKnowledgeItem(ctx context.Context, knowledge *types.Knowledge,
+	sourceKB, targetKB *types.KnowledgeBase, mode string,
+) error {
+	knowledgeID := knowledge.ID
+	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
 
 	// Only move completed items
 	if knowledge.ParseStatus != types.ParseStatusCompleted {
@@ -1218,7 +1235,21 @@ func (s *knowledgeService) moveOneKnowledge(
 		// land; reuse_vectors keeps the existing chunks and never re-enters that
 		// pipeline, so the target KB has to be told about the document here.
 		if targetKB.IsWikiEnabled() {
-			EnqueueWikiIngest(ctx, s.task, s.taskPendingRepo, tenantID, targetKB.ID, knowledge.ID)
+			wikiCtx := ctx
+			if knowledge.IsManual() {
+				meta, err := knowledge.ManualMetadata()
+				if err != nil {
+					return fmt.Errorf("read manual version for wiki ingest: %w", err)
+				}
+				if meta == nil {
+					return fmt.Errorf("manual metadata missing for knowledge %s", knowledge.ID)
+				}
+				wikiCtx = types.WithManualKnowledgeVersion(ctx, knowledge.ID, meta.Version)
+			}
+			_, err := EnqueueWikiIngest(wikiCtx, s.task, s.taskPendingRepo, tenantID, targetKB.ID, knowledge.ID)
+			if err != nil {
+				return fmt.Errorf("enqueue moved knowledge wiki ingest: %w", err)
+			}
 		}
 		return nil
 	case "reparse":
@@ -1342,6 +1373,18 @@ func (s *knowledgeService) moveKnowledgeReparse(
 	knowledge.Description = ""
 	knowledge.ProcessedAt = nil
 	knowledge.UpdatedAt = time.Now()
+	if knowledge.IsManual() {
+		meta, err := knowledge.ManualMetadata()
+		if err != nil {
+			return fmt.Errorf("read manual metadata for moved knowledge: %w", err)
+		}
+		if meta == nil {
+			return fmt.Errorf("manual metadata missing for knowledge %s", knowledge.ID)
+		}
+		if err := knowledge.SetManualVersion(meta.Version + 1); err != nil {
+			return err
+		}
+	}
 	if err := s.repo.UpdateKnowledge(ctx, knowledge); err != nil {
 		return fmt.Errorf("failed to update knowledge: %w", err)
 	}
@@ -1352,7 +1395,8 @@ func (s *knowledgeService) moveKnowledgeReparse(
 		if err != nil || meta == nil {
 			return fmt.Errorf("failed to get manual metadata for reparse: %w", err)
 		}
-		s.triggerManualProcessing(ctx, targetKB, knowledge, meta.Content, false)
+		processingCtx := types.WithManualKnowledgeVersion(ctx, knowledge.ID, meta.Version)
+		s.triggerManualProcessing(processingCtx, targetKB, knowledge, meta.Content, false)
 		return nil
 	}
 

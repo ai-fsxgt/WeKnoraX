@@ -157,12 +157,9 @@ func WithRenewableLock(
 	lease time.Duration,
 	renewInterval time.Duration,
 	fn func(context.Context) error,
-) (resultErr error) {
-	if fn == nil {
-		return errors.New("redis lock callback is required")
-	}
-	if renewInterval <= 0 || renewInterval >= lease {
-		return errors.New("redis lock renewal interval must be positive and shorter than the lease")
+) error {
+	if err := validateRenewableLock(lease, renewInterval, fn); err != nil {
+		return err
 	}
 
 	token, err := NewToken()
@@ -172,7 +169,50 @@ func WithRenewableLock(
 	if err := Acquire(ctx, client, key, token, lease); err != nil {
 		return err
 	}
+	return withAcquiredRenewableLock(ctx, client, key, token, lease, renewInterval, fn)
+}
 
+// TryWithRenewableLock attempts one acquisition and, when successful, uses
+// the same renewal and release guarantees as WithRenewableLock.
+func TryWithRenewableLock(
+	ctx context.Context,
+	client redis.UniversalClient,
+	key string,
+	lease time.Duration,
+	renewInterval time.Duration,
+	fn func(context.Context) error,
+) (bool, error) {
+	if err := validateRenewableLock(lease, renewInterval, fn); err != nil {
+		return false, err
+	}
+	token, err := NewToken()
+	if err != nil {
+		return false, err
+	}
+	acquired, err := TryAcquire(ctx, client, key, token, lease)
+	if err != nil || !acquired {
+		return acquired, err
+	}
+	return true, withAcquiredRenewableLock(ctx, client, key, token, lease, renewInterval, fn)
+}
+
+func validateRenewableLock(lease, renewInterval time.Duration, fn func(context.Context) error) error {
+	if fn == nil {
+		return errors.New("redis lock callback is required")
+	}
+	if renewInterval <= 0 || renewInterval >= lease {
+		return errors.New("redis lock renewal interval must be positive and shorter than the lease")
+	}
+	return nil
+}
+
+func withAcquiredRenewableLock(
+	ctx context.Context,
+	client redis.UniversalClient,
+	key, token string,
+	lease, renewInterval time.Duration,
+	fn func(context.Context) error,
+) (resultErr error) {
 	lockCtx, cancelLock := context.WithCancelCause(ctx)
 	ownershipCtx, cancelOwnership := context.WithCancelCause(context.Background())
 	lockCtx = context.WithValue(lockCtx, ownershipContextKey{}, ownershipCtx)
