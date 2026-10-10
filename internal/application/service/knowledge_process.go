@@ -3946,13 +3946,58 @@ func (s *knowledgeService) ProcessKnowledgeListReparse(ctx context.Context, t *a
 	ctx = context.WithValue(ctx, types.TenantIDContextKey, payload.TenantID)
 	ctx = context.WithValue(ctx, types.TenantInfoContextKey, tenant)
 
+	// Remember submitted IDs per task so an asynq retry of the same task skips
+	// them instead of resetting knowledge that is already being reparsed.
+	doneKey := ""
+	if s.redisClient != nil && taskID != "" {
+		doneKey = knowledgeListReparseDoneKeyPrefix + taskID
+	}
 	outcome, err := runKnowledgeListReparseSubmissions(payload.KnowledgeIDs, func(id string) error {
-		_, err := s.ReparseKnowledge(ctx, id, payload.ProcessConfig)
-		return err
+		if s.isListReparseSubmitted(ctx, doneKey, id) {
+			logger.Infof(ctx, "Knowledge %s already submitted by this task, skipping", secutils.SanitizeForLog(id))
+			return nil
+		}
+		if _, err := s.ReparseKnowledge(ctx, id, payload.ProcessConfig); err != nil {
+			return err
+		}
+		s.markListReparseSubmitted(ctx, doneKey, id)
+		return nil
 	})
 	logger.Infof(ctx, "Knowledge list reparse task finished: %d submitted, %d failed",
 		outcome.Submitted, outcome.Failed)
 	return err
+}
+
+const (
+	knowledgeListReparseDoneKeyPrefix = "knowledge_list_reparse_done:"
+	knowledgeListReparseDoneTTL       = 24 * time.Hour
+)
+
+// isListReparseSubmitted reports whether id was already submitted by this
+// list-reparse task. A Redis error resubmits the knowledge rather than skip it.
+func (s *knowledgeService) isListReparseSubmitted(ctx context.Context, doneKey, id string) bool {
+	if doneKey == "" {
+		return false
+	}
+	submitted, err := s.redisClient.SIsMember(ctx, doneKey, id).Result()
+	if err != nil {
+		logger.Warnf(ctx, "Failed to check list reparse progress for %s: %v", secutils.SanitizeForLog(id), err)
+		return false
+	}
+	return submitted
+}
+
+// markListReparseSubmitted records id as submitted by this list-reparse task.
+func (s *knowledgeService) markListReparseSubmitted(ctx context.Context, doneKey, id string) {
+	if doneKey == "" {
+		return
+	}
+	pipe := s.redisClient.TxPipeline()
+	pipe.SAdd(ctx, doneKey, id)
+	pipe.Expire(ctx, doneKey, knowledgeListReparseDoneTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
+		logger.Warnf(ctx, "Failed to record list reparse progress for %s: %v", secutils.SanitizeForLog(id), err)
+	}
 }
 
 type knowledgeListReparseOutcome struct {
