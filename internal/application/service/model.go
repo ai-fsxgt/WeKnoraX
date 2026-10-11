@@ -33,10 +33,8 @@ type modelService struct {
 	ollamaService *ollama.OllamaService
 	pooler        embedding.EmbedderPooler
 	tenantService interfaces.TenantService
-	// updateMu serialises UpdateModel's DB write and runtime limit publish so
-	// the governor always ends with the limit of the last committed edit. The
-	// credential read-modify-write paths hold it too, so their whole-row write
-	// cannot restore a stale limit.
+	// updateMu serialises the DB write and runtime limit publish in this process.
+	// Database transactions protect the read-modify-write across replicas.
 	updateMu sync.Mutex
 }
 
@@ -236,36 +234,33 @@ func (s *modelService) ListModels(ctx context.Context) ([]*types.Model, error) {
 }
 
 // UpdateModel updates an existing model in the repository
-func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) error {
+func (s *modelService) UpdateModel(ctx context.Context, model *types.Model, preserveCredentials bool) error {
 	logger.Info(ctx, "Start updating model")
 	logger.Infof(ctx, "Updating model ID: %s, name: %s", model.ID, model.Name)
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 
 	// Built-in models are platform-wide. Tenant administrators may view them,
 	// but only a system administrator may change their shared configuration.
 	tenantID := types.MustTenantIDFromContext(ctx)
-	existingModel, err := s.repo.GetByID(ctx, tenantID, model.ID)
-	if err != nil {
-		logger.ErrorWithFields(ctx, err, map[string]interface{}{
-			"model_id": model.ID,
-		})
-		return err
-	}
-	if existingModel != nil && existingModel.IsBuiltin {
-		if !types.IsSystemAdminFromContext(ctx) {
-			logger.Warnf(ctx, "Non-system-admin attempted to update builtin model: %s", model.ID)
-			return apperrors.NewForbiddenError("only system administrators can update builtin models")
+	updated, err := s.repo.UpdateLocked(ctx, tenantID, model.ID, func(existing *types.Model) (bool, error) {
+		if existing.IsBuiltin {
+			if !types.IsSystemAdminFromContext(ctx) {
+				logger.Warnf(ctx, "Non-system-admin attempted to update builtin model: %s", model.ID)
+				return false, apperrors.NewForbiddenError("only system administrators can update builtin models")
+			}
+			// A UI edit is an explicit runtime override of YAML-managed data.
+			model.IsBuiltin = true
+			model.ManagedBy = ""
 		}
-		// A UI edit is an explicit runtime override. Clear YAML ownership so
-		// the startup reconciler does not silently replace the saved values.
-		model.TenantID = existingModel.TenantID
-		model.IsBuiltin = true
-		model.ManagedBy = ""
-	}
-
-	// Update model in repository
-	s.updateMu.Lock()
-	defer s.updateMu.Unlock()
-	err = s.repo.Update(ctx, model)
+		model.TenantID = existing.TenantID
+		if preserveCredentials {
+			model.Parameters.APIKey = existing.Parameters.APIKey
+			model.Parameters.AppSecret = existing.Parameters.AppSecret
+		}
+		*existing = *model
+		return true, nil
+	})
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
 			"model_id":   model.ID,
@@ -273,6 +268,10 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 		})
 		return err
 	}
+	if updated == nil {
+		return ErrModelNotFound
+	}
+	*model = *updated
 	// Push the edited cap to the governor so running and queued background
 	// calls honour it immediately, not just clients built after this edit.
 	limiter.SetModelLimit(model.ID, model.Parameters.MaxConcurrency)
@@ -292,39 +291,33 @@ func (s *modelService) UpdateModelCredentials(
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
 	tenantID := types.MustTenantIDFromContext(ctx)
-	existing, err := s.repo.GetByID(ctx, tenantID, id)
+	updated, err := s.repo.UpdateLocked(ctx, tenantID, id, func(existing *types.Model) (bool, error) {
+		if existing.IsBuiltin && !types.IsSystemAdminFromContext(ctx) {
+			return false, apperrors.NewForbiddenError(
+				"only system administrators can modify builtin model credentials")
+		}
+		changed := false
+		if apiKey != nil && *apiKey != "" && *apiKey != existing.Parameters.APIKey {
+			existing.Parameters.APIKey = *apiKey
+			changed = true
+		}
+		if appSecret != nil && *appSecret != "" && *appSecret != existing.Parameters.AppSecret {
+			existing.Parameters.AppSecret = *appSecret
+			changed = true
+		}
+		if changed && existing.IsBuiltin {
+			existing.ManagedBy = ""
+		}
+		return changed, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if existing == nil {
+	if updated == nil {
 		return nil, ErrModelNotFound
 	}
-	if existing.IsBuiltin && !types.IsSystemAdminFromContext(ctx) {
-		return nil, apperrors.NewForbiddenError(
-			"only system administrators can modify builtin model credentials")
-	}
-
-	changed := false
-	if apiKey != nil && *apiKey != "" && *apiKey != existing.Parameters.APIKey {
-		existing.Parameters.APIKey = *apiKey
-		changed = true
-	}
-	if appSecret != nil && *appSecret != "" && *appSecret != existing.Parameters.AppSecret {
-		existing.Parameters.AppSecret = *appSecret
-		changed = true
-	}
-	if !changed {
-		return existing, nil
-	}
-	if existing.IsBuiltin {
-		// Credential changes are also runtime overrides of YAML-managed data.
-		existing.ManagedBy = ""
-	}
-	if err := s.repo.Update(ctx, existing); err != nil {
-		return nil, err
-	}
 	logger.Infof(ctx, "Model credentials updated: id=%s", id)
-	return existing, nil
+	return updated, nil
 }
 
 // ClearModelCredential removes a single credential field. Idempotent.
@@ -332,41 +325,36 @@ func (s *modelService) ClearModelCredential(ctx context.Context, id, field strin
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
 	tenantID := types.MustTenantIDFromContext(ctx)
-	existing, err := s.repo.GetByID(ctx, tenantID, id)
+	updated, err := s.repo.UpdateLocked(ctx, tenantID, id, func(existing *types.Model) (bool, error) {
+		if existing.IsBuiltin && !types.IsSystemAdminFromContext(ctx) {
+			return false, apperrors.NewForbiddenError(
+				"only system administrators can modify builtin model credentials")
+		}
+		changed := false
+		switch field {
+		case "api_key":
+			if existing.Parameters.APIKey != "" {
+				existing.Parameters.APIKey = ""
+				changed = true
+			}
+		case "app_secret":
+			if existing.Parameters.AppSecret != "" {
+				existing.Parameters.AppSecret = ""
+				changed = true
+			}
+		default:
+			return false, errors.New("unknown credential field: " + field)
+		}
+		if changed && existing.IsBuiltin {
+			existing.ManagedBy = ""
+		}
+		return changed, nil
+	})
 	if err != nil {
 		return err
 	}
-	if existing == nil {
+	if updated == nil {
 		return ErrModelNotFound
-	}
-	if existing.IsBuiltin && !types.IsSystemAdminFromContext(ctx) {
-		return apperrors.NewForbiddenError(
-			"only system administrators can modify builtin model credentials")
-	}
-
-	changed := false
-	switch field {
-	case "api_key":
-		if existing.Parameters.APIKey != "" {
-			existing.Parameters.APIKey = ""
-			changed = true
-		}
-	case "app_secret":
-		if existing.Parameters.AppSecret != "" {
-			existing.Parameters.AppSecret = ""
-			changed = true
-		}
-	default:
-		return errors.New("unknown credential field: " + field)
-	}
-	if !changed {
-		return nil
-	}
-	if existing.IsBuiltin {
-		existing.ManagedBy = ""
-	}
-	if err := s.repo.Update(ctx, existing); err != nil {
-		return err
 	}
 	logger.Infof(ctx, "Model credential cleared by user: id=%s field=%s", id, field)
 	return nil

@@ -100,6 +100,26 @@ func (s *stubModelRepoForDelete) Update(_ context.Context, model *types.Model) e
 	}
 	return nil
 }
+func (s *stubModelRepoForDelete) UpdateLocked(
+	ctx context.Context, tenantID uint64, id string, update func(*types.Model) (bool, error),
+) (*types.Model, error) {
+	model, err := s.GetByID(ctx, tenantID, id)
+	if err != nil || model == nil {
+		return model, err
+	}
+	updated := *model
+	changed, err := update(&updated)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		if err := s.Update(ctx, &updated); err != nil {
+			return nil, err
+		}
+	}
+	return &updated, nil
+}
+
 func (s *stubModelRepoForDelete) Delete(_ context.Context, _ uint64, id string) error {
 	if s.delete != nil {
 		return s.delete(id)

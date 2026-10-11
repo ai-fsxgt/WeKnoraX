@@ -613,23 +613,19 @@ func (h *ModelHandler) UpdateModel(c *gin.Context) {
 		}
 	}
 	// Credentials (api_key, app_secret) NEVER flow through this endpoint —
-	// they live behind the /credentials subresource. Force-preserve them by
-	// snapshotting the stored values before copying request fields in, so
+	// they live behind the /credentials subresource. The service preserves
+	// their latest values inside its update lock, so
 	// that even a misbehaving caller that puts api_key in the body cannot
 	// clobber a stored credential. Log a warning to spot stale callers.
-	storedAPIKey := model.Parameters.APIKey
-	storedAppSecret := model.Parameters.AppSecret
-	if req.Parameters.APIKey != "" && req.Parameters.APIKey != storedAPIKey {
+	if req.Parameters.APIKey != "" {
 		logger.Warnf(ctx,
 			"deprecated: api_key in PUT /models/%s body is ignored; use PUT /credentials instead", id)
 	}
-	if req.Parameters.AppSecret != "" && req.Parameters.AppSecret != storedAppSecret {
+	if req.Parameters.AppSecret != "" {
 		logger.Warnf(ctx,
 			"deprecated: app_secret in PUT /models/%s body is ignored; use PUT /credentials instead", id)
 	}
 	newParams := req.Parameters
-	newParams.APIKey = storedAPIKey
-	newParams.AppSecret = storedAppSecret
 	// Preserve backend-managed fields not sent by the frontend either.
 	newParams.ParameterSize = model.Parameters.ParameterSize
 	if newParams.InterfaceType == "" {
@@ -647,7 +643,11 @@ func (h *ModelHandler) UpdateModel(c *gin.Context) {
 	model.Type = req.Type
 
 	logger.Infof(ctx, "Updating model, ID: %s, Name: %s", id, model.Name)
-	if err := h.service.UpdateModel(ctx, model); err != nil {
+	if err := h.service.UpdateModel(ctx, model, true); err != nil {
+		if err == service.ErrModelNotFound {
+			_ = c.Error(errors.NewNotFoundError("Model not found"))
+			return
+		}
 		if appErr, ok := errors.IsAppError(err); ok {
 			c.Error(appErr)
 			return
