@@ -170,27 +170,42 @@ func (a *asynqTaskInspector) QueuedKnowledgeIDs(_ context.Context) (map[string]s
 		return ids, nil
 	}
 	for _, queue := range queuesScanned {
-		info, err := a.inspector.GetQueueInfo(queue)
-		if err != nil {
-			// A queue that has not received tasks has nothing queued.
-			if isAsynqQueueNotFound(err) {
-				continue
-			}
-			return nil, fmt.Errorf("get info of queue %s: %w", queue, err)
-		}
-		sizes := map[string]int{
-			"pending":   info.Pending,
-			"scheduled": info.Scheduled,
-			"retry":     info.Retry,
-			"active":    info.Active,
-		}
 		for _, state := range a.cancellableTaskStates() {
-			if err := collectQueuedKnowledgeIDs(queue, sizes[state.name], state.list, ids); err != nil {
+			// Re-read the size right before each state: tasks move between
+			// states while a deep queue is being scanned (e.g. pending → active).
+			size, err := a.queueStateSize(queue, state.name)
+			if err != nil {
+				return nil, err
+			}
+			if err := collectQueuedKnowledgeIDs(queue, size, state.list, ids); err != nil {
 				return nil, fmt.Errorf("list %s tasks in queue %s: %w", state.name, queue, err)
 			}
 		}
 	}
 	return ids, nil
+}
+
+// queueStateSize returns the current number of tasks in one (queue, state).
+// A queue that has not received tasks has nothing queued.
+func (a *asynqTaskInspector) queueStateSize(queue, state string) (int, error) {
+	info, err := a.inspector.GetQueueInfo(queue)
+	if err != nil {
+		if isAsynqQueueNotFound(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("get info of queue %s: %w", queue, err)
+	}
+	switch state {
+	case "pending":
+		return info.Pending, nil
+	case "scheduled":
+		return info.Scheduled, nil
+	case "retry":
+		return info.Retry, nil
+	case "active":
+		return info.Active, nil
+	}
+	return 0, fmt.Errorf("unknown task state %s", state)
 }
 
 // QueueStats returns a depth snapshot for every queue this app enqueues
