@@ -159,28 +159,53 @@ func (a *asynqTaskInspector) CancelTasksForKnowledgeBase(
 	return deleted, cancelled, nil
 }
 
-// HasQueuedTasksForKnowledge reports whether any pending / scheduled /
-// retry / active task referencing knowledgeID still lives in the queue.
-// Read-only counterpart of CancelTasksForKnowledge — the housekeeping
-// sweep uses it to avoid flagging a backlogged-but-not-orphaned row as
-// failed. Short-circuits on the first match and never deletes anything.
-func (a *asynqTaskInspector) HasQueuedTasksForKnowledge(
-	ctx context.Context, knowledgeID string,
-) (bool, error) {
-	if a == nil || a.inspector == nil || knowledgeID == "" {
-		return false, nil
-	}
-	matcher := func(taskType string, payload []byte) bool {
-		return matchesKnowledge(taskType, payload, knowledgeID)
+// QueuedKnowledgeIDs collects the knowledge IDs referenced by every pending /
+// scheduled / retry / active task. Read-only counterpart of
+// CancelTasksForKnowledge — the housekeeping sweep calls it once per sweep to
+// avoid flagging a backlogged-but-not-orphaned row as failed. Each queue is
+// scanned once, so the cost does not grow with the number of candidates.
+func (a *asynqTaskInspector) QueuedKnowledgeIDs(_ context.Context) (map[string]struct{}, error) {
+	ids := make(map[string]struct{})
+	if a == nil || a.inspector == nil {
+		return ids, nil
 	}
 	for _, queue := range queuesScanned {
 		for _, state := range a.cancellableTaskStates() {
-			if a.queueStateHasMatch(ctx, queue, state.name, state.list, matcher) {
-				return true, nil
+			// Re-read the size right before each state: tasks move between
+			// states while a deep queue is being scanned (e.g. pending → active).
+			size, err := a.queueStateSize(queue, state.name)
+			if err != nil {
+				return nil, err
+			}
+			if err := collectQueuedKnowledgeIDs(queue, size, state.list, ids); err != nil {
+				return nil, fmt.Errorf("list %s tasks in queue %s: %w", state.name, queue, err)
 			}
 		}
 	}
-	return false, nil
+	return ids, nil
+}
+
+// queueStateSize returns the current number of tasks in one (queue, state).
+// A queue that has not received tasks has nothing queued.
+func (a *asynqTaskInspector) queueStateSize(queue, state string) (int, error) {
+	info, err := a.inspector.GetQueueInfo(queue)
+	if err != nil {
+		if isAsynqQueueNotFound(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("get info of queue %s: %w", queue, err)
+	}
+	switch state {
+	case "pending":
+		return info.Pending, nil
+	case "scheduled":
+		return info.Scheduled, nil
+	case "retry":
+		return info.Retry, nil
+	case "active":
+		return info.Active, nil
+	}
+	return 0, fmt.Errorf("unknown task state %s", state)
 }
 
 // QueueStats returns a depth snapshot for every queue this app enqueues
@@ -968,51 +993,52 @@ func (a *asynqTaskInspector) processQueueStateMatches(
 	return processed
 }
 
-// queueStateHasMatch pages through one (queue, state) list looking for a
-// matching task. It is strictly read-only and returns on the first hit. A
-// backend error is logged and treated as "no match" (false).
-func (a *asynqTaskInspector) queueStateHasMatch(
-	ctx context.Context,
+// collectQueuedKnowledgeIDs pages through one (queue, state) list holding
+// size tasks and adds the knowledge ID of every task that carries one. It is
+// strictly read-only.
+//
+// Pages are read from the last to the first. Asynq numbers pages from the end
+// where tasks leave a state (dequeue, completion, retry forwarding), so a task
+// leaving mid-scan only shifts unread tasks toward pages not visited yet:
+// scanning backwards may read a task twice but never skips one, while each
+// page stays a small bounded Lua call.
+func collectQueuedKnowledgeIDs(
 	queue string,
-	state string,
+	size int,
 	list func(string, ...asynq.ListOption) ([]*asynq.TaskInfo, error),
-	matcher taskMatcher,
-) bool {
-	page := 1
-	for {
+	ids map[string]struct{},
+) error {
+	for page := (size + listPageSize - 1) / listPageSize; page >= 1; page-- {
 		tasks, err := list(queue, asynq.PageSize(listPageSize), asynq.Page(page))
 		if err != nil {
-			if !errors.Is(err, asynq.ErrQueueNotFound) {
-				logger.Warnf(ctx, "[TaskInspector] probe %s queue=%s page=%d: %v", state, queue, page, err)
-			}
-			return false
-		}
-		if len(tasks) == 0 {
-			return false
+			return err
 		}
 		for _, task := range tasks {
-			if matcher(task.Type, task.Payload) {
-				return true
+			if id := taskKnowledgeID(task.Type, task.Payload); id != "" {
+				ids[id] = struct{}{}
 			}
 		}
-		if len(tasks) < listPageSize {
-			return false
-		}
-		page++
 	}
+	return nil
+}
+
+// taskKnowledgeID returns the knowledge ID carried by a task type we cancel,
+// or "" when the type is not knowledge-scoped or the payload has none.
+func taskKnowledgeID(taskType string, payload []byte) string {
+	if _, ok := taskTypesForKnowledgeCancel[taskType]; !ok {
+		return ""
+	}
+	var probe knowledgeIDProbe
+	if err := json.Unmarshal(payload, &probe); err != nil {
+		return ""
+	}
+	return probe.KnowledgeID
 }
 
 // matchesKnowledge returns true when the task type is one we cancel
 // AND its payload references the target knowledge ID.
 func matchesKnowledge(taskType string, payload []byte, knowledgeID string) bool {
-	if _, ok := taskTypesForKnowledgeCancel[taskType]; !ok {
-		return false
-	}
-	var probe knowledgeIDProbe
-	if err := json.Unmarshal(payload, &probe); err != nil {
-		return false
-	}
-	return probe.KnowledgeID == knowledgeID
+	return knowledgeID != "" && taskKnowledgeID(taskType, payload) == knowledgeID
 }
 
 // matchesKnowledgeBase identifies work made obsolete by deleting a knowledge
@@ -1081,13 +1107,11 @@ func (noopTaskInspector) CancelTasksForKnowledge(
 	return 0, 0, nil
 }
 
-// HasQueuedTasksForKnowledge always reports false in Lite mode: inline
+// QueuedKnowledgeIDs always returns an empty set in Lite mode: inline
 // executors never enqueue, so there is no backlog to protect against and
 // the housekeeping sweep's span/updated_at checks stay authoritative.
-func (noopTaskInspector) HasQueuedTasksForKnowledge(
-	ctx context.Context, knowledgeID string,
-) (bool, error) {
-	return false, nil
+func (noopTaskInspector) QueuedKnowledgeIDs(_ context.Context) (map[string]struct{}, error) {
+	return map[string]struct{}{}, nil
 }
 
 // QueueStats reports "not supported" in Lite mode: there is no Redis /

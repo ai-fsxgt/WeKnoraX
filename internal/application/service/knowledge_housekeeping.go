@@ -280,18 +280,21 @@ func (h *HousekeepingService) filterByLastSpanActivity(ctx context.Context, cand
 // durable per document in task_pending_ops (dedup_key = knowledge ID), while
 // asynq only carries a per-KB wake-up trigger whose payload has no knowledge
 // ID — and TypeWikiIngest is deliberately absent from the inspector's
-// taskTypesForKnowledgeCancel set anyway. So HasQueuedTasksForKnowledge
-// structurally reports "nothing queued" for a document whose only outstanding
-// work is a queued Wiki ingest, and the sweep force-fails a perfectly healthy
-// row. Probe the durable table directly before consulting the inspector.
+// taskTypesForKnowledgeCancel set anyway. So QueuedKnowledgeIDs structurally
+// omits a document whose only outstanding work is a queued Wiki ingest, and
+// the sweep would force-fail a perfectly healthy row. Probe the durable table
+// directly before consulting the inspector.
+//
+// The queue backend is scanned per sweep (QueuedKnowledgeIDs) rather than per
+// candidate, so a deep backlog does not multiply the scan cost. Candidates the
+// first scan finds nothing for are confirmed by a second scan before being
+// failed, since a task can move between queue states while a scan is running.
 //
 // When no inspector is wired (nil) the durable gate still applies; only the
-// transient queue check is skipped. On probe error we fail safe, but in
-// opposite directions by design: an inspector error KEEPS the candidate as
-// stuck (matching the span heartbeat query), whereas a durable-table error
-// DEFERS every candidate to the next sweep — we cannot tell backlog from
-// orphan without it, and wrongly failing a live document is not recoverable
-// by the user, while waiting one more interval is.
+// transient queue check is skipped. Either probe failing DEFERS every
+// candidate to the next sweep — we cannot tell backlog from orphan without
+// it, and wrongly failing a live document is not recoverable by the user,
+// while waiting one more interval is.
 func (h *HousekeepingService) filterOutQueued(
 	ctx context.Context, candidates []types.Knowledge,
 ) (kept []types.Knowledge, skipped int) {
@@ -326,22 +329,32 @@ func (h *HousekeepingService) filterOutQueued(
 			skipped++
 			continue
 		}
-		if h.inspector == nil {
-			out = append(out, k)
-			continue
-		}
-		queued, err := h.inspector.HasQueuedTasksForKnowledge(ctx, k.ID)
+		out = append(out, k)
+	}
+	if h.inspector == nil {
+		return out, skipped
+	}
+
+	// Candidates the first scan finds nothing for are re-checked by a second
+	// scan: a task moving between states mid-scan (retry → pending,
+	// pending → active, ...) can slip past one scan, but hardly past two.
+	for pass := 0; pass < 2 && len(out) > 0; pass++ {
+		queued, err := h.inspector.QueuedKnowledgeIDs(ctx)
 		if err != nil {
 			logger.Warnf(ctx,
-				"[Housekeeping] queue probe failed for %s: %v (will fail safe and treat as stuck)", k.ID, err)
-			out = append(out, k)
-			continue
+				"[Housekeeping] queue probe failed: %v (deferring %d candidate(s))",
+				err, len(candidates))
+			return candidates[:0], len(candidates)
 		}
-		if queued {
-			skipped++
-			continue
+		stillStuck := out[:0]
+		for _, k := range out {
+			if _, ok := queued[k.ID]; ok {
+				skipped++
+				continue
+			}
+			stillStuck = append(stillStuck, k)
 		}
-		out = append(out, k)
+		out = stillStuck
 	}
 	return out, skipped
 }

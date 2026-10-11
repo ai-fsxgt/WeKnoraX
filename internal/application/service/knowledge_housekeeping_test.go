@@ -145,13 +145,17 @@ func (f fakeTaskInspector) CancelTasksForKnowledge(
 	return 0, 0, nil
 }
 
-func (f fakeTaskInspector) HasQueuedTasksForKnowledge(
-	_ context.Context, knowledgeID string,
-) (bool, error) {
+func (f fakeTaskInspector) QueuedKnowledgeIDs(_ context.Context) (map[string]struct{}, error) {
 	if f.err != nil {
-		return false, f.err
+		return nil, f.err
 	}
-	return f.queued[knowledgeID], nil
+	ids := make(map[string]struct{})
+	for id, queued := range f.queued {
+		if queued {
+			ids[id] = struct{}{}
+		}
+	}
+	return ids, nil
 }
 
 func (f fakeTaskInspector) QueueStats(
@@ -351,10 +355,11 @@ func TestHousekeeping_StillRecoversWhenNoDurableOp(t *testing.T) {
 		"row with no durable op and nothing queued must still be recovered")
 }
 
-// TestHousekeeping_QueueProbeError_FailsSafe confirms the fail-safe
-// direction: when the queue probe errors we still recover the row rather
-// than leaving it stranded forever.
-func TestHousekeeping_QueueProbeError_FailsSafe(t *testing.T) {
+// TestHousekeeping_QueueProbeError_DefersCandidates confirms the fail-safe
+// direction: the queue is scanned once per sweep, so a probe error leaves an
+// incomplete picture of the backlog. Every candidate is deferred to the next
+// sweep instead of risking failing documents that are merely queued.
+func TestHousekeeping_QueueProbeError_DefersCandidates(t *testing.T) {
 	db := setupHousekeepingDB(t)
 	svc := newHousekeepingSvcWithInspector(db, fakeTaskInspector{
 		err: errors.New("redis unavailable"),
@@ -368,8 +373,8 @@ func TestHousekeeping_QueueProbeError_FailsSafe(t *testing.T) {
 	require.NoError(t, db.Raw(
 		`SELECT parse_status FROM knowledges WHERE id = ?`, "kid-probeerr",
 	).Row().Scan(&status))
-	assert.Equal(t, types.ParseStatusFailed, status,
-		"queue probe error must fail safe and still recover the stuck row")
+	assert.Equal(t, types.ParseStatusProcessing, status,
+		"queue probe error must defer the candidate to the next sweep")
 }
 
 // TestHousekeeping_PreservesRecentlyTouched: any knowledge whose
