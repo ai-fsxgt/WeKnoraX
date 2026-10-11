@@ -172,7 +172,8 @@ func (a *asynqTaskInspector) QueuedKnowledgeIDs(_ context.Context) (map[string]s
 	for _, queue := range queuesScanned {
 		info, err := a.inspector.GetQueueInfo(queue)
 		if err != nil {
-			if errors.Is(err, asynq.ErrQueueNotFound) {
+			// A queue that has not received tasks has nothing queued.
+			if isAsynqQueueNotFound(err) {
 				continue
 			}
 			return nil, fmt.Errorf("get info of queue %s: %w", queue, err)
