@@ -285,8 +285,10 @@ func (h *HousekeepingService) filterByLastSpanActivity(ctx context.Context, cand
 // the sweep would force-fail a perfectly healthy row. Probe the durable table
 // directly before consulting the inspector.
 //
-// The queue backend is scanned once per sweep (QueuedKnowledgeIDs) rather than
-// once per candidate, so a deep backlog does not multiply the scan cost.
+// The queue backend is scanned per sweep (QueuedKnowledgeIDs) rather than per
+// candidate, so a deep backlog does not multiply the scan cost. Candidates the
+// first scan finds nothing for are confirmed by a second scan before being
+// failed, since a task can move between queue states while a scan is running.
 //
 // When no inspector is wired (nil) the durable gate still applies; only the
 // transient queue check is skipped. Either probe failing DEFERS every
@@ -321,29 +323,38 @@ func (h *HousekeepingService) filterOutQueued(
 		durable[id] = struct{}{}
 	}
 
-	queued := map[string]struct{}{}
-	if h.inspector != nil {
-		var err error
-		queued, err = h.inspector.QueuedKnowledgeIDs(ctx)
-		if err != nil {
-			logger.Warnf(ctx,
-				"[Housekeeping] queue probe failed: %v (deferring %d candidate(s))",
-				err, len(candidates))
-			return candidates[:0], len(candidates)
-		}
-	}
-
 	out := candidates[:0]
 	for _, k := range candidates {
 		if _, ok := durable[k.ID]; ok {
 			skipped++
 			continue
 		}
-		if _, ok := queued[k.ID]; ok {
-			skipped++
-			continue
-		}
 		out = append(out, k)
+	}
+	if h.inspector == nil {
+		return out, skipped
+	}
+
+	// Candidates the first scan finds nothing for are re-checked by a second
+	// scan: a task moving between states mid-scan (retry → pending,
+	// pending → active, ...) can slip past one scan, but hardly past two.
+	for pass := 0; pass < 2 && len(out) > 0; pass++ {
+		queued, err := h.inspector.QueuedKnowledgeIDs(ctx)
+		if err != nil {
+			logger.Warnf(ctx,
+				"[Housekeeping] queue probe failed: %v (deferring %d candidate(s))",
+				err, len(candidates))
+			return candidates[:0], len(candidates)
+		}
+		stillStuck := out[:0]
+		for _, k := range out {
+			if _, ok := queued[k.ID]; ok {
+				skipped++
+				continue
+			}
+			stillStuck = append(stillStuck, k)
+		}
+		out = stillStuck
 	}
 	return out, skipped
 }
