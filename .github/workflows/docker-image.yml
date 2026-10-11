@@ -280,8 +280,8 @@ jobs:
           context: ./frontend
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=build-ui
-          cache-to: type=gha,scope=build-ui,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-ui:latest
+          cache-to: type=inline
 
   build-docreader:
     needs: changes
@@ -337,8 +337,8 @@ jobs:
           context: .
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=build-docreader
-          cache-to: type=gha,scope=build-docreader,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-docreader:latest
+          cache-to: type=inline
 
   build-sandbox:
     needs: changes
@@ -379,8 +379,8 @@ jobs:
           context: .
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=build-sandbox
-          cache-to: type=gha,scope=build-sandbox,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-sandbox:latest
+          cache-to: type=inline
 
       # Cube builds templates straight from the image and gates the build on
       # GET :49983/health, so it needs the variant with envd baked in.
@@ -405,8 +405,8 @@ jobs:
           context: .
           labels: ${{ steps.meta-cube.outputs.labels }}
           tags: ${{ steps.meta-cube.outputs.tags }}
-          cache-from: type=gha,scope=build-sandbox-cube
-          cache-to: type=gha,scope=build-sandbox-cube,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-sandbox:latest-cube
+          cache-to: type=inline
 
   build-mcp:
     needs: changes
@@ -445,8 +445,8 @@ jobs:
           context: ./mcp-server
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=build-mcp
-          cache-to: type=gha,scope=build-mcp,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-mcp:latest
+          cache-to: type=inline
 
   build-odl-hybrid:
     needs: changes
@@ -497,8 +497,8 @@ jobs:
           context: .
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=build-odl-hybrid
-          cache-to: type=gha,scope=build-odl-hybrid,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-odl-hybrid:latest
+          cache-to: type=inline
 
   build-app:
     needs: changes
@@ -558,8 +558,8 @@ jobs:
             WITH_ANYDOC=1
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=build-app-linux-amd64
-          cache-to: type=gha,scope=build-app-linux-amd64,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/weknora-app:latest
+          cache-to: type=inline
 
       # docker push prints per-layer progress, so a stalled layer is visible in the log.
       - name: Push app Image
