@@ -48,6 +48,7 @@ import DocumentListView from './components/DocumentListView.vue';
 import DocumentCardView from './components/DocumentCardView.vue';
 import DocumentBatchBar from './components/DocumentBatchBar.vue';
 import KbUploadSourceDropdown from './components/KbUploadSourceDropdown.vue';
+import { filterUploadFiles } from './utils/uploadSources';
 import KbFolderTree from './components/KbFolderTree.vue';
 import TagEditDialog from './components/TagEditDialog.vue';
 import BatchTagDialog from './components/BatchTagDialog.vue';
@@ -1820,7 +1821,17 @@ const openUploadConfirmDialog = async (files: File[], urls: string[] = []) => {
 const handleUploadSourceFiles = (files: File[]) => {
   if (!ensureDocumentKbReady()) return;
   if (files.length === 0) return;
-  openUploadConfirmDialog(files);
+  const result = filterUploadFiles(files, {
+    supportedFileTypes: supportedFileTypes.value,
+  });
+  if (result.validFiles.length === 0) {
+    MessagePlugin.warning(t('knowledgeBase.allFilesSkippedNoEngine'));
+    return;
+  }
+  if (result.skippedCount > 0) {
+    MessagePlugin.warning(t('knowledgeBase.filesSkippedNoEngine', { count: result.skippedCount }));
+  }
+  openUploadConfirmDialog(result.validFiles);
 };
 
 const handleUploadSourceUrl = (url: string) => {

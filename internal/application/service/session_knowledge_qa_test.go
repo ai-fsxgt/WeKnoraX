@@ -92,7 +92,7 @@ func (s *stubModelService) ListModels(context.Context) ([]*types.Model, error) {
 	return nil, nil
 }
 
-func (s *stubModelService) UpdateModel(context.Context, *types.Model) error {
+func (s *stubModelService) UpdateModel(context.Context, *types.Model, bool) error {
 	return nil
 }
 

@@ -1547,8 +1547,8 @@ func (s *installModelService) ListModels(context.Context) ([]*types.Model, error
 		IsDefault: true,
 	}}, nil
 }
-func (s *installModelService) UpdateModel(context.Context, *types.Model) error { return nil }
-func (s *installModelService) DeleteModel(context.Context, string) error       { return nil }
+func (s *installModelService) UpdateModel(context.Context, *types.Model, bool) error { return nil }
+func (s *installModelService) DeleteModel(context.Context, string) error             { return nil }
 func (s *installModelService) UpdateModelCredentials(context.Context, string, *string, *string) (*types.Model, error) {
 	return nil, nil
 }

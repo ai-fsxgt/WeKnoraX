@@ -19,8 +19,9 @@ type ModelService interface {
 	GetModelByID(ctx context.Context, id string) (*types.Model, error)
 	// ListModels lists all models
 	ListModels(ctx context.Context) ([]*types.Model, error)
-	// UpdateModel updates a model
-	UpdateModel(ctx context.Context, model *types.Model) error
+	// UpdateModel updates a model. Configuration-only callers preserve credentials;
+	// initialization may explicitly replace them.
+	UpdateModel(ctx context.Context, model *types.Model, preserveCredentials bool) error
 	// DeleteModel deletes a model
 	DeleteModel(ctx context.Context, id string) error
 

@@ -29,7 +29,7 @@ func TestUpdateBuiltinModel_RequiresSystemAdmin(t *testing.T) {
 		},
 	}, nil, nil, nil, nil, nil)
 
-	err := svc.UpdateModel(builtinModelContext(false), &types.Model{ID: stored.ID})
+	err := svc.UpdateModel(builtinModelContext(false), &types.Model{ID: stored.ID}, true)
 	require.Error(t, err)
 	appErr, ok := apperrors.IsAppError(err)
 	require.True(t, ok)
@@ -53,11 +53,49 @@ func TestUpdateBuiltinModel_SystemAdminCreatesRuntimeOverride(t *testing.T) {
 	}, nil, nil, nil, nil, nil)
 
 	input := &types.Model{ID: stored.ID, Name: "edited"}
-	require.NoError(t, svc.UpdateModel(builtinModelContext(true), input))
+	require.NoError(t, svc.UpdateModel(builtinModelContext(true), input, true))
 	require.NotNil(t, saved)
 	assert.Equal(t, uint64(10000), saved.TenantID)
 	assert.True(t, saved.IsBuiltin)
 	assert.Empty(t, saved.ManagedBy, "UI edit must stop later YAML reconciliation")
+}
+
+func TestUpdateModelCredentialPreservation(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		preserve bool
+	}{{"configuration", true}, {"initialization", false}} {
+		t.Run(tt.name, func(t *testing.T) {
+			stored := &types.Model{
+				ID: "model-credentials", TenantID: 10000,
+				Parameters: types.ModelParameters{APIKey: "latest-key", AppSecret: "latest-secret"},
+			}
+			var saved *types.Model
+			svc := NewModelService(&stubModelRepoForDelete{
+				model: stored,
+				update: func(model *types.Model) error {
+					copy := *model
+					saved = &copy
+					return nil
+				},
+			}, nil, nil, nil, nil, nil)
+			input := &types.Model{
+				ID: stored.ID,
+				Parameters: types.ModelParameters{
+					APIKey: "input-key", AppSecret: "input-secret", MaxConcurrency: 3,
+				},
+			}
+			require.NoError(t, svc.UpdateModel(builtinModelContext(true), input, tt.preserve))
+			if tt.preserve {
+				assert.Equal(t, "latest-key", saved.Parameters.APIKey)
+				assert.Equal(t, "latest-secret", saved.Parameters.AppSecret)
+			} else {
+				assert.Equal(t, "input-key", saved.Parameters.APIKey)
+				assert.Equal(t, "input-secret", saved.Parameters.AppSecret)
+			}
+			assert.Equal(t, 3, saved.Parameters.MaxConcurrency)
+		})
+	}
 }
 
 func TestUpdateBuiltinModelCredentials_SystemAdminOnly(t *testing.T) {

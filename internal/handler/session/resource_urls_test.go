@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -253,4 +254,39 @@ func indexOf(haystack, needle string) int {
 		}
 	}
 	return -1
+}
+
+func TestHandleAgentEventsForSSE_ClosesOnTerminalError(t *testing.T) {
+	h := &Handler{streamManager: &stubStreamManager{events: []interfaces.StreamEvent{
+		{ID: "err-1", Type: types.ResponseTypeError, Content: "rerank model is not configured", Done: true},
+	}}}
+	c, recorder := newTestGinContext(t, "")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	c.Request = c.Request.WithContext(ctx)
+	started := time.Now()
+	h.handleAgentEventsForSSE(ctx, c, "sess1", "msg1", "req1", nil, true, nil)
+	assert.Less(t, time.Since(started), 500*time.Millisecond)
+	assert.Contains(t, recorder.Body.String(), "rerank model is not configured")
+	assert.Contains(t, recorder.Body.String(), "\"response_type\":\"error\"")
+}
+
+func TestContinueStream_ClosesOnTerminalError(t *testing.T) {
+	h := &Handler{
+		sessionService: &stubSessionService{},
+		messageService: &stubMessageServiceForStream{},
+		streamManager: &stubStreamManager{events: []interfaces.StreamEvent{
+			{ID: "err-1", Type: types.ResponseTypeError, Content: "upstream failed", Done: true},
+		}},
+	}
+	c, recorder := newTestGinContext(t, "?message_id=msg1")
+	c.Params = gin.Params{{Key: "session_id", Value: "sess1"}}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	c.Request = c.Request.WithContext(ctx)
+	started := time.Now()
+	h.ContinueStream(c)
+	assert.Less(t, time.Since(started), 500*time.Millisecond)
+	assert.Contains(t, recorder.Body.String(), "upstream failed")
+	assert.Contains(t, recorder.Body.String(), "\"response_type\":\"error\"")
 }

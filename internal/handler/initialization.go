@@ -763,7 +763,7 @@ func (h *InitializationHandler) processInitializationModels(
 			existingModel.Parameters = model.Parameters
 			existingModel.UpdatedAt = time.Now()
 
-			if err := h.modelService.UpdateModel(ctx, existingModel); err != nil {
+			if err := h.modelService.UpdateModel(ctx, existingModel, false); err != nil {
 				logger.ErrorWithFields(ctx, err, map[string]interface{}{
 					"model_id": model.ID,
 					"kb_id":    kbIdStr,

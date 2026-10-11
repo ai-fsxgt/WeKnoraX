@@ -236,9 +236,11 @@ func (s *modelService) ListModels(ctx context.Context) ([]*types.Model, error) {
 }
 
 // UpdateModel updates an existing model in the repository
-func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) error {
+func (s *modelService) UpdateModel(ctx context.Context, model *types.Model, preserveCredentials bool) error {
 	logger.Info(ctx, "Start updating model")
 	logger.Infof(ctx, "Updating model ID: %s, name: %s", model.ID, model.Name)
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
 
 	// Built-in models are platform-wide. Tenant administrators may view them,
 	// but only a system administrator may change their shared configuration.
@@ -250,7 +252,10 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 		})
 		return err
 	}
-	if existingModel != nil && existingModel.IsBuiltin {
+	if existingModel == nil {
+		return ErrModelNotFound
+	}
+	if existingModel.IsBuiltin {
 		if !types.IsSystemAdminFromContext(ctx) {
 			logger.Warnf(ctx, "Non-system-admin attempted to update builtin model: %s", model.ID)
 			return apperrors.NewForbiddenError("only system administrators can update builtin models")
@@ -261,10 +266,14 @@ func (s *modelService) UpdateModel(ctx context.Context, model *types.Model) erro
 		model.IsBuiltin = true
 		model.ManagedBy = ""
 	}
+	// Configuration-only updates do not change credentials. Preserve the latest
+	// values under the same lock as credential updates, not the handler's snapshot.
+	if preserveCredentials {
+		model.Parameters.APIKey = existingModel.Parameters.APIKey
+		model.Parameters.AppSecret = existingModel.Parameters.AppSecret
+	}
 
 	// Update model in repository
-	s.updateMu.Lock()
-	defer s.updateMu.Unlock()
 	err = s.repo.Update(ctx, model)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{

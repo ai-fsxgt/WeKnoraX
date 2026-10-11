@@ -26,7 +26,7 @@ import (
 // Error definitions for knowledge service operations
 var (
 	// ErrInvalidFileType is returned when an unsupported file type is provided
-	ErrInvalidFileType = errors.New("unsupported file type")
+	ErrInvalidFileType = werrors.NewBadRequestError("unsupported file type")
 	// ErrInvalidURL is returned when an invalid URL is provided
 	ErrInvalidURL = errors.New("invalid URL")
 	// ErrChunkNotFound is returned when a requested chunk cannot be found.
