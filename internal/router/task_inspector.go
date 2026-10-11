@@ -170,8 +170,21 @@ func (a *asynqTaskInspector) QueuedKnowledgeIDs(_ context.Context) (map[string]s
 		return ids, nil
 	}
 	for _, queue := range queuesScanned {
+		info, err := a.inspector.GetQueueInfo(queue)
+		if err != nil {
+			if errors.Is(err, asynq.ErrQueueNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("get info of queue %s: %w", queue, err)
+		}
+		sizes := map[string]int{
+			"pending":   info.Pending,
+			"scheduled": info.Scheduled,
+			"retry":     info.Retry,
+			"active":    info.Active,
+		}
 		for _, state := range a.cancellableTaskStates() {
-			if err := collectQueuedKnowledgeIDs(queue, state.list, ids); err != nil {
+			if err := collectQueuedKnowledgeIDs(queue, sizes[state.name], state.list, ids); err != nil {
 				return nil, fmt.Errorf("list %s tasks in queue %s: %w", state.name, queue, err)
 			}
 		}
@@ -964,32 +977,30 @@ func (a *asynqTaskInspector) processQueueStateMatches(
 	return processed
 }
 
-// queueSnapshotSize bounds the single page used to read a whole queue state.
-// Asynq lists each page with one Lua script, so a single page is an atomic
-// snapshot; offset paging would skip tasks when workers dequeue between pages.
-const queueSnapshotSize = 1_000_000
-
-// collectQueuedKnowledgeIDs reads one (queue, state) list in a single atomic
-// page and adds the knowledge ID of every task that carries one. It is
-// strictly read-only. A queue that has never received tasks is not an error.
+// collectQueuedKnowledgeIDs pages through one (queue, state) list holding
+// size tasks and adds the knowledge ID of every task that carries one. It is
+// strictly read-only.
+//
+// Pages are read from the last to the first. Asynq numbers pages from the end
+// where tasks leave a state (dequeue, completion, retry forwarding), so a task
+// leaving mid-scan only shifts unread tasks toward pages not visited yet:
+// scanning backwards may read a task twice but never skips one, while each
+// page stays a small bounded Lua call.
 func collectQueuedKnowledgeIDs(
 	queue string,
+	size int,
 	list func(string, ...asynq.ListOption) ([]*asynq.TaskInfo, error),
 	ids map[string]struct{},
 ) error {
-	tasks, err := list(queue, asynq.PageSize(queueSnapshotSize))
-	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) {
-			return nil
+	for page := (size + listPageSize - 1) / listPageSize; page >= 1; page-- {
+		tasks, err := list(queue, asynq.PageSize(listPageSize), asynq.Page(page))
+		if err != nil {
+			return err
 		}
-		return err
-	}
-	if len(tasks) >= queueSnapshotSize {
-		return fmt.Errorf("queue %s holds at least %d tasks, snapshot would be incomplete", queue, queueSnapshotSize)
-	}
-	for _, task := range tasks {
-		if id := taskKnowledgeID(task.Type, task.Payload); id != "" {
-			ids[id] = struct{}{}
+		for _, task := range tasks {
+			if id := taskKnowledgeID(task.Type, task.Payload); id != "" {
+				ids[id] = struct{}{}
+			}
 		}
 	}
 	return nil
