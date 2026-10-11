@@ -101,17 +101,25 @@ func TestWithRenewableLockReturnsCallbackErrorAndReleases(t *testing.T) {
 	key := "lock:callback"
 	want := errors.New("callback failed")
 
-	err := redislock.WithRenewableLock(
-		ctx,
-		client,
-		key,
-		time.Minute,
-		20*time.Second,
-		func(context.Context) error { return want },
-	)
+	for _, tryOnly := range []bool{false, true} {
+		var err error
+		if tryOnly {
+			var acquired bool
+			acquired, err = redislock.TryWithRenewableLock(
+				ctx, client, key, time.Minute, 20*time.Second,
+				func(context.Context) error { return want },
+			)
+			require.True(t, acquired)
+		} else {
+			err = redislock.WithRenewableLock(
+				ctx, client, key, time.Minute, 20*time.Second,
+				func(context.Context) error { return want },
+			)
+		}
 
-	require.ErrorIs(t, err, want)
-	require.ErrorIs(t, client.Get(ctx, key).Err(), redis.Nil)
+		require.Same(t, want, err, "successful lock cleanup must preserve the callback error type")
+		require.ErrorIs(t, client.Get(ctx, key).Err(), redis.Nil)
+	}
 }
 
 func TestWithRenewableLockHonorsContextWhileWaiting(t *testing.T) {
