@@ -645,7 +645,7 @@ func (h *ModelHandler) UpdateModel(c *gin.Context) {
 	logger.Infof(ctx, "Updating model, ID: %s, Name: %s", id, model.Name)
 	if err := h.service.UpdateModel(ctx, model, true); err != nil {
 		if err == service.ErrModelNotFound {
-			c.Error(errors.NewNotFoundError("Model not found"))
+			_ = c.Error(errors.NewNotFoundError("Model not found"))
 			return
 		}
 		if appErr, ok := errors.IsAppError(err); ok {

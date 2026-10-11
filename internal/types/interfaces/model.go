@@ -62,6 +62,12 @@ type ModelRepository interface {
 	) ([]*types.Model, error)
 	// Update updates a model
 	Update(ctx context.Context, model *types.Model) error
+	// UpdateLocked reads and updates a model in one transaction. The callback
+	// returns whether to persist changes; a missing model returns nil.
+	UpdateLocked(
+		ctx context.Context, tenantID uint64, id string,
+		update func(*types.Model) (bool, error),
+	) (*types.Model, error)
 	// Delete deletes a model
 	Delete(ctx context.Context, tenantID uint64, id string) error
 	// ClearDefaultByType clears the default flag for all models of a specific type

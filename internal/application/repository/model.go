@@ -7,6 +7,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // modelRepository implements the model repository interface
@@ -68,6 +69,47 @@ func (r *modelRepository) Update(ctx context.Context, m *types.Model) error {
 	return r.db.WithContext(ctx).Debug().Model(&types.Model{}).Where(
 		"id = ? AND tenant_id = ?", m.ID, m.TenantID,
 	).Select("*").Updates(m).Error
+}
+
+// UpdateLocked serializes model edits across application instances.
+func (r *modelRepository) UpdateLocked(
+	ctx context.Context, tenantID uint64, id string,
+	update func(*types.Model) (bool, error),
+) (*types.Model, error) {
+	var updated *types.Model
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		query := tx.Model(&types.Model{}).Where("id = ?", id).
+			Where("tenant_id = ? OR is_builtin = true", tenantID)
+		if tx.Name() == "sqlite" {
+			// SQLite has no row locks. Acquire its write lock before reading so
+			// another instance cannot write between this read and the update.
+			if err := query.UpdateColumn("id", gorm.Expr("id")).Error; err != nil {
+				return err
+			}
+		} else {
+			query = query.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		var model types.Model
+		if err := query.First(&model).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		changed, err := update(&model)
+		if err != nil {
+			return err
+		}
+		if changed {
+			if err := tx.Model(&types.Model{}).Where("id = ? AND tenant_id = ?", model.ID, model.TenantID).
+				Select("*").Updates(&model).Error; err != nil {
+				return err
+			}
+		}
+		updated = &model
+		return nil
+	})
+	return updated, err
 }
 
 // Delete deletes a model

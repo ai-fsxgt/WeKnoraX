@@ -1824,8 +1824,13 @@ const handleUploadSourceFiles = (files: File[]) => {
   const result = filterUploadFiles(files, {
     supportedFileTypes: supportedFileTypes.value,
   });
+  if (result.videoFilteredCount > 0) {
+    MessagePlugin.warning(t('knowledgeBase.videosFilteredNoVLM', { count: result.videoFilteredCount }));
+  }
   if (result.validFiles.length === 0) {
-    MessagePlugin.warning(t('knowledgeBase.allFilesSkippedNoEngine'));
+    if (result.skippedCount > 0) {
+      MessagePlugin.warning(t('knowledgeBase.allFilesSkippedNoEngine'));
+    }
     return;
   }
   if (result.skippedCount > 0) {
