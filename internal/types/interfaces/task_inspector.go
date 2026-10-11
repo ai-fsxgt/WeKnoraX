@@ -28,21 +28,21 @@ type TaskInspector interface {
 	// truth, this just prevents wasted work.
 	CancelTasksForKnowledge(ctx context.Context, knowledgeID string) (deleted int, cancelled int, err error)
 
-	// HasQueuedTasksForKnowledge reports whether any pending / scheduled
-	// / retry / active task referencing the given knowledge ID still
-	// lives in the queue backend. It is the read-only counterpart of
-	// CancelTasksForKnowledge: the housekeeping sweep calls it before
-	// flipping a long-idle "processing"/"finalizing" row to "failed" so
-	// it can tell a genuinely orphaned row (no task anywhere) from one
-	// whose enrichment subtasks are merely backlogged behind a busy
-	// queue (no span heartbeat yet because no worker has picked them up).
+	// QueuedKnowledgeIDs returns the knowledge IDs referenced by any
+	// pending / scheduled / retry / active task in the queue backend. It is
+	// the read-only counterpart of CancelTasksForKnowledge: the housekeeping
+	// sweep calls it once per sweep before flipping long-idle
+	// "processing"/"finalizing" rows to "failed", so it can tell a genuinely
+	// orphaned row (no task anywhere) from one whose enrichment subtasks are
+	// merely backlogged behind a busy queue (no span heartbeat yet because
+	// no worker has picked them up).
 	//
-	// Best-effort and short-circuiting: it returns true as soon as the
-	// first match is seen. On backend error it returns (false, err);
-	// callers decide the fail-safe direction. Lite mode (no Redis)
-	// always returns false — inline executors never queue, so the
+	// It scans every queue once, so its cost does not grow with the number
+	// of candidates. On backend error it returns the error instead of an
+	// incomplete set; callers decide the fail-safe direction. Lite mode
+	// (no Redis) returns an empty set — inline executors never queue, so the
 	// span/updated_at checks remain authoritative there.
-	HasQueuedTasksForKnowledge(ctx context.Context, knowledgeID string) (bool, error)
+	QueuedKnowledgeIDs(ctx context.Context) (map[string]struct{}, error)
 
 	// QueueStats returns a read-only depth snapshot for every queue this
 	// application enqueues into, for the System Admin runtime dashboard.
