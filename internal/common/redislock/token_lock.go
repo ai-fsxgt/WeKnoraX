@@ -243,7 +243,9 @@ func withAcquiredRenewableLock(
 			releaseErr = fmt.Errorf("%w for %q", ErrLockOwnershipLost, key)
 		}
 
-		resultErr = errors.Join(resultErr, renewErr, ctx.Err(), releaseErr)
+		if lockErr := errors.Join(renewErr, ctx.Err(), releaseErr); lockErr != nil {
+			resultErr = errors.Join(resultErr, lockErr)
+		}
 	}()
 
 	resultErr = fn(lockCtx)
