@@ -20,26 +20,6 @@ const (
 	maxBodySize = 1024 * 10 // 最大记录10KB的body内容
 )
 
-// loggerResponseBodyWriter 自定义ResponseWriter用于捕获响应内容（用于logger中间件）
-type loggerResponseBodyWriter struct {
-	gin.ResponseWriter
-	body *bytes.Buffer
-}
-
-// Write 重写Write方法，同时写入buffer和原始writer
-// 限制buffer大小，避免SSE等流式响应导致内存无限增长
-func (r loggerResponseBodyWriter) Write(b []byte) (int, error) {
-	if r.body.Len() < maxBodySize {
-		remaining := maxBodySize - r.body.Len()
-		if len(b) <= remaining {
-			r.body.Write(b)
-		} else {
-			r.body.Write(b[:remaining])
-		}
-	}
-	return r.ResponseWriter.Write(b)
-}
-
 // sensitiveFieldRegex 匹配 JSON 中的敏感字段（不区分大小写，兼容 snake_case / camelCase / PascalCase）。
 // $1 捕获原始字段名（包括两侧引号），保持日志中的字段名不变，仅将值替换为 "***"。
 var sensitiveFieldRegex = regexp.MustCompile(
@@ -161,7 +141,7 @@ func Logger() gin.HandlerFunc {
 		raw := c.Request.URL.RawQuery
 
 		isWikiStats := strings.HasPrefix(path, "/api/v1/knowledgebase/") && strings.HasSuffix(path, "/wiki/stats")
-		if strings.HasPrefix(path, "/assets/") || isWikiStats {
+		if strings.HasPrefix(path, "/assets/") || path == "/health" || isWikiStats {
 			c.Next()
 			return
 		}
@@ -176,14 +156,6 @@ func Logger() gin.HandlerFunc {
 			(c.Request.Method == "POST" || c.Request.Method == "PUT" || c.Request.Method == "PATCH") {
 			requestBody = readRequestBody(c)
 		}
-
-		// 创建响应体捕获器
-		responseBody := &bytes.Buffer{}
-		responseWriter := &loggerResponseBodyWriter{
-			ResponseWriter: c.Writer,
-			body:           responseBody,
-		}
-		c.Writer = responseWriter
 
 		// Process request
 		c.Next()
@@ -210,26 +182,6 @@ func Logger() gin.HandlerFunc {
 			path = path + "?" + sanitizeQuery(raw)
 		}
 
-		// 读取响应体
-		responseBodyStr := ""
-		if !skipBodyLogging && responseBody.Len() > 0 {
-			contentType := c.Writer.Header().Get("Content-Type")
-			if strings.Contains(contentType, "text/event-stream") {
-				responseBodyStr = "[SSE流式响应，已跳过]"
-			} else if strings.Contains(contentType, "application/json") ||
-				strings.Contains(contentType, "text/") {
-				bodyBytes := responseBody.Bytes()
-				if len(bodyBytes) >= maxBodySize {
-					responseBodyStr = string(bodyBytes[:maxBodySize]) + "... [内容过长，已截断]"
-				} else {
-					responseBodyStr = string(bodyBytes)
-				}
-				responseBodyStr = sanitizeBody(responseBodyStr)
-			} else {
-				responseBodyStr = "[非文本类型，已跳过]"
-			}
-		}
-
 		// 构建日志消息
 		logMsg := logger.GetLogger(c)
 		logMsg = logMsg.WithFields(map[string]interface{}{
@@ -245,11 +197,6 @@ func Logger() gin.HandlerFunc {
 		// 添加请求体（如果有）
 		if requestBody != "" {
 			logMsg = logMsg.WithField("request_body", secutils.SanitizeForLog(requestBody))
-		}
-
-		// 添加响应体（如果有）
-		if responseBodyStr != "" {
-			logMsg = logMsg.WithField("response_body", secutils.SanitizeForLog(responseBodyStr))
 		}
 		logMsg.Info()
 	}

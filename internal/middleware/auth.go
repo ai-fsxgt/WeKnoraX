@@ -413,7 +413,7 @@ func authenticateJWTUser(
 		return false
 	}
 
-	logger.Infof(ctx,
+	logger.Debugf(ctx,
 		"[auth] resolved role=%s for user=%s in tenant=%d (jwt_tenant=%d, header=%q, cross_switch=%v)",
 		role, user.ID, targetTenantID, jwtTenantID, c.GetHeader("X-Tenant-ID"), crossTenantSwitch)
 	applyAuthSession(c, authSession{
@@ -923,7 +923,7 @@ func resolveTenantRole(
 	// 1. 正常成员关系
 	member, err := memberService.GetMembership(ctx, user.ID, targetTenantID)
 	if err == nil && member != nil && member.Status == types.TenantMemberStatusActive {
-		logger.Infof(ctx,
+		logger.Debugf(ctx,
 			"[auth] resolveTenantRole step1 hit: user=%s tenant=%d row_role=%s row_status=%s",
 			user.ID, targetTenantID, member.Role, member.Status)
 		return member.Role, true
