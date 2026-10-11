@@ -964,31 +964,35 @@ func (a *asynqTaskInspector) processQueueStateMatches(
 	return processed
 }
 
-// collectQueuedKnowledgeIDs pages through one (queue, state) list and adds
-// the knowledge ID of every task that carries one. It is strictly read-only.
-// A queue that has never received tasks is not an error.
+// queueSnapshotSize bounds the single page used to read a whole queue state.
+// Asynq lists each page with one Lua script, so a single page is an atomic
+// snapshot; offset paging would skip tasks when workers dequeue between pages.
+const queueSnapshotSize = 1_000_000
+
+// collectQueuedKnowledgeIDs reads one (queue, state) list in a single atomic
+// page and adds the knowledge ID of every task that carries one. It is
+// strictly read-only. A queue that has never received tasks is not an error.
 func collectQueuedKnowledgeIDs(
 	queue string,
 	list func(string, ...asynq.ListOption) ([]*asynq.TaskInfo, error),
 	ids map[string]struct{},
 ) error {
-	for page := 1; ; page++ {
-		tasks, err := list(queue, asynq.PageSize(listPageSize), asynq.Page(page))
-		if err != nil {
-			if errors.Is(err, asynq.ErrQueueNotFound) {
-				return nil
-			}
-			return err
-		}
-		for _, task := range tasks {
-			if id := taskKnowledgeID(task.Type, task.Payload); id != "" {
-				ids[id] = struct{}{}
-			}
-		}
-		if len(tasks) < listPageSize {
+	tasks, err := list(queue, asynq.PageSize(queueSnapshotSize))
+	if err != nil {
+		if errors.Is(err, asynq.ErrQueueNotFound) {
 			return nil
 		}
+		return err
 	}
+	if len(tasks) >= queueSnapshotSize {
+		return fmt.Errorf("queue %s holds at least %d tasks, snapshot would be incomplete", queue, queueSnapshotSize)
+	}
+	for _, task := range tasks {
+		if id := taskKnowledgeID(task.Type, task.Payload); id != "" {
+			ids[id] = struct{}{}
+		}
+	}
+	return nil
 }
 
 // taskKnowledgeID returns the knowledge ID carried by a task type we cancel,
