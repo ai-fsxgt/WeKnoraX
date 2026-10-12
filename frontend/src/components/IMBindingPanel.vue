@@ -15,19 +15,25 @@
                   :key="channel.id"
                   :value="channel.id"
                   :label="channel.name || platformLabel(channel.platform)"
+                  :disabled="channel.binding_mode === 'unified' && channel.is_bound"
                 >
                   <div class="channel-option">
                     <img :src="platformLogo(channel.platform)" :alt="platformLabel(channel.platform)" />
                     <span>{{ channel.name || platformLabel(channel.platform) }}</span>
                     <small>{{ platformLabel(channel.platform) }}</small>
+                    <small v-if="channel.binding_mode === 'unified'">
+                      {{ t(channel.is_bound ? 'imBinding.unifiedBound' : 'imAdmin.unifiedMode') }}
+                    </small>
                   </div>
                 </t-option>
               </t-select>
 
+              <t-alert v-if="selectedChannel?.binding_mode === 'unified'" theme="info" :message="t('imBinding.unifiedNotice')" />
+
               <t-button
                 theme="primary"
                 :loading="generating"
-                :disabled="!selectedTenantID || !selectedChannelID"
+                :disabled="loading || !selectedTenantID || !canBindSelectedChannel"
                 @click="generateBindingCode"
               >
                 {{ t('imBinding.generate') }}
@@ -73,10 +79,11 @@
                     <strong>{{ binding.channel_name || platformLabel(binding.platform) }}</strong>
                     <span class="platform-name">{{ platformLabel(binding.platform) }}</span>
                     <t-tag size="small" variant="light">
-                      {{ t(binding.chat_type === 'group' ? 'imBinding.groupBinding' : 'imBinding.privateBinding') }}
+                      {{ t(binding.binding_scope === 'channel' ? 'imAdmin.unifiedMode' : binding.chat_type === 'group' ? 'imBinding.groupBinding' : 'imBinding.privateBinding') }}
                     </t-tag>
                   </div>
-                  <p>
+                  <p v-if="binding.binding_scope === 'channel'">{{ t('imBinding.unifiedScope') }}</p>
+                  <p v-else>
                     {{ t(binding.chat_type === 'group' ? 'imBinding.groupConversation' : 'imBinding.externalAccount') }}：
                     {{ bindingDisplayName(binding) }}
                   </p>
@@ -155,15 +162,20 @@ const workspaceOptions = computed(() => authStore.memberships.map(membership => 
 })))
 
 const privateBoundChannelIDs = computed(() => new Set(bindings.value
-  .filter(binding => binding.chat_type === 'direct')
+  .filter(binding => binding.binding_scope === 'conversation' && binding.chat_type === 'direct')
   .map(binding => binding.im_channel_id)))
 const availableChannels = computed(() => channels.value.filter(
-  channel => channel.allow_group_chat || !privateBoundChannelIDs.value.has(channel.id),
+  channel => channel.binding_mode === 'unified' || channel.allow_group_chat || !privateBoundChannelIDs.value.has(channel.id),
 ))
-const pendingChannel = computed(() => channels.value.find(channel => channel.id === pendingRequest.value?.im_channel_id))
-const groupBindingAllowed = computed(() => pendingChannel.value?.allow_group_chat === true)
-const bindingCodeHintKey = computed(() => groupBindingAllowed.value ? 'imBinding.codeHintGroup' : 'imBinding.codeHint')
-const bindingNoticeKey = computed(() => groupBindingAllowed.value ? 'imBinding.groupChatNotice' : 'imBinding.privateChatOnly')
+const selectedChannel = computed(() => availableChannels.value.find(channel => channel.id === selectedChannelID.value))
+const canBindSelectedChannel = computed(() => Boolean(selectedChannel.value)
+  && !(selectedChannel.value?.binding_mode === 'unified' && selectedChannel.value.is_bound))
+const groupBindingAllowed = computed(() => pendingRequest.value?.allow_group_chat === true)
+const bindingCodeHintKey = computed(() => !groupBindingAllowed.value ? 'imBinding.codeHint'
+  : pendingRequest.value?.binding_mode === 'unified' ? 'imBinding.codeHintUnified' : 'imBinding.codeHintGroup')
+const bindingNoticeKey = computed(() => pendingRequest.value?.binding_mode === 'unified'
+  ? 'imBinding.unifiedNotice'
+  : groupBindingAllowed.value ? 'imBinding.groupChatNotice' : 'imBinding.privateChatOnly')
 
 const expiresAtText = computed(() => {
   if (!pendingRequest.value) return ''
@@ -189,8 +201,8 @@ function chooseDefaults() {
   const activeTenantID = authStore.effectiveTenantId
   const activeMembership = authStore.memberships.find(item => item.tenant_id === activeTenantID)
   selectedTenantID.value = activeMembership?.tenant_id ?? authStore.memberships[0]?.tenant_id ?? null
-  if (!availableChannels.value.some(channel => channel.id === selectedChannelID.value)) {
-    selectedChannelID.value = availableChannels.value[0]?.id || ''
+  if (!canBindSelectedChannel.value) {
+    selectedChannelID.value = availableChannels.value.find(channel => !channel.is_bound)?.id || ''
   }
 }
 
@@ -212,7 +224,7 @@ async function loadData() {
 }
 
 async function generateBindingCode() {
-  if (!selectedTenantID.value || !selectedChannelID.value) return
+  if (loading.value || generating.value || !selectedTenantID.value || !canBindSelectedChannel.value) return
   stopPolling()
   pendingRequest.value = null
   generating.value = true
@@ -224,7 +236,12 @@ async function generateBindingCode() {
     polling = true
     schedulePoll(1500)
   } catch (error: any) {
-    MessagePlugin.error(error?.message || t('imBinding.failed'))
+    if (error?.message === 'channel_already_bound') {
+      MessagePlugin.error(t('imBinding.unifiedAlreadyBound'))
+      await loadData()
+    } else {
+      MessagePlugin.error(error?.message || t('imBinding.failed'))
+    }
   } finally {
     generating.value = false
   }
@@ -252,6 +269,7 @@ async function pollBindingRequest() {
     if (response.data.status === 'expired' || response.data.status === 'cancelled') {
       stopPolling()
       pendingRequest.value = null
+      if (response.data.status === 'cancelled') await loadData()
       return
     }
   } catch (error: any) {
@@ -280,7 +298,9 @@ async function copyCode() {
 function confirmRevoke(binding: IMUserBinding) {
   const dialog = DialogPlugin.confirm({
     header: t('imBinding.revoke'),
-    body: t('imBinding.revokeConfirm', { channel: binding.channel_name || platformLabel(binding.platform) }),
+    body: t(binding.binding_scope === 'channel' ? 'imBinding.revokeUnifiedConfirm' : 'imBinding.revokeConfirm', {
+      channel: binding.channel_name || platformLabel(binding.platform),
+    }),
     confirmBtn: { content: t('imBinding.revoke'), theme: 'danger' },
     cancelBtn: t('common.cancel'),
     onConfirm: async () => {

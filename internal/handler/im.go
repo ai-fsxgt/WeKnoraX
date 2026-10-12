@@ -33,7 +33,7 @@ func NewIMHandler(imService *im.Service) *IMHandler {
 //
 // CreateIMChannel godoc
 // @Summary      创建 IM 渠道
-// @Description  创建系统级 IM 机器人配置
+// @Description  创建系统级 IM 机器人配置；binding_mode 为 flexible（分别绑定，默认）或 unified（整个机器人统一绑定工作空间）
 // @Tags         IM 渠道
 // @Accept       json
 // @Produce      json
@@ -55,6 +55,7 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 		Name           string     `json:"name"`
 		Mode           string     `json:"mode"`
 		OutputMode     string     `json:"output_mode"`
+		BindingMode    string     `json:"binding_mode"`
 		AllowGroupChat bool       `json:"allow_group_chat"`
 		Credentials    types.JSON `json:"credentials"`
 		Enabled        *bool      `json:"enabled"`
@@ -74,6 +75,7 @@ func (h *IMHandler) CreateIMChannel(c *gin.Context) {
 		Name:           strings.TrimSpace(req.Name),
 		Mode:           req.Mode,
 		OutputMode:     req.OutputMode,
+		BindingMode:    req.BindingMode,
 		AllowGroupChat: req.AllowGroupChat,
 		Credentials:    req.Credentials,
 		CreatedBy:      userID,
@@ -143,7 +145,7 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 //
 // UpdateIMChannel godoc
 // @Summary      更新 IM 渠道
-// @Description  更新系统级 IM 机器人的名称、模式、群聊开关或凭证
+// @Description  更新系统级 IM 机器人的名称、连接模式、绑定模式、群聊开关或凭证；存在未撤销绑定时不可切换绑定模式
 // @Tags         IM 渠道
 // @Accept       json
 // @Produce      json
@@ -152,6 +154,7 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 // @Success      200      {object}  map[string]interface{}  "更新后的渠道"
 // @Failure      400      {object}  map[string]interface{}  "请求参数错误"
 // @Failure      404      {object}  map[string]interface{}  "渠道不存在"
+// @Failure      409      {object}  map[string]interface{}  "机器人身份冲突或尚有未解除的绑定"
 // @Security     Bearer
 // @Router       /system/admin/im-channels/{id} [put]
 func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
@@ -171,6 +174,7 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 		Name           *string    `json:"name"`
 		Mode           *string    `json:"mode"`
 		OutputMode     *string    `json:"output_mode"`
+		BindingMode    *string    `json:"binding_mode"`
 		AllowGroupChat *bool      `json:"allow_group_chat"`
 		Credentials    types.JSON `json:"credentials"`
 	}
@@ -187,6 +191,9 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 	}
 	if req.OutputMode != nil {
 		channel.OutputMode = *req.OutputMode
+	}
+	if req.BindingMode != nil {
+		channel.BindingMode = *req.BindingMode
 	}
 	if req.AllowGroupChat != nil {
 		channel.AllowGroupChat = *req.AllowGroupChat
@@ -206,6 +213,10 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 
 	if err := h.imService.UpdateChannel(channel); err != nil {
 		logger.Errorf(c.Request.Context(), "[IM] Update channel failed: %v", err)
+		if errors.Is(err, im.ErrChannelModeInUse) {
+			c.JSON(http.StatusConflict, gin.H{"error": "binding_mode_in_use"})
+			return
+		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "channel not found"})
 			return
@@ -334,7 +345,7 @@ func (h *IMHandler) ToggleIMChannel(c *gin.Context) {
 //
 // ListBindableIMChannels godoc
 // @Summary      获取可绑定的 IM 渠道
-// @Description  获取当前用户可发起账号绑定的已启用机器人列表
+// @Description  获取已启用机器人列表，包含 binding_mode 与统一模式的 is_bound 状态；已统一绑定的机器人不可生成绑定码
 // @Tags         IM 绑定
 // @Produce      json
 // @Success      200  {object}  map[string]interface{}  "可绑定渠道列表"
@@ -361,6 +372,7 @@ func (h *IMHandler) ListBindableIMChannels(c *gin.Context) {
 // @Success      200      {object}  map[string]interface{}  "绑定请求"
 // @Failure      400      {object}  map[string]interface{}  "请求参数或渠道状态错误"
 // @Failure      403      {object}  map[string]interface{}  "无工作空间访问权限"
+// @Failure      409      {object}  map[string]interface{}  "机器人已统一绑定"
 // @Security     Bearer
 // @Router       /im/binding-requests [post]
 func (h *IMHandler) CreateIMBindingRequest(c *gin.Context) {
@@ -472,6 +484,8 @@ func (h *IMHandler) DeleteIMBinding(c *gin.Context) {
 
 func writeIMBindingError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, im.ErrChannelAlreadyBound):
+		c.JSON(http.StatusConflict, gin.H{"error": "channel_already_bound"})
 	case errors.Is(err, im.ErrBindingUnavailable):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "channel is unavailable for account binding"})
 	case errors.Is(err, im.ErrBindingMembershipInvalid):

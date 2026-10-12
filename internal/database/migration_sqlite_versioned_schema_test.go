@@ -33,20 +33,20 @@ var versionedSQLiteTables = []string{
 // versionedSQLiteColumns maps each existing table to the columns that the
 // versioned migrations add and the SQLite baseline was missing.
 var versionedSQLiteColumns = map[string][]string{
-	"models":              {"sort_order"},                     // 000088
-	"tenants":             {"api_principal_config"},           // 000064
-	"users":               {"is_system_admin", "name"},        // 000053, 000087
-	"knowledges":          {"pending_subtasks_count"},         // 000056
-	"messages":            {"attachments", "usage"},           // 000034, 000085
-	"tenant_invitations":  {"token", "accepted_count"},        // 000054
-	"embed_channels":      {"allow_memory"},                   // 000060
-	"mcp_oauth_tokens":    {"principal_type", "principal_id"}, // 000064
-	"im_channels":         {"created_by", "allow_group_chat"}, // 000091, 000092
-	"im_user_bindings":    {"chat_type"},                      // 000092
-	"im_channel_sessions": {"binding_id", "context_key"},      // 000091, 000092
+	"models":              {"sort_order"},                                     // 000088
+	"tenants":             {"api_principal_config"},                           // 000064
+	"users":               {"is_system_admin", "name"},                        // 000053, 000087
+	"knowledges":          {"pending_subtasks_count"},                         // 000056
+	"messages":            {"attachments", "usage"},                           // 000034, 000085
+	"tenant_invitations":  {"token", "accepted_count"},                        // 000054
+	"embed_channels":      {"allow_memory"},                                   // 000060
+	"mcp_oauth_tokens":    {"principal_type", "principal_id"},                 // 000064
+	"im_channels":         {"created_by", "allow_group_chat", "binding_mode"}, // 000091, 000092, 000095
+	"im_user_bindings":    {"chat_type", "binding_scope"},                     // 000092, 000095
+	"im_channel_sessions": {"binding_id", "context_key"},                      // 000091, 000092
 }
 
-const expectedSQLiteMigrationVersion = 19
+const expectedSQLiteMigrationVersion = 20
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

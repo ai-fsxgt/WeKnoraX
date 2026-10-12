@@ -863,6 +863,12 @@ export default {
     }
   },
   imAdmin: {
+    bindingMode: '绑定模式',
+    flexibleMode: '灵活绑定',
+    unifiedMode: '统一绑定',
+    flexibleModeHint: '私聊或群聊分别绑定账号与工作空间。',
+    unifiedModeHint: '首次有效绑定后，机器人所有私聊和支持的群聊统一使用该工作空间的全部可用知识库。各用户、群聊和话题的上下文独立保存。切换模式前需解除全部绑定。',
+    bindingModeInUse: '请先解除该机器人的全部绑定，再切换绑定模式。',
     navLabel: 'IM 机器人',
     title: 'IM 机器人管理',
     description: '由系统管理员统一配置各即时通讯平台的机器人，用户无需自行创建应用。',
@@ -880,6 +886,12 @@ export default {
     loadFailed: '加载 IM 机器人失败'
   },
   imBinding: {
+    unifiedBound: '已统一绑定',
+    unifiedNotice: '首次绑定将授权此机器人所有私聊及支持的群聊使用所选空间的全部可用知识库。各用户、群聊和话题分别保存上下文；只有原授权者可以解绑，其他绑定码无法覆盖。',
+    unifiedScope: '适用于此机器人的所有私聊及支持的群聊',
+    unifiedAlreadyBound: '该机器人已统一绑定，请原授权者先解除绑定。',
+    codeHintUnified: '将下面的绑定码私聊发送给 {channel}，或在支持的群聊中提及机器人并发送，即可统一绑定整个机器人。',
+    revokeUnifiedConfirm: '确定解除“{channel}”的统一绑定吗？所有用户的问答将停止。解绑后任何持有效绑定码的人都可重新授权，原会话不会被新绑定继续使用。',
     title: '绑定 IM 账号',
     description: '绑定后，机器人会使用所选空间中的知识库回答私聊或已绑定群聊中的消息。',
     createTitle: '创建绑定',

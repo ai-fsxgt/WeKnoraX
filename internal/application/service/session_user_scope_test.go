@@ -473,6 +473,7 @@ func (testListSessionsIMChannel) TableName() string { return "im_channels" }
 type testListSessionsIMUserBinding struct {
 	ID             string `gorm:"primaryKey"`
 	ExternalUserID string
+	BindingScope   string `gorm:"default:'conversation'"`
 }
 
 func (testListSessionsIMUserBinding) TableName() string { return "im_user_bindings" }

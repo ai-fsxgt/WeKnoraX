@@ -25,7 +25,7 @@ func sessionUserIDFromContext(ctx context.Context) string {
 
 func mayUseAdminSessionView(ctx context.Context) bool {
 	principal, ok := types.PrincipalFromContext(ctx)
-	if ok && principal.Type == types.PrincipalIntegrationUser {
+	if ok && (principal.Type == types.PrincipalIntegrationUser || principal.Type == types.PrincipalIMParticipant) {
 		return false
 	}
 	return types.TenantRoleFromContext(ctx).HasPermission(types.TenantRoleAdmin)
@@ -47,6 +47,8 @@ func runtimeMayBypassAdminConsoleRead(
 	switch principal.Type {
 	case types.PrincipalIMUser:
 		return strings.TrimSpace(imPlatform) != ""
+	case types.PrincipalIMParticipant:
+		return strings.TrimSpace(imPlatform) != "" && session.UserID == types.SessionOwnerIDFromContext(ctx)
 	case types.PrincipalAPITenant, types.PrincipalAPIExternalUser:
 		ownerID := types.SessionOwnerIDFromContext(ctx)
 		return types.IsAPISessionOwnerID(session.UserID) && session.UserID == ownerID
