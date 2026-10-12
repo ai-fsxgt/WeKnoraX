@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -97,8 +96,8 @@ var taskTypesForKnowledgeCancel = map[string]struct{}{
 	types.TypeChunkExtract:         {},
 }
 
-// listPageSize caps each Redis LIST call. Asynq pages tasks, so we
-// loop until a short page comes back. 100 matches asynq's default.
+// listPageSize caps task-list pages and payload-read batches.
+// 100 matches asynq's default page size.
 const (
 	listPageSize                    = 100
 	maxQueueMutationPasses          = 1000
@@ -162,50 +161,46 @@ func (a *asynqTaskInspector) CancelTasksForKnowledgeBase(
 	return deleted, cancelled, nil
 }
 
-// QueuedKnowledgeIDs collects the knowledge IDs referenced by live tasks.
-// Task keys stay stable across pending / scheduled / retry / active transitions,
-// so scanning them avoids missing tasks that move between state lists. Redis
-// SCAN keeps each key traversal incremental, independent of candidate count.
+// QueuedKnowledgeIDs collects knowledge IDs from the declared queues' live
+// indexes, without traversing historical tasks or unrelated Redis keys.
+// Each queue's ID snapshot remains usable when a task changes live state.
 func (a *asynqTaskInspector) QueuedKnowledgeIDs(ctx context.Context) (map[string]struct{}, error) {
 	ids := make(map[string]struct{})
 	if a == nil || a.inspector == nil {
 		return ids, nil
 	}
-	queues := make(map[string]struct{}, len(queuesScanned))
 	for _, queue := range queuesScanned {
-		queues[queue] = struct{}{}
-	}
-	var cursor uint64
-	for {
-		keys, next, err := a.redis.Scan(ctx, cursor, "asynq:{*}:t:*", listPageSize).Result()
-		if err != nil {
-			return nil, fmt.Errorf("scan queued task keys: %w", err)
+		prefix := "asynq:{" + queue + "}:"
+		// Asynq moves tasks between states atomically. Read all four indexes
+		// in one transaction so a transition cannot move a task past the read.
+		pipe := a.redis.TxPipeline()
+		indexes := []*redis.StringSliceCmd{
+			pipe.LRange(ctx, prefix+"pending", 0, -1),
+			pipe.ZRange(ctx, prefix+"scheduled", 0, -1),
+			pipe.ZRange(ctx, prefix+"retry", 0, -1),
+			pipe.LRange(ctx, prefix+"active", 0, -1),
 		}
-		// SCAN's count is a hint; cap payload reads even if it returns more keys.
-		for batch := range slices.Chunk(keys, listPageSize) {
-			if err := a.collectQueuedTaskKnowledgeIDs(ctx, batch, queues, ids); err != nil {
-				return nil, err
+		if _, err := pipe.Exec(ctx); err != nil {
+			return nil, fmt.Errorf("snapshot live tasks in queue %s: %w", queue, err)
+		}
+		for _, index := range indexes {
+			for batch := range slices.Chunk(index.Val(), listPageSize) {
+				if err := a.collectQueuedTaskKnowledgeIDs(ctx, prefix, batch, ids); err != nil {
+					return nil, err
+				}
 			}
 		}
-		if next == 0 {
-			break
-		}
-		cursor = next
 	}
 	return ids, nil
 }
 
 func (a *asynqTaskInspector) collectQueuedTaskKnowledgeIDs(
-	ctx context.Context, keys []string, queues, ids map[string]struct{},
+	ctx context.Context, prefix string, taskIDs []string, ids map[string]struct{},
 ) error {
 	pipe := a.redis.Pipeline()
-	reads := make([]*redis.SliceCmd, 0, len(keys))
-	for _, key := range keys {
-		queue, _, _ := strings.Cut(strings.TrimPrefix(key, "asynq:{"), "}:t:")
-		if _, ok := queues[queue]; !ok {
-			continue
-		}
-		reads = append(reads, pipe.HMGet(ctx, key, "state", "msg"))
+	reads := make([]*redis.SliceCmd, 0, len(taskIDs))
+	for _, id := range taskIDs {
+		reads = append(reads, pipe.HMGet(ctx, prefix+"t:"+id, "state", "msg"))
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("read queued task messages: %w", err)
@@ -213,7 +208,7 @@ func (a *asynqTaskInspector) collectQueuedTaskKnowledgeIDs(
 	for _, read := range reads {
 		fields := read.Val()
 		if fields[0] == nil && fields[1] == nil {
-			// A completed or deleted task may disappear after SCAN.
+			// A completed or deleted task may disappear after the snapshot.
 			continue
 		}
 		if fields[0] == nil || fields[1] == nil {

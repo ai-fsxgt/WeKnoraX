@@ -37,8 +37,9 @@ type TaskInspector interface {
 	// merely backlogged behind a busy queue (no span heartbeat yet because
 	// no worker has picked them up).
 	//
-	// It scans stable task keys once, so state transitions do not move tasks
-	// out of the scan and its cost does not grow with candidate count.
+	// It snapshots each queue's live task IDs atomically, so state transitions
+	// cannot move tasks out of the read. Cost depends on live task count,
+	// not on candidates, historical tasks, or unrelated Redis keys.
 	// On backend error it returns the error instead of an
 	// incomplete set; callers decide the fail-safe direction. Lite mode
 	// (no Redis) returns an empty set — inline executors never queue, so the
