@@ -260,23 +260,25 @@ func (q *qaQueue) runWorker(id int) {
 		logger.Infof(req.ctx, "[IM] Dequeued: worker=%d user=%s waited=%s depth=%d",
 			id, req.msg.UserID, waitDuration, q.Metrics().Depth)
 
-		// Acquire global concurrency slot (blocks until a slot opens or request is cancelled).
-		if !q.acquireGlobalGate(req.ctx) {
-			// Context cancelled while waiting for a global slot — treat as timeout.
-			q.totalTimeout.Add(1)
-			q.finishRequest(req)
-			logger.Warnf(req.ctx, "[IM] Global gate wait cancelled: worker=%d user=%s", id, req.msg.UserID)
-			req.cancel()
-			continue
-		}
-
-		q.activeWorkers.Add(1)
 		q.handler(req)
-		q.activeWorkers.Add(-1)
-		q.totalProcessed.Add(1)
-		q.releaseGlobalGate()
 		q.finishRequest(req)
 	}
+}
+
+// runWithGlobalGate reserves execution capacity after any conversation lock wait.
+func (q *qaQueue) runWithGlobalGate(req *qaRequest, handler func(*qaRequest)) {
+	if !q.acquireGlobalGate(req.ctx) {
+		q.totalTimeout.Add(1)
+		logger.Warnf(req.ctx, "[IM] Global gate wait cancelled: user=%s", req.msg.UserID)
+		req.cancel()
+		return
+	}
+	defer q.releaseGlobalGate()
+
+	q.activeWorkers.Add(1)
+	defer q.activeWorkers.Add(-1)
+	handler(req)
+	q.totalProcessed.Add(1)
 }
 
 func (q *qaQueue) finishRequest(req *qaRequest) {
@@ -354,6 +356,9 @@ func (q *qaQueue) acquireGlobalGate(ctx context.Context) bool {
 			q.globalMaxWorkers, globalGateTTL.Milliseconds(),
 		).Int64()
 		if err != nil {
+			if ctx.Err() != nil {
+				return false
+			}
 			// Redis error — skip global check to avoid blocking the worker.
 			logger.Warnf(ctx, "[IM] Global gate Redis error (proceeding without limit): %v", err)
 			return true

@@ -2174,13 +2174,17 @@ func (s *Service) persistIMLastRequestState(ctx context.Context, sessionID, agen
 // It is called by qaQueue workers and must not block indefinitely.
 func (s *Service) executeQARequest(req *qaRequest) {
 	defer req.cancel()
-	if req.serialize && s.redis != nil && !req.queueTimedOut {
+	if req.queueTimedOut {
+		s.runQARequest(req)
+		return
+	}
+	if req.serialize && s.redis != nil {
 		started := false
 		err := redislock.WithRenewableLock(req.ctx, s.redis, "im:context-lock:"+req.userKey,
 			30*time.Second, 10*time.Second, func(ctx context.Context) error {
 				started = true
 				req.ctx = ctx
-				s.runQARequest(req)
+				s.qaQueue.runWithGlobalGate(req, s.runQARequest)
 				return nil
 			})
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -2201,7 +2205,7 @@ func (s *Service) executeQARequest(req *qaRequest) {
 		}
 		return
 	}
-	s.runQARequest(req)
+	s.qaQueue.runWithGlobalGate(req, s.runQARequest)
 }
 
 func (s *Service) runQARequest(req *qaRequest) {
