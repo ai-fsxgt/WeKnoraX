@@ -2672,6 +2672,14 @@ func (s *Service) handleMessageStream(
 			ctx, msg, session, customAgent, kbIDs, attachments, imageURLs, adapter, userKey, bindingID, tenant,
 		)
 	}
+	streamEnded := false
+	defer func() {
+		if !streamEnded {
+			if err := abortStream(context.WithoutCancel(ctx), msg, streamer, streamID); err != nil {
+				logger.Warnf(ctx, "[IM] AbortStream failed: %v", err)
+			}
+		}
+	}()
 
 	// Prepare the QA pipeline
 	// No total deadline: each agent round has its own LLMCallTimeout (default 120s).
@@ -2946,6 +2954,27 @@ func (s *Service) handleMessageStream(
 	if err != nil {
 		return fmt.Errorf("create assistant message: %w", err)
 	}
+	// Persist the turn even when cancellation or binding validation prevents
+	// further delivery. Keep the original participant identity for the write.
+	var storedAnswer string
+	defer func() {
+		qaCancel()
+		bufMu.Lock()
+		defer bufMu.Unlock()
+		if storedAnswer == "" {
+			storedAnswer = pickIMStoredAnswer(
+				answerBuilder.String(), answerOuter.String(), agentLiveAnswer.String(), agentCompleteFinalAnswer,
+			)
+			if storedAnswer == "" {
+				storedAnswer = "抱歉，回答已被取消。"
+			}
+		}
+		assistantMsg.Content = storedAnswer
+		assistantMsg.IsCompleted = true
+		if err := s.messageService.UpdateMessage(context.WithoutCancel(ctx), assistantMsg); err != nil {
+			logger.Warnf(ctx, "[IM] Failed to update assistant message: %v", err)
+		}
+	}()
 
 	// Register inflight mapping so cross-instance /stop can find this request
 	// and write a stop event to StreamManager.
@@ -2955,7 +2984,7 @@ func (s *Service) handleMessageStream(
 		e.assistantMessageID = assistantMsg.ID
 	}
 	s.storeInflightMapping(qaCtx, userKey, session.ID, assistantMsg.ID)
-	defer s.clearInflightMapping(ctx, userKey)
+	defer s.clearInflightMapping(context.WithoutCancel(ctx), userKey)
 
 	// Start StreamManager stop watcher — mirrors web's handleAgentEventsForSSE
 	// stop detection. Cancels qaCtx if a stop event is written by any instance.
@@ -3038,9 +3067,6 @@ loop:
 		}
 	}
 	if deliveryAuthErr != nil {
-		if err := abortStream(ctx, msg, streamer, streamID); err != nil {
-			logger.Warnf(ctx, "[IM] AbortStream after binding validation failed: %v", err)
-		}
 		if isInactiveBindingError(deliveryAuthErr) {
 			logger.Infof(ctx, "[IM] Stopped stream for inactive binding: binding=%s", bindingID)
 			return nil
@@ -3086,7 +3112,6 @@ loop:
 	}
 
 	if err := s.validateQABinding(ctx, bindingID, session.ID); err != nil {
-		_ = abortStream(ctx, msg, streamer, streamID)
 		if isInactiveBindingError(err) {
 			logger.Infof(ctx, "[IM] Suppressing stream finalization for inactive binding: binding=%s", bindingID)
 			return nil
@@ -3098,7 +3123,8 @@ loop:
 	}
 
 	// End the stream
-	if err := streamer.EndStream(ctx, msg, streamID); err != nil {
+	streamEnded = true
+	if err := streamer.EndStream(context.WithoutCancel(ctx), msg, streamID); err != nil {
 		logger.Warnf(ctx, "[IM] EndStream failed: %v", err)
 	}
 
@@ -3106,11 +3132,7 @@ loop:
 		answer = "抱歉，我暂时无法回答这个问题。"
 	}
 
-	assistantMsg.Content = answer
-	assistantMsg.IsCompleted = true
-	if err := s.messageService.UpdateMessage(ctx, assistantMsg); err != nil {
-		logger.Warnf(ctx, "[IM] Failed to update assistant message: %v", err)
-	}
+	storedAnswer = answer
 
 	logger.Infof(ctx, "[IM] Stream reply sent: platform=%s user=%s answer_len=%d", msg.Platform, msg.UserID, len(answer))
 	return nil
