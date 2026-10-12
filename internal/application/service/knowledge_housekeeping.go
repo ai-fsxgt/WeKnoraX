@@ -111,7 +111,13 @@ func (h *HousekeepingService) Stop() {
 // single sweep without waiting for the cron tick.
 func (h *HousekeepingService) runSweep(ctx context.Context) {
 	threshold := h.staleThreshold()
-	cutoff := time.Now().Add(-threshold)
+	cutoff := time.Now().UTC().Add(-threshold)
+	updatedBefore := "updated_at < ?"
+	spanUpdatedAfter := "updated_at > ?"
+	if h.db.Name() == "sqlite" {
+		updatedBefore = "julianday(updated_at) < julianday(?)"
+		spanUpdatedAfter = "julianday(updated_at) > julianday(?)"
+	}
 
 	// Sweep A: knowledge stuck in "pending", "processing", or "finalizing".
 	//
@@ -138,8 +144,9 @@ func (h *HousekeepingService) runSweep(ctx context.Context) {
 	// span heartbeat is older than the threshold.
 	var candidates []types.Knowledge
 	if err := h.db.WithContext(ctx).
-		Where("parse_status IN ? AND updated_at < ?",
-			[]string{types.ParseStatusPending, types.ParseStatusProcessing, types.ParseStatusFinalizing}, cutoff).
+		Where("parse_status IN ?",
+			[]string{types.ParseStatusPending, types.ParseStatusProcessing, types.ParseStatusFinalizing}).
+		Where(updatedBefore, cutoff).
 		Find(&candidates).Error; err != nil {
 		logger.Warnf(ctx, "[Housekeeping] knowledge candidate query failed: %v", err)
 		return
@@ -163,9 +170,15 @@ func (h *HousekeepingService) runSweep(ctx context.Context) {
 		for _, k := range stuck {
 			stuckIDs = append(stuckIDs, k.ID)
 		}
+		// Parsing can restart or a subtask can report progress while the
+		// queues are being scanned. Recheck both timestamps in the update
+		// so an old candidate cannot overwrite that newer activity.
 		res := h.db.WithContext(ctx).Model(&types.Knowledge{}).
 			Where("id IN ? AND parse_status IN ?", stuckIDs,
 				[]string{types.ParseStatusPending, types.ParseStatusProcessing, types.ParseStatusFinalizing}).
+			Where(updatedBefore, cutoff).
+			Where("NOT EXISTS (SELECT 1 FROM knowledge_processing_spans "+
+				"WHERE knowledge_id = knowledges.id AND "+spanUpdatedAfter+")", cutoff).
 			Updates(map[string]interface{}{
 				"parse_status":           types.ParseStatusFailed,
 				"error_message":          "task stuck in processing > " + threshold.String() + ", recovered by housekeeping",
@@ -201,9 +214,10 @@ func (h *HousekeepingService) runSweep(ctx context.Context) {
 	// is shorter because summary tasks are bounded by a single LLM call.
 	// No span heartbeat exists for the summary stage (it lives in a
 	// downstream asynq task), so we accept the original simple check.
-	summaryCutoff := time.Now().Add(-1 * time.Hour)
+	summaryCutoff := time.Now().UTC().Add(-1 * time.Hour)
 	resSummary := h.db.WithContext(ctx).Model(&types.Knowledge{}).
-		Where("summary_status = ? AND updated_at < ?", types.SummaryStatusProcessing, summaryCutoff).
+		Where("summary_status = ?", types.SummaryStatusProcessing).
+		Where(updatedBefore, summaryCutoff).
 		Update("summary_status", types.SummaryStatusFailed)
 	if resSummary.Error != nil {
 		logger.Warnf(ctx, "[Housekeeping] summary sweep failed: %v", resSummary.Error)
@@ -226,41 +240,39 @@ func (h *HousekeepingService) filterByLastSpanActivity(ctx context.Context, cand
 		ids = append(ids, k.ID)
 	}
 
-	// We scan MAX(updated_at) as string then parse client-side. That
-	// dodges the SQLite driver's well-known refusal to auto-convert
-	// aggregate datetime values into time.Time on its own — Postgres
-	// happily round-trips, but the same query shape must work in
-	// Lite mode too. Since we only compare against a cutoff, the
-	// parse layer below tries the formats both Postgres and SQLite
-	// emit and takes the first that parses.
-	type spanHeartbeat struct {
-		KnowledgeID string `gorm:"column:knowledge_id"`
-		LastSeen    string `gorm:"column:last_seen"`
+	// Let each database compare timestamps directly. SQLite stores them
+	// as text, so normalize offsets before aggregating recent activity.
+	lastActivity := "MAX(updated_at) > ? AS active"
+	if h.db.Name() == "sqlite" {
+		lastActivity = "MAX(julianday(updated_at)) > julianday(?) AS active"
 	}
-	var beats []spanHeartbeat
+	type spanActivity struct {
+		KnowledgeID string `gorm:"column:knowledge_id"`
+		Active      bool   `gorm:"column:active"`
+	}
+	var activities []spanActivity
 	err := h.db.WithContext(ctx).
 		Table("knowledge_processing_spans").
-		Select("knowledge_id, MAX(updated_at) AS last_seen").
+		Select("knowledge_id, "+lastActivity, cutoff).
 		Where("knowledge_id IN ?", ids).
 		Group("knowledge_id").
-		Find(&beats).Error
+		Find(&activities).Error
 	if err != nil {
-		// On query failure, fail safe — assume nothing has a
-		// heartbeat (so all candidates are "stuck"). This matches
-		// the previous-version behaviour and never under-recovers.
-		logger.Warnf(ctx, "[Housekeeping] span heartbeat query failed: %v (will fail safe and recover all candidates)", err)
+		// Keep candidates for the queue check; the final update also
+		// verifies that no recent span activity exists before failing them.
+		logger.Warnf(ctx, "[Housekeeping] span heartbeat query failed: %v (continuing task ownership checks)", err)
 		return candidates
 	}
-	heartbeat := make(map[string]time.Time, len(beats))
-	for _, b := range beats {
-		if t, ok := parseHeartbeatTime(b.LastSeen); ok {
-			heartbeat[b.KnowledgeID] = t
+	active := make(map[string]struct{}, len(activities))
+	for _, activity := range activities {
+		if activity.Active {
+			active[activity.KnowledgeID] = struct{}{}
 		}
 	}
 
 	out := candidates[:0]
 	for _, k := range candidates {
-		if last, ok := heartbeat[k.ID]; ok && last.After(cutoff) {
+		if _, ok := active[k.ID]; ok {
 			// Active span heartbeat — leave alone.
 			continue
 		}
@@ -288,7 +300,7 @@ func (h *HousekeepingService) filterByLastSpanActivity(ctx context.Context, cand
 // The queue backend is scanned per sweep (QueuedKnowledgeIDs) rather than per
 // candidate, so a deep backlog does not multiply the scan cost. Candidates the
 // first scan finds nothing for are confirmed by a second scan before being
-// failed, since a task can move between queue states while a scan is running.
+// failed, since new tasks can be enqueued while a scan is running.
 //
 // When no inspector is wired (nil) the durable gate still applies; only the
 // transient queue check is skipped. Either probe failing DEFERS every
@@ -336,8 +348,8 @@ func (h *HousekeepingService) filterOutQueued(
 	}
 
 	// Candidates the first scan finds nothing for are re-checked by a second
-	// scan: a task moving between states mid-scan (retry → pending,
-	// pending → active, ...) can slip past one scan, but hardly past two.
+	// scan so tasks enqueued while the first scan was running can still
+	// protect the candidate before it is marked failed.
 	for pass := 0; pass < 2 && len(out) > 0; pass++ {
 		queued, err := h.inspector.QueuedKnowledgeIDs(ctx)
 		if err != nil {
@@ -357,30 +369,6 @@ func (h *HousekeepingService) filterOutQueued(
 		out = stillStuck
 	}
 	return out, skipped
-}
-
-// parseHeartbeatTime accepts the timestamp formats Postgres and SQLite
-// emit for a TIMESTAMP column read back through MAX(). Returns false if
-// none parse — the caller treats unparseable rows as "no heartbeat",
-// which fails safe (the row gets recovered as stuck rather than
-// silently preserved).
-func parseHeartbeatTime(s string) (time.Time, bool) {
-	if s == "" {
-		return time.Time{}, false
-	}
-	for _, layout := range []string{
-		time.RFC3339Nano,
-		time.RFC3339,
-		"2006-01-02 15:04:05.999999999-07:00",
-		"2006-01-02 15:04:05.999999999",
-		"2006-01-02 15:04:05.999999",
-		"2006-01-02 15:04:05",
-	} {
-		if t, err := time.Parse(layout, s); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
 }
 
 // staleThreshold returns how long a "processing" row may sit untouched
