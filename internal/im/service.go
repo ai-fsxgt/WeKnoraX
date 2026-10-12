@@ -2189,23 +2189,29 @@ func (s *Service) executeQARequest(req *qaRequest) {
 			})
 		if err != nil && !errors.Is(err, context.Canceled) {
 			logger.Errorf(req.ctx, "[IM] Failed to execute unified conversation: %v", err)
-			if !started && req.ctx.Err() == nil {
-				if bindingErr := s.validateQABinding(req.ctx, req.bindingID, req.session.ID); bindingErr != nil {
-					logger.Warnf(req.ctx,
-						"[IM] Suppressing lock error reply after binding validation failed: %v", bindingErr)
-					return
-				}
-				if sendErr := req.adapter.SendReply(req.ctx, req.msg, &ReplyMessage{
-					Content: "抱歉，暂时无法处理您的消息，请稍后重新发送。",
-					IsFinal: true,
-				}); sendErr != nil {
-					logger.Warnf(req.ctx, "[IM] Failed to send conversation lock error reply: %v", sendErr)
-				}
+			if !started {
+				s.sendQAUnavailableReply(req)
 			}
 		}
 		return
 	}
 	s.qaQueue.runWithGlobalGate(req, s.runQARequest)
+}
+
+func (s *Service) sendQAUnavailableReply(req *qaRequest) {
+	if req.ctx.Err() != nil {
+		return
+	}
+	if err := s.validateQABinding(req.ctx, req.bindingID, req.session.ID); err != nil {
+		logger.Warnf(req.ctx, "[IM] Suppressing QA error reply after binding validation failed: %v", err)
+		return
+	}
+	if err := req.adapter.SendReply(req.ctx, req.msg, &ReplyMessage{
+		Content: "抱歉，暂时无法处理您的消息，请稍后重新发送。",
+		IsFinal: true,
+	}); err != nil {
+		logger.Warnf(req.ctx, "[IM] Failed to send QA error reply: %v", err)
+	}
 }
 
 func (s *Service) runQARequest(req *qaRequest) {
@@ -2233,6 +2239,7 @@ func (s *Service) runQARequest(req *qaRequest) {
 		stopped, err = s.unifiedRequestStopped(ctx, req)
 		if err != nil {
 			logger.Errorf(ctx, "[IM] Failed to check unified request cancellation: %v", err)
+			s.sendQAUnavailableReply(req)
 			return
 		}
 	} else {
