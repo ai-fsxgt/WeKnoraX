@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -13,6 +15,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // NewAsynqInspector constructs an *asynq.Inspector pointed at the same
@@ -159,53 +162,116 @@ func (a *asynqTaskInspector) CancelTasksForKnowledgeBase(
 	return deleted, cancelled, nil
 }
 
-// QueuedKnowledgeIDs collects the knowledge IDs referenced by every pending /
-// scheduled / retry / active task. Read-only counterpart of
-// CancelTasksForKnowledge — the housekeeping sweep calls it once per sweep to
-// avoid flagging a backlogged-but-not-orphaned row as failed. Each queue is
-// scanned once, so the cost does not grow with the number of candidates.
-func (a *asynqTaskInspector) QueuedKnowledgeIDs(_ context.Context) (map[string]struct{}, error) {
+// QueuedKnowledgeIDs collects the knowledge IDs referenced by live tasks.
+// Task keys stay stable across pending / scheduled / retry / active transitions,
+// so scanning them avoids missing tasks that move between state lists. Redis
+// SCAN keeps each key traversal incremental, independent of candidate count.
+func (a *asynqTaskInspector) QueuedKnowledgeIDs(ctx context.Context) (map[string]struct{}, error) {
 	ids := make(map[string]struct{})
 	if a == nil || a.inspector == nil {
 		return ids, nil
 	}
+	queues := make(map[string]struct{}, len(queuesScanned))
 	for _, queue := range queuesScanned {
-		for _, state := range a.cancellableTaskStates() {
-			// Re-read the size right before each state: tasks move between
-			// states while a deep queue is being scanned (e.g. pending → active).
-			size, err := a.queueStateSize(queue, state.name)
-			if err != nil {
+		queues[queue] = struct{}{}
+	}
+	var cursor uint64
+	for {
+		keys, next, err := a.redis.Scan(ctx, cursor, "asynq:{*}:t:*", listPageSize).Result()
+		if err != nil {
+			return nil, fmt.Errorf("scan queued task keys: %w", err)
+		}
+		// SCAN's count is a hint; cap payload reads even if it returns more keys.
+		for batch := range slices.Chunk(keys, listPageSize) {
+			if err := a.collectQueuedTaskKnowledgeIDs(ctx, batch, queues, ids); err != nil {
 				return nil, err
 			}
-			if err := collectQueuedKnowledgeIDs(queue, size, state.list, ids); err != nil {
-				return nil, fmt.Errorf("list %s tasks in queue %s: %w", state.name, queue, err)
-			}
 		}
+		if next == 0 {
+			break
+		}
+		cursor = next
 	}
 	return ids, nil
 }
 
-// queueStateSize returns the current number of tasks in one (queue, state).
-// A queue that has not received tasks has nothing queued.
-func (a *asynqTaskInspector) queueStateSize(queue, state string) (int, error) {
-	info, err := a.inspector.GetQueueInfo(queue)
-	if err != nil {
-		if isAsynqQueueNotFound(err) {
-			return 0, nil
+func (a *asynqTaskInspector) collectQueuedTaskKnowledgeIDs(
+	ctx context.Context, keys []string, queues, ids map[string]struct{},
+) error {
+	pipe := a.redis.Pipeline()
+	reads := make([]*redis.SliceCmd, 0, len(keys))
+	for _, key := range keys {
+		queue, _, _ := strings.Cut(strings.TrimPrefix(key, "asynq:{"), "}:t:")
+		if _, ok := queues[queue]; !ok {
+			continue
 		}
-		return 0, fmt.Errorf("get info of queue %s: %w", queue, err)
+		reads = append(reads, pipe.HMGet(ctx, key, "state", "msg"))
 	}
-	switch state {
-	case "pending":
-		return info.Pending, nil
-	case "scheduled":
-		return info.Scheduled, nil
-	case "retry":
-		return info.Retry, nil
-	case "active":
-		return info.Active, nil
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("read queued task messages: %w", err)
 	}
-	return 0, fmt.Errorf("unknown task state %s", state)
+	for _, read := range reads {
+		fields := read.Val()
+		if fields[0] == nil && fields[1] == nil {
+			// A completed or deleted task may disappear after SCAN.
+			continue
+		}
+		if fields[0] == nil || fields[1] == nil {
+			return fmt.Errorf("incomplete queued task %s", read.Args()[1])
+		}
+		switch state := fields[0].(string); state {
+		case "archived", "completed", "aggregating":
+			continue
+		case "pending", "scheduled", "retry", "active":
+		default:
+			return fmt.Errorf("unknown queued task state %s", state)
+		}
+		id, err := taskMessageKnowledgeID([]byte(fields[1].(string)))
+		if err != nil {
+			return fmt.Errorf("decode queued task %s: %w", read.Args()[1], err)
+		}
+		if id != "" {
+			ids[id] = struct{}{}
+		}
+	}
+	return nil
+}
+
+// taskMessageKnowledgeID reads the type and payload fields of Asynq v0.26's
+// protobuf TaskMessage. Projecting just these fields lets queue inspection
+// batch Redis reads without one GetTaskInfo round trip per task.
+func taskMessageKnowledgeID(message []byte) (string, error) {
+	var taskType string
+	var payload []byte
+	for len(message) > 0 {
+		number, wireType, n := protowire.ConsumeTag(message)
+		if n < 0 {
+			return "", protowire.ParseError(n)
+		}
+		message = message[n:]
+		if number == 1 || number == 2 {
+			if wireType != protowire.BytesType {
+				return "", fmt.Errorf("unexpected task message field type %d", wireType)
+			}
+			value, size := protowire.ConsumeBytes(message)
+			if size < 0 {
+				return "", protowire.ParseError(size)
+			}
+			if number == 1 {
+				taskType = string(value)
+			} else {
+				payload = value
+			}
+			n = size
+		} else {
+			n = protowire.ConsumeFieldValue(number, wireType, message)
+			if n < 0 {
+				return "", protowire.ParseError(n)
+			}
+		}
+		message = message[n:]
+	}
+	return taskKnowledgeID(taskType, payload), nil
 }
 
 // QueueStats returns a depth snapshot for every queue this app enqueues
@@ -991,35 +1057,6 @@ func (a *asynqTaskInspector) processQueueStateMatches(
 		state.name, queue, maxQueueMutationPasses,
 	)
 	return processed
-}
-
-// collectQueuedKnowledgeIDs pages through one (queue, state) list holding
-// size tasks and adds the knowledge ID of every task that carries one. It is
-// strictly read-only.
-//
-// Pages are read from the last to the first. Asynq numbers pages from the end
-// where tasks leave a state (dequeue, completion, retry forwarding), so a task
-// leaving mid-scan only shifts unread tasks toward pages not visited yet:
-// scanning backwards may read a task twice but never skips one, while each
-// page stays a small bounded Lua call.
-func collectQueuedKnowledgeIDs(
-	queue string,
-	size int,
-	list func(string, ...asynq.ListOption) ([]*asynq.TaskInfo, error),
-	ids map[string]struct{},
-) error {
-	for page := (size + listPageSize - 1) / listPageSize; page >= 1; page-- {
-		tasks, err := list(queue, asynq.PageSize(listPageSize), asynq.Page(page))
-		if err != nil {
-			return err
-		}
-		for _, task := range tasks {
-			if id := taskKnowledgeID(task.Type, task.Payload); id != "" {
-				ids[id] = struct{}{}
-			}
-		}
-	}
-	return nil
 }
 
 // taskKnowledgeID returns the knowledge ID carried by a task type we cancel,

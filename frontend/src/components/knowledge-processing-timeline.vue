@@ -331,6 +331,7 @@ const isWithinQuiesceGrace = computed<boolean>(() => {
 //     fetch via onMounted, picking up any post-pipeline progress.
 function shouldPollNow(): boolean {
   if (!data.value) return isPolling(props.parseStatus)
+  if (isHardTerminal(data.value.parse_status)) return false
   if (props.gracePoll) {
     return isLive.value || isWithinQuiesceGrace.value
   }

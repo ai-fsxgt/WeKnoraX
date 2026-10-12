@@ -31,14 +31,15 @@ type TaskInspector interface {
 	// QueuedKnowledgeIDs returns the knowledge IDs referenced by any
 	// pending / scheduled / retry / active task in the queue backend. It is
 	// the read-only counterpart of CancelTasksForKnowledge: the housekeeping
-	// sweep calls it once per sweep before flipping long-idle
+	// sweep calls it once per scan pass before flipping long-idle
 	// "processing"/"finalizing" rows to "failed", so it can tell a genuinely
 	// orphaned row (no task anywhere) from one whose enrichment subtasks are
 	// merely backlogged behind a busy queue (no span heartbeat yet because
 	// no worker has picked them up).
 	//
-	// It scans every queue once, so its cost does not grow with the number
-	// of candidates. On backend error it returns the error instead of an
+	// It scans stable task keys once, so state transitions do not move tasks
+	// out of the scan and its cost does not grow with candidate count.
+	// On backend error it returns the error instead of an
 	// incomplete set; callers decide the fail-safe direction. Lite mode
 	// (no Redis) returns an empty set — inline executors never queue, so the
 	// span/updated_at checks remain authoritative there.
