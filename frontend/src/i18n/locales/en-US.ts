@@ -5570,6 +5570,12 @@ export default {
     }
   },
   imAdmin: {
+    bindingMode: 'Binding mode',
+    flexibleMode: 'Flexible binding',
+    unifiedMode: 'Unified binding',
+    flexibleModeHint: 'Bind an account and workspace separately for each private or group chat.',
+    unifiedModeHint: 'The first valid binding makes all private chats and supported group chats use every available knowledge base in that workspace. Context stays separate by user, group and thread. Revoke all bindings before switching modes.',
+    bindingModeInUse: 'Revoke all bindings for this bot before changing its binding mode.',
     navLabel: 'IM Bots',
     title: 'IM Bot Management',
     description: 'System administrators configure messaging bots centrally, so users do not need to create platform apps.',
@@ -5587,6 +5593,12 @@ export default {
     loadFailed: 'Failed to load IM bots'
   },
   imBinding: {
+    unifiedBound: 'Already bound',
+    unifiedNotice: 'The first binding authorizes all private chats and supported group chats to use every available knowledge base in the selected workspace. Context stays separate by user, group and thread. Only the original authorizer can revoke it; other codes cannot replace it.',
+    unifiedScope: 'Applies to all private chats and supported group chats with this bot',
+    unifiedAlreadyBound: 'This bot is already bound. The original authorizer must revoke the binding first.',
+    codeHintUnified: 'Send the code below privately to {channel}, or mention the bot with the code in a supported group, to bind the entire bot.',
+    revokeUnifiedConfirm: 'Revoke the unified binding for “{channel}”? Q&A will stop for all users. Anyone with a valid code can then authorize it again. The new binding will not reuse previous conversations.',
     title: 'Bind an IM Account',
     description: 'After binding, the bot uses knowledge bases from the selected workspace in private chats or bound group chats.',
     createTitle: 'Create Binding',

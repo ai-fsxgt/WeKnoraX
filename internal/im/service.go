@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	agenttools "github.com/Tencent/WeKnora/internal/agent/tools"
+	"github.com/Tencent/WeKnora/internal/common/redislock"
 	"github.com/Tencent/WeKnora/internal/config"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/event"
@@ -369,18 +370,21 @@ func formatQuotedContext(quote *QuotedMessage) string {
 	return label + "\n<quoted_message>\n" + content + "\n</quoted_message>"
 }
 
-// withIMIdentity injects the bound WeKnora account and its live workspace role
-// into the callback context. The binding remains the principal for
-// principal-scoped state, while sessions are owned by the actual user ID.
+// withIMIdentity preserves account identity for flexible bindings. Unified
+// bindings instead run as a read-only participant isolated by chat context.
 func withIMIdentity(
 	ctx context.Context,
 	binding *UserBinding,
 	member *types.TenantMember,
+	msg *IncomingMessage,
 ) context.Context {
 	ctx = context.WithValue(ctx, types.TenantIDContextKey, binding.TenantID)
 	ctx = context.WithValue(ctx, types.UserIDContextKey, binding.UserID)
 	ctx = types.WithPrincipal(ctx, types.Principal{Type: types.PrincipalIMUser, ID: binding.ID})
 	ctx = context.WithValue(ctx, types.TenantRoleContextKey, member.Role)
+	if binding.BindingScope == BindingScopeChannel {
+		ctx = withUnifiedParticipant(ctx, binding, msg)
+	}
 	// IM bots have no live client that can complete an in-conversation MCP OAuth
 	// prompt, so mark the context non-interactive: the agent emits a one-shot
 	// authorization notice (surfaced in the reply) instead of blocking until the
@@ -1525,20 +1529,26 @@ func (s *Service) cancelBindingRequests(bindingID string) {
 		requestKeys = append(requestKeys, bindingRequestKeyForContext(bindingID, contextKey))
 	}
 
-	ctx := context.Background()
 	for _, requestKey := range requestKeys {
-		if s.qaQueue != nil {
-			for s.qaQueue.Remove(requestKey) {
-			}
+		s.cancelContextRequests(requestKey)
+	}
+}
+
+func (s *Service) cancelContextRequests(requestKey string) {
+	ctx := context.Background()
+	if s.qaQueue != nil {
+		for s.qaQueue.Remove(requestKey) {
 		}
-		if raw, loaded := s.inflight.LoadAndDelete(requestKey); loaded {
-			raw.(*inflightEntry).cancel()
-		}
-		if sessionID, messageID, ok := s.loadInflightMapping(ctx, requestKey); ok {
-			s.writeStopEvent(ctx, sessionID, messageID)
-		}
-		if s.redis != nil {
-			_ = s.redis.Set(ctx, RedisKeyStop+requestKey, "1", stopMarkerTTL).Err()
+	}
+	if raw, loaded := s.inflight.LoadAndDelete(requestKey); loaded {
+		raw.(*inflightEntry).cancel()
+	}
+	if sessionID, messageID, ok := s.loadInflightMapping(ctx, requestKey); ok {
+		s.writeStopEvent(ctx, sessionID, messageID)
+	}
+	if s.redis != nil {
+		if err := s.redis.Set(ctx, RedisKeyStop+requestKey, time.Now().UnixNano(), stopMarkerTTL).Err(); err != nil {
+			logger.Warnf(ctx, "[IM] Failed to signal context cancellation: %v", err)
 		}
 	}
 }
@@ -1628,6 +1638,7 @@ func sameChannelRuntimeConfig(cached, fresh *IMChannel) bool {
 		cached.Enabled == fresh.Enabled &&
 		cached.Mode == fresh.Mode &&
 		cached.OutputMode == fresh.OutputMode &&
+		cached.BindingMode == fresh.BindingMode &&
 		cached.AllowGroupChat == fresh.AllowGroupChat &&
 		equalChannelCredentials(cached.Credentials, fresh.Credentials)
 }
@@ -1720,7 +1731,7 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 			}
 			return fmt.Errorf("resolve existing binding context: %w", err)
 		}
-		known, err := s.hasBindingContext(binding.ID, msg)
+		known, err := s.hasBindingContext(binding, msg)
 		if err != nil {
 			return fmt.Errorf("check existing binding context: %w", err)
 		}
@@ -1786,9 +1797,15 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 			content = fmt.Sprintf("当前群尚未绑定知识库账号。请登录「%s」生成绑定码，并在本群发送给机器人；同一账号可以绑定多个群。",
 				systemName)
 		}
+		if channel.BindingMode == BindingModeUnified {
+			content = fmt.Sprintf("机器人尚未绑定工作空间。请登录「%s」生成绑定码并发送给我；首次绑定后，所有人将使用该工作空间的知识库。", systemName)
+		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			if errors.Is(err, ErrBindingMembershipInvalid) {
 				content = fmt.Sprintf("绑定的账号或工作空间权限已失效，请登录「%s」重新绑定。", systemName)
+				if channel.BindingMode == BindingModeUnified {
+					content = fmt.Sprintf("机器人的授权账号或工作空间权限已失效，请原授权者在「%s」恢复权限，或解绑后重新授权。", systemName)
+				}
 			} else {
 				return fmt.Errorf("resolve active binding: %w", err)
 			}
@@ -1833,7 +1850,7 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		return fmt.Errorf("get tenant: %w", err)
 	}
 	sessionCtx := context.WithValue(ctx, types.TenantInfoContextKey, tenant)
-	sessionCtx = withIMIdentity(sessionCtx, binding, member)
+	sessionCtx = withIMIdentity(sessionCtx, binding, member, msg)
 
 	kbIDs, err := s.resolveBindingKnowledgeBaseIDs(sessionCtx, binding.TenantID)
 	if err != nil {
@@ -1907,7 +1924,7 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 	// 5. Enqueue the QA request into the bounded worker pool.
 	// The worker pool controls LLM concurrency and provides backpressure.
 	qaCtx, qaCancel := context.WithCancel(sessionCtx)
-	userKey := bindingRequestKey(binding.ID, msg)
+	userKey := bindingRequestKey(binding, msg)
 
 	req := &qaRequest{
 		ctx:       qaCtx,
@@ -1919,6 +1936,7 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		channel:   channel,
 		channelID: channelID,
 		bindingID: binding.ID,
+		serialize: binding.BindingScope == BindingScopeChannel,
 		kbIDs:     append([]string(nil), kbIDs...),
 		tenant:    tenant,
 		userKey:   userKey,
@@ -1992,14 +2010,19 @@ func (s *Service) handleBindingCode(
 	bindingCode string,
 	msg *IncomingMessage,
 ) error {
-	_, err := s.ConsumeBindingCode(ctx, channelID, chatType, externalID, externalName, bindingCode)
+	binding, err := s.ConsumeBindingCode(ctx, channelID, chatType, externalID, externalName, bindingCode)
 	systemName := s.systemName(ctx)
 	content := fmt.Sprintf("绑定成功，后续将使用你在「%s」中选择的工作空间。", systemName)
 	if chatType == ChatTypeGroup {
 		content = fmt.Sprintf("群聊绑定成功。群成员将使用当前账号在「%s」中选择的工作空间，并分别维护对话上下文。", systemName)
 	}
+	if binding != nil && binding.BindingScope == BindingScopeChannel {
+		content = "机器人统一绑定成功。所有私聊和群聊将使用所选工作空间的全部可用知识库，各用户的对话上下文独立保存。"
+	}
 	if err != nil {
 		switch {
+		case errors.Is(err, ErrChannelAlreadyBound):
+			content = "机器人已统一绑定工作空间，不能使用其他绑定码覆盖。请原授权者先在网页中解除绑定。"
 		case errors.Is(err, ErrBindingCodeInvalid):
 			content = fmt.Sprintf("绑定码无效或已过期，请登录「%s」重新生成。", systemName)
 		case errors.Is(err, ErrBindingIdentityInUse):
@@ -2148,9 +2171,25 @@ func (s *Service) persistIMLastRequestState(ctx context.Context, sessionID, agen
 // executeQARequest is the worker handler that runs the QA pipeline for a queued request.
 // It is called by qaQueue workers and must not block indefinitely.
 func (s *Service) executeQARequest(req *qaRequest) {
-	ctx := req.ctx
 	defer req.cancel()
-	if _, _, err := s.ValidateActiveBinding(ctx, req.bindingID); err != nil {
+	if req.serialize && s.redis != nil && !req.queueTimedOut {
+		err := redislock.WithRenewableLock(req.ctx, s.redis, "im:context-lock:"+req.userKey,
+			30*time.Second, 10*time.Second, func(ctx context.Context) error {
+				req.ctx = ctx
+				s.runQARequest(req)
+				return nil
+			})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			logger.Errorf(req.ctx, "[IM] Failed to execute unified conversation: %v", err)
+		}
+		return
+	}
+	s.runQARequest(req)
+}
+
+func (s *Service) runQARequest(req *qaRequest) {
+	ctx := req.ctx
+	if err := s.validateQABinding(ctx, req.bindingID, req.session.ID); err != nil {
 		if isInactiveBindingError(err) {
 			logger.Infof(ctx, "[IM] Dropping queued request for inactive binding: binding=%s", req.bindingID)
 		} else {
@@ -2175,7 +2214,18 @@ func (s *Service) executeQARequest(req *qaRequest) {
 	defer s.inflight.Delete(req.userKey)
 
 	// Check if a pre-execution /stop was issued while this request was queued.
-	if s.checkAndClearStopMarker(ctx, req.userKey) {
+	var stopped bool
+	if req.serialize {
+		var err error
+		stopped, err = s.unifiedRequestStopped(ctx, req)
+		if err != nil {
+			logger.Errorf(ctx, "[IM] Failed to check unified request cancellation: %v", err)
+			return
+		}
+	} else {
+		stopped = s.checkAndClearStopMarker(ctx, req.userKey)
+	}
+	if stopped {
 		logger.Infof(ctx, "[IM] Request cancelled by remote /stop before execution: %s", req.userKey)
 		return
 	}
@@ -2187,7 +2237,7 @@ func (s *Service) executeQARequest(req *qaRequest) {
 	attachments, imageURLs, err := s.prepareIMAttachments(ctx, req.msg, req.adapter)
 	if err != nil {
 		logger.Warnf(ctx, "[IM] attachment preparation failed: %v", err)
-		if _, _, bindingErr := s.ValidateActiveBinding(ctx, req.bindingID); bindingErr != nil {
+		if bindingErr := s.validateQABinding(ctx, req.bindingID, req.session.ID); bindingErr != nil {
 			if isInactiveBindingError(bindingErr) {
 				logger.Infof(ctx,
 					"[IM] Suppressing attachment error reply for inactive binding: binding=%s", req.bindingID)
@@ -2227,7 +2277,7 @@ func (s *Service) executeQARequest(req *qaRequest) {
 		answer = "抱歉，处理您的问题时出现了异常，请稍后再试。"
 	}
 
-	if _, _, err := s.ValidateActiveBinding(ctx, req.bindingID); err != nil {
+	if err := s.validateQABinding(ctx, req.bindingID, req.session.ID); err != nil {
 		if isInactiveBindingError(err) {
 			logger.Infof(ctx, "[IM] Suppressing reply for inactive binding: binding=%s", req.bindingID)
 		} else {
@@ -2303,10 +2353,17 @@ func (s *Service) handleCommand(
 		if err := s.db.Model(&ChannelSession{}).
 			Where("id = ?", channelSession.ID).
 			Update("deleted_at", time.Now()).Error; err != nil {
-			logger.Warnf(ctx, "[IM] Failed to soft-delete channel session: %v", err)
+			return fmt.Errorf("clear IM conversation: %w", err)
+		}
+		if binding.BindingScope == BindingScopeChannel {
+			s.cancelContextRequests(bindingRequestKey(binding, msg))
 		}
 	case ActionStop:
-		inflightKey := bindingRequestKey(binding.ID, msg)
+		inflightKey := bindingRequestKey(binding, msg)
+		if binding.BindingScope == BindingScopeChannel {
+			s.cancelContextRequests(inflightKey)
+			break
+		}
 
 		// 1. Try local cancel: remove from queue or cancel in-flight.
 		var localSessionID, localMessageID string
@@ -2435,7 +2492,10 @@ func imInitialSessionTitle(msg *IncomingMessage) string {
 	return buildBindingSessionTitle(msg)
 }
 
-func bindingSessionContextKey(msg *IncomingMessage) string {
+func bindingSessionContextKey(binding *UserBinding, msg *IncomingMessage) string {
+	if binding.BindingScope == BindingScopeChannel {
+		return unifiedSessionContextKey(msg)
+	}
 	if msg == nil || msg.ChatType != ChatTypeGroup {
 		return ""
 	}
@@ -2446,14 +2506,14 @@ func bindingSessionContextKey(msg *IncomingMessage) string {
 	return userID
 }
 
-func (s *Service) hasBindingContext(bindingID string, msg *IncomingMessage) (bool, error) {
-	contextKey := bindingSessionContextKey(msg)
+func (s *Service) hasBindingContext(binding *UserBinding, msg *IncomingMessage) (bool, error) {
+	contextKey := bindingSessionContextKey(binding, msg)
 	if contextKey == "" {
 		return false, nil
 	}
 	var count int64
 	err := s.db.Unscoped().Model(&ChannelSession{}).
-		Where("binding_id = ? AND context_key = ?", bindingID, contextKey).
+		Where("binding_id = ? AND context_key = ?", binding.ID, contextKey).
 		Count(&count).Error
 	return count > 0, err
 }
@@ -2465,19 +2525,19 @@ func bindingRequestKeyForContext(bindingID, contextKey string) string {
 	return bindingID + ":" + contextKey
 }
 
-func bindingRequestKey(bindingID string, msg *IncomingMessage) string {
-	return bindingRequestKeyForContext(bindingID, bindingSessionContextKey(msg))
+func bindingRequestKey(binding *UserBinding, msg *IncomingMessage) string {
+	return bindingRequestKeyForContext(binding.ID, bindingSessionContextKey(binding, msg))
 }
 
-// resolveBindingSession gives each direct binding one current conversation and
-// isolates group conversations by member and, when available, thread.
+// resolveBindingSession persists the current conversation for a binding context.
+// Unified bindings additionally separate every direct user and group.
 func (s *Service) resolveBindingSession(
 	ctx context.Context,
 	msg *IncomingMessage,
 	binding *UserBinding,
 	imChannelID string,
 ) (*ChannelSession, error) {
-	contextKey := bindingSessionContextKey(msg)
+	contextKey := bindingSessionContextKey(binding, msg)
 	var cs ChannelSession
 	result := s.db.Where("binding_id = ? AND context_key = ? AND deleted_at IS NULL", binding.ID, contextKey).
 		First(&cs)
@@ -2496,6 +2556,9 @@ func (s *Service) resolveBindingSession(
 		Title:       imInitialSessionTitle(msg),
 		Description: fmt.Sprintf("Auto-created from %s IM integration", msg.Platform),
 	}
+	if binding.BindingScope == BindingScopeChannel {
+		newSession.UserID = types.SessionOwnerIDFromContext(ctx)
+	}
 
 	createdSession, err := s.sessionService.CreateSession(ctx, newSession)
 	if err != nil {
@@ -2508,6 +2571,9 @@ func (s *Service) resolveBindingSession(
 		TenantID:    binding.TenantID,
 		IMChannelID: imChannelID,
 		ContextKey:  contextKey,
+	}
+	if binding.BindingScope == BindingScopeChannel {
+		cs.Metadata = unifiedSessionMetadata(msg)
 	}
 	if err := s.db.Create(&cs).Error; err != nil {
 		if delErr := s.db.Where("id = ?", createdSession.ID).Delete(createdSession).Error; delErr != nil {
@@ -2595,7 +2661,7 @@ func (s *Service) handleMessageStream(
 	bindingID string,
 	tenant *types.Tenant,
 ) error {
-	if _, _, err := s.ValidateActiveBinding(ctx, bindingID); err != nil {
+	if err := s.validateQABinding(ctx, bindingID, session.ID); err != nil {
 		return err
 	}
 	// Start the stream on the IM platform (e.g., create Feishu streaming card)
@@ -2945,7 +3011,7 @@ func (s *Service) handleMessageStream(
 		if display == lastDisplay {
 			return true
 		}
-		if _, _, err := s.ValidateActiveBinding(ctx, bindingID); err != nil {
+		if err := s.validateQABinding(ctx, bindingID, session.ID); err != nil {
 			deliveryAuthErr = err
 			qaCancel()
 			return false
@@ -3019,7 +3085,7 @@ loop:
 		answer = appendIMAuthNotice(answer, notice)
 	}
 
-	if _, _, err := s.ValidateActiveBinding(ctx, bindingID); err != nil {
+	if err := s.validateQABinding(ctx, bindingID, session.ID); err != nil {
 		_ = abortStream(ctx, msg, streamer, streamID)
 		if isInactiveBindingError(err) {
 			logger.Infof(ctx, "[IM] Suppressing stream finalization for inactive binding: binding=%s", bindingID)
@@ -3076,7 +3142,7 @@ func (s *Service) fallbackNonStream(
 		logger.Errorf(ctx, "[IM] QA fallback failed: %v", err)
 		answer = "抱歉，处理您的问题时出现了异常，请稍后再试。"
 	}
-	if _, _, err := s.ValidateActiveBinding(ctx, bindingID); err != nil {
+	if err := s.validateQABinding(ctx, bindingID, session.ID); err != nil {
 		if isInactiveBindingError(err) {
 			logger.Infof(ctx, "[IM] Suppressing fallback reply for inactive binding: binding=%s", bindingID)
 			return nil
@@ -3293,6 +3359,9 @@ func (s *Service) ListChannels() ([]IMChannel, error) {
 // CreateChannel creates a new IM channel and optionally starts it.
 // Returns a duplicate_bot error if the bot identity is already used by another channel.
 func (s *Service) CreateChannel(channel *IMChannel) error {
+	if channel.BindingMode == "" {
+		channel.BindingMode = BindingModeFlexible
+	}
 	if err := validateChannel(channel); err != nil {
 		return err
 	}
@@ -3320,10 +3389,8 @@ func (s *Service) UpdateChannel(channel *IMChannel) error {
 	}
 	var revokedBindingIDs []string
 	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		var stored IMChannel
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("id = ? AND deleted_at IS NULL", channel.ID).
-			First(&stored).Error; err != nil {
+		stored, err := lockChannel(tx, channel.ID)
+		if err != nil {
 			return err
 		}
 		// Enabled is changed only through ToggleChannel. Preserve the locked
@@ -3333,15 +3400,20 @@ func (s *Service) UpdateChannel(channel *IMChannel) error {
 			return err
 		}
 		identityChanged := stored.BotIdentity != newIdentity
-		if identityChanged {
+		modeChanged := stored.BindingMode != channel.BindingMode
+		if modeChanged {
+			var count int64
+			if err := tx.Model(&UserBinding{}).
+				Where("im_channel_id = ? AND revoked_at IS NULL", channel.ID).Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				return ErrChannelModeInUse
+			}
+		}
+		if identityChanged || modeChanged {
 			now := time.Now().UTC()
-			if err := tx.Model(&BindingRequest{}).
-				Where("im_channel_id = ? AND status = ?", channel.ID, IMBindingRequestPending).
-				Updates(map[string]any{
-					"status":       IMBindingRequestCancelled,
-					"cancelled_at": now,
-					"updated_at":   now,
-				}).Error; err != nil {
+			if err := cancelChannelBindingCodes(tx, channel.ID, now); err != nil {
 				return err
 			}
 			var err error
@@ -3416,18 +3488,26 @@ func (s *Service) DeleteChannel(channelID string) error {
 // ToggleChannel enables or disables a system bot installation.
 func (s *Service) ToggleChannel(channelID string) (*IMChannel, error) {
 	var ch IMChannel
+	var stoppedBindingIDs []string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("id = ? AND deleted_at IS NULL", channelID).
-			First(&ch).Error; err != nil {
+		locked, err := lockChannel(tx, channelID)
+		if err != nil {
 			return err
 		}
+		ch = *locked
 		ch.Enabled = !ch.Enabled
 		if ch.Enabled && !SupportsSystemChannel(ch.Platform) {
 			return fmt.Errorf("%w: platform %s is not supported", ErrChannelConfigurationInvalid, ch.Platform)
 		}
 		if err := validateChannel(&ch); err != nil {
 			return err
+		}
+		if !ch.Enabled && ch.BindingMode == BindingModeUnified {
+			if err := tx.Model(&UserBinding{}).
+				Where("im_channel_id = ? AND revoked_at IS NULL", channelID).
+				Pluck("id", &stoppedBindingIDs).Error; err != nil {
+				return err
+			}
 		}
 		return tx.Save(&ch).Error
 	})
@@ -3440,12 +3520,26 @@ func (s *Service) ToggleChannel(channelID string) (*IMChannel, error) {
 		}
 	} else {
 		s.StopChannel(channelID)
+		for _, bindingID := range stoppedBindingIDs {
+			s.cancelBindingRequests(bindingID)
+		}
 	}
 	s.publishChannelConfigChange(channelID)
 	return &ch, nil
 }
 
 func validateChannel(channel *IMChannel) error {
+	switch channel.BindingMode {
+	case BindingModeFlexible:
+	case BindingModeUnified:
+		if !SupportsPersonalBinding(channel.Platform) {
+			return fmt.Errorf("%w: platform %s does not support unified binding",
+				ErrChannelConfigurationInvalid, channel.Platform)
+		}
+		channel.AllowGroupChat = SupportsGroupChat(channel.Platform, channel.Mode)
+	default:
+		return fmt.Errorf("%w: unsupported binding mode %s", ErrChannelConfigurationInvalid, channel.BindingMode)
+	}
 	if channel.AllowGroupChat && !SupportsGroupChat(channel.Platform, channel.Mode) {
 		return fmt.Errorf("%w: platform %s does not support group account binding in %s mode",
 			ErrChannelConfigurationInvalid, channel.Platform, channel.Mode)

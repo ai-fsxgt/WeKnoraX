@@ -11,7 +11,7 @@ func TestWithIMIdentity(t *testing.T) {
 	const tenantID uint64 = 42
 	binding := &UserBinding{ID: "binding-1", TenantID: tenantID, UserID: "user-1"}
 	member := &types.TenantMember{TenantID: tenantID, UserID: "user-1", Role: types.TenantRoleContributor}
-	ctx := withIMIdentity(context.Background(), binding, member)
+	ctx := withIMIdentity(context.Background(), binding, member, &IncomingMessage{ChatType: ChatTypeDirect})
 
 	gotTenant, ok := types.TenantIDFromContext(ctx)
 	if !ok || gotTenant != tenantID {

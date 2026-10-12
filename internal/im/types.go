@@ -16,12 +16,13 @@ import (
 // IMChannel represents one system-managed bot installation. User and workspace
 // access are resolved from UserBinding for every incoming message.
 type IMChannel struct {
-	ID         string `json:"id"           gorm:"type:varchar(36);primaryKey;default:uuid_generate_v4()"`
-	Platform   string `json:"platform"     gorm:"type:varchar(20);not null"`
-	Name       string `json:"name"         gorm:"type:varchar(255);not null;default:''"`
-	Enabled    bool   `json:"enabled"      gorm:"not null;default:false"`
-	Mode       string `json:"mode"         gorm:"type:varchar(20);not null;default:'websocket'"`
-	OutputMode string `json:"output_mode"  gorm:"type:varchar(20);not null;default:'stream'"`
+	ID          string `json:"id"           gorm:"type:varchar(36);primaryKey;default:uuid_generate_v4()"`
+	Platform    string `json:"platform"     gorm:"type:varchar(20);not null"`
+	Name        string `json:"name"         gorm:"type:varchar(255);not null;default:''"`
+	Enabled     bool   `json:"enabled"      gorm:"not null;default:false"`
+	Mode        string `json:"mode"         gorm:"type:varchar(20);not null;default:'websocket'"`
+	OutputMode  string `json:"output_mode"  gorm:"type:varchar(20);not null;default:'stream'"`
+	BindingMode string `json:"binding_mode" gorm:"type:varchar(20);not null;default:'flexible'"`
 	// AllowGroupChat permits group conversations to bind an account.
 	AllowGroupChat bool `json:"allow_group_chat" gorm:"not null;default:false"`
 	// The partial unique index predicate is intentionally kept beside the field it protects.
@@ -47,6 +48,7 @@ type IMChannelSummary struct {
 	Enabled               bool              `json:"enabled"`
 	Mode                  string            `json:"mode"`
 	OutputMode            string            `json:"output_mode"`
+	BindingMode           string            `json:"binding_mode"`
 	AllowGroupChat        bool              `json:"allow_group_chat"`
 	BotIdentity           string            `json:"bot_identity"`
 	PersonalBinding       bool              `json:"personal_binding"`
@@ -97,6 +99,7 @@ func SummarizeIMChannel(ch IMChannel) (IMChannelSummary, error) {
 		Enabled:               ch.Enabled,
 		Mode:                  ch.Mode,
 		OutputMode:            ch.OutputMode,
+		BindingMode:           ch.BindingMode,
 		AllowGroupChat:        ch.AllowGroupChat,
 		BotIdentity:           ch.BotIdentity,
 		PersonalBinding:       SupportsPersonalBinding(ch.Platform),
@@ -175,6 +178,9 @@ func (ch *IMChannel) BeforeCreate(tx *gorm.DB) error {
 	}
 	if ch.OutputMode == "" {
 		ch.OutputMode = "stream"
+	}
+	if ch.BindingMode == "" {
+		ch.BindingMode = BindingModeFlexible
 	}
 	ch.BotIdentity = ch.computeBotIdentity()
 	return nil
@@ -268,7 +274,13 @@ func (ch *IMChannel) computeBotIdentity() string {
 	return ""
 }
 
+// Binding modes and scopes distinguish conversation grants from whole-bot grants.
 const (
+	BindingModeFlexible      = "flexible"
+	BindingModeUnified       = "unified"
+	BindingScopeConversation = "conversation"
+	BindingScopeChannel      = "channel"
+
 	// IMBindingStatusActive identifies a usable account binding.
 	IMBindingStatusActive = "active"
 	// IMBindingStatusRevoked identifies a binding that can no longer be used.
@@ -282,14 +294,15 @@ const (
 	IMBindingRequestCancelled = "cancelled"
 )
 
-// UserBinding maps one verified platform identity to a WeKnora user and an
-// explicitly selected workspace.
+// UserBinding grants a conversation or an entire bot access to the authorizing
+// WeKnora user's explicitly selected workspace.
 type UserBinding struct {
 	ID               string     `json:"id"               gorm:"type:varchar(36);primaryKey"`
 	IMChannelID      string     `json:"im_channel_id"    gorm:"type:varchar(36);not null;index"`
 	ExternalUserID   string     `json:"external_user_id" gorm:"type:varchar(255);not null"`
 	ExternalUserName string     `json:"external_user_name" gorm:"type:varchar(255);not null;default:''"`
 	ChatType         ChatType   `json:"chat_type"          gorm:"type:varchar(20);not null;default:'direct'"`
+	BindingScope     string     `json:"binding_scope" gorm:"type:varchar(20);not null;default:'conversation'"`
 	UserID           string     `json:"user_id"          gorm:"type:varchar(36);not null;index"`
 	TenantID         uint64     `json:"tenant_id"        gorm:"not null;index"`
 	Status           string     `json:"status"           gorm:"type:varchar(20);not null;default:'active'"`
@@ -311,6 +324,9 @@ func (b *UserBinding) BeforeCreate(_ *gorm.DB) error {
 	}
 	if b.ChatType == "" {
 		b.ChatType = ChatTypeDirect
+	}
+	if b.BindingScope == "" {
+		b.BindingScope = BindingScopeConversation
 	}
 	return nil
 }

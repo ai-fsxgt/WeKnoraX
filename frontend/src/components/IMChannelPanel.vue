@@ -33,6 +33,7 @@
               <div class="channel-meta">
                 <span>{{ platformLabel(channel.platform) }}</span>
                 <span>{{ channel.mode }}</span>
+                <span>{{ t(channel.binding_mode === 'unified' ? 'imAdmin.unifiedMode' : 'imAdmin.flexibleMode') }}</span>
                 <span>{{ channel.output_mode === 'stream' ? t('agentEditor.im.outputStream') : t('agentEditor.im.outputFull') }}</span>
               </div>
               <div class="channel-state">
@@ -123,6 +124,15 @@
 
         <label>{{ t('agentEditor.im.channelName') }}</label>
         <t-input v-model="form.name" :placeholder="platformLabel(form.platform)" :maxlength="128" />
+
+        <template v-if="form.platform !== 'wechat' && form.platform !== 'qqbot'">
+          <label>{{ t('imAdmin.bindingMode') }}</label>
+          <t-radio-group v-model="form.binding_mode">
+            <t-radio value="flexible">{{ t('imAdmin.flexibleMode') }}</t-radio>
+            <t-radio value="unified">{{ t('imAdmin.unifiedMode') }}</t-radio>
+          </t-radio-group>
+          <t-alert theme="info" :message="t(form.binding_mode === 'unified' ? 'imAdmin.unifiedModeHint' : 'imAdmin.flexibleModeHint')" />
+        </template>
       </div>
 
       <div v-else-if="step === 1" class="form-stack">
@@ -143,7 +153,7 @@
           <t-radio value="full">{{ t('agentEditor.im.outputFull') }}</t-radio>
         </t-radio-group>
 
-        <div v-if="supportsGroupChat(form.platform, form.mode)" class="group-chat-setting">
+        <div v-if="form.binding_mode === 'flexible' && supportsGroupChat(form.platform, form.mode)" class="group-chat-setting">
           <div>
             <label>{{ t('imAdmin.allowGroupChat') }}</label>
             <p>{{ t('imAdmin.allowGroupChatHint') }}</p>
@@ -307,6 +317,7 @@ const form = reactive({
   name: '',
   mode: 'websocket' as IMChannelSummary['mode'],
   output_mode: 'stream' as IMChannelSummary['output_mode'],
+  binding_mode: 'flexible' as IMChannelSummary['binding_mode'],
   allow_group_chat: false,
   credentials: {} as Record<string, string>,
 })
@@ -359,6 +370,7 @@ function resetForm() {
     name: '',
     mode: 'websocket',
     output_mode: 'stream',
+    binding_mode: 'flexible',
     allow_group_chat: false,
     credentials: {},
   })
@@ -384,6 +396,7 @@ function openEdit(channel: IMChannelSummary) {
     name: channel.name,
     mode: channel.mode,
     output_mode: channel.output_mode,
+    binding_mode: channel.binding_mode,
     allow_group_chat: channel.allow_group_chat,
     credentials: { ...channel.credential_ids },
   })
@@ -397,6 +410,7 @@ function closeDrawer() {
 
 function onPlatformChange() {
   form.credentials = {}
+  form.binding_mode = 'flexible'
   form.allow_group_chat = false
   if (form.platform === 'wechat') {
     form.mode = 'longpoll'
@@ -421,6 +435,7 @@ function cleanedCredentials() {
 }
 
 async function confirmStep() {
+  if (saving.value) return
   if (step.value < 2) {
     step.value += 1
     return
@@ -436,6 +451,7 @@ async function confirmStep() {
       name: form.name.trim() || platformLabel(form.platform),
       mode: form.mode,
       output_mode: form.output_mode,
+      binding_mode: form.binding_mode,
       allow_group_chat: form.allow_group_chat,
       credentials: cleanedCredentials(),
     }
@@ -449,7 +465,9 @@ async function confirmStep() {
     closeDrawer()
     await loadChannels()
   } catch (error: any) {
-    MessagePlugin.error(error?.message || t('common.operationFailed'))
+    MessagePlugin.error(error?.message === 'binding_mode_in_use'
+      ? t('imAdmin.bindingModeInUse')
+      : error?.message || t('common.operationFailed'))
   } finally {
     saving.value = false
   }

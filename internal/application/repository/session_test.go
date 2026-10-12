@@ -178,6 +178,7 @@ func (testIMChannel) TableName() string { return "im_channels" }
 type testIMUserBinding struct {
 	ID             string `gorm:"primaryKey"`
 	ExternalUserID string
+	BindingScope   string `gorm:"default:'conversation'"`
 }
 
 func (testIMUserBinding) TableName() string { return "im_user_bindings" }

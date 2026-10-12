@@ -19,6 +19,7 @@ export interface IMChannelSummary {
   enabled: boolean
   mode: 'webhook' | 'websocket' | 'longpoll'
   output_mode: 'stream' | 'full'
+  binding_mode: 'flexible' | 'unified'
   bot_identity: string
   personal_binding: boolean
   allow_group_chat: boolean
@@ -35,6 +36,7 @@ export interface IMChannelMutation {
   enabled?: boolean
   mode?: IMChannelSummary['mode']
   output_mode?: IMChannelSummary['output_mode']
+  binding_mode?: IMChannelSummary['binding_mode']
   allow_group_chat?: boolean
   credentials?: Record<string, unknown>
 }
@@ -44,6 +46,8 @@ export interface BindableIMChannel {
   platform: IMPlatform
   name: string
   allow_group_chat: boolean
+  binding_mode: IMChannelSummary['binding_mode']
+  is_bound: boolean
 }
 
 export interface IMUserBinding {
@@ -52,6 +56,7 @@ export interface IMUserBinding {
   platform: IMPlatform
   channel_name: string
   chat_type: 'direct' | 'group'
+  binding_scope: 'conversation' | 'channel'
   external_user_id: string
   external_user_name: string
   tenant_id: number
@@ -65,6 +70,8 @@ export interface IMBindingRequest {
   im_channel_id: string
   platform: IMPlatform
   channel_name: string
+  binding_mode: IMChannelSummary['binding_mode']
+  allow_group_chat: boolean
   tenant_id: number
   status: 'pending' | 'consumed' | 'cancelled' | 'expired'
   binding_id?: string

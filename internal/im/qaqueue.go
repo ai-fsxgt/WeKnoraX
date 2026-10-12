@@ -43,12 +43,14 @@ type qaRequest struct {
 	channel   *IMChannel
 	channelID string
 	bindingID string
+	// serialize keeps unified participants' turns in order within this instance.
+	serialize bool
 	kbIDs     []string
 
 	// tenant is used to resolve provider:// URLs in outbound replies (scheme-aware).
 	tenant *types.Tenant
 
-	// userKey identifies one direct binding or one member context in a group binding.
+	// userKey identifies one binding context, including unified participants.
 	userKey       string
 	enqueuedAt    time.Time
 	queueTimedOut bool
@@ -72,14 +74,15 @@ type QueueMetrics struct {
 
 // qaQueue is a bounded, per-user-limited request queue with a fixed worker pool.
 type qaQueue struct {
-	mu         sync.Mutex
-	cond       *sync.Cond
-	queue      []*qaRequest
-	maxSize    int
-	maxPerUser int
-	workers    int
-	perUser    map[string]int // userKey → queued count
-	closed     bool
+	mu             sync.Mutex
+	cond           *sync.Cond
+	queue          []*qaRequest
+	maxSize        int
+	maxPerUser     int
+	workers        int
+	perUser        map[string]int  // userKey → queued count
+	activeContexts map[string]bool // unified contexts currently assigned to a worker
+	closed         bool
 
 	// redis is the optional Redis client for global per-user counting.
 	// When nil, only local per-user limits are enforced.
@@ -112,6 +115,7 @@ func newQAQueue(workers, maxSize, maxPerUser, globalMaxWorkers int, handler func
 		workers:          workers,
 		globalMaxWorkers: globalMaxWorkers,
 		perUser:          make(map[string]int),
+		activeContexts:   make(map[string]bool),
 		redis:            redisClient,
 		handler:          handler,
 	}
@@ -229,7 +233,7 @@ func (q *qaQueue) runWorker(id int) {
 		// Skip requests that have been cancelled or timed out while queued.
 		if req.ctx.Err() != nil {
 			q.totalTimeout.Add(1)
-			q.redisDecrUser(context.Background(), req.userKey)
+			q.finishRequest(req)
 			continue
 		}
 
@@ -239,7 +243,7 @@ func (q *qaQueue) runWorker(id int) {
 			logger.Warnf(req.ctx, "[IM] Queue timeout: user=%s waited=%s, discarding", req.msg.UserID, waitDuration)
 			req.queueTimedOut = true
 			q.handler(req)
-			q.redisDecrUser(context.Background(), req.userKey)
+			q.finishRequest(req)
 			continue
 		}
 
@@ -250,7 +254,7 @@ func (q *qaQueue) runWorker(id int) {
 		if !q.acquireGlobalGate(req.ctx) {
 			// Context cancelled while waiting for a global slot — treat as timeout.
 			q.totalTimeout.Add(1)
-			q.redisDecrUser(context.Background(), req.userKey)
+			q.finishRequest(req)
 			logger.Warnf(req.ctx, "[IM] Global gate wait cancelled: worker=%d user=%s", id, req.msg.UserID)
 			req.cancel()
 			continue
@@ -261,7 +265,17 @@ func (q *qaQueue) runWorker(id int) {
 		q.activeWorkers.Add(-1)
 		q.totalProcessed.Add(1)
 		q.releaseGlobalGate()
-		q.redisDecrUser(context.Background(), req.userKey)
+		q.finishRequest(req)
+	}
+}
+
+func (q *qaQueue) finishRequest(req *qaRequest) {
+	q.redisDecrUser(context.Background(), req.userKey)
+	if req.serialize {
+		q.mu.Lock()
+		delete(q.activeContexts, req.userKey)
+		q.cond.Broadcast()
+		q.mu.Unlock()
 	}
 }
 
@@ -269,24 +283,28 @@ func (q *qaQueue) dequeue() *qaRequest {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	for len(q.queue) == 0 && !q.closed {
+	for {
+		for i, req := range q.queue {
+			if req.serialize && q.activeContexts[req.userKey] {
+				continue
+			}
+			q.queue = append(q.queue[:i], q.queue[i+1:]...)
+			if req.serialize {
+				q.activeContexts[req.userKey] = true
+			}
+			if q.redis == nil {
+				q.perUser[req.userKey]--
+				if q.perUser[req.userKey] <= 0 {
+					delete(q.perUser, req.userKey)
+				}
+			}
+			return req
+		}
+		if q.closed && len(q.queue) == 0 {
+			return nil
+		}
 		q.cond.Wait()
 	}
-
-	if q.closed && len(q.queue) == 0 {
-		return nil
-	}
-
-	req := q.queue[0]
-	q.queue = q.queue[1:]
-	if q.redis == nil {
-		q.perUser[req.userKey]--
-		if q.perUser[req.userKey] <= 0 {
-			delete(q.perUser, req.userKey)
-		}
-	}
-
-	return req
 }
 
 // ── Redis global concurrency gate ────────────────────────────────────────────

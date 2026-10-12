@@ -62,6 +62,7 @@ func newLifecycleTestDB(t *testing.T) *gorm.DB {
 		mode TEXT NOT NULL DEFAULT 'websocket',
 		output_mode TEXT NOT NULL DEFAULT 'stream',
 		allow_group_chat NUMERIC NOT NULL DEFAULT 0,
+		binding_mode TEXT NOT NULL DEFAULT 'flexible',
 		knowledge_base_id TEXT DEFAULT '',
 		bot_identity TEXT NOT NULL DEFAULT '',
 		session_mode TEXT NOT NULL DEFAULT 'user',

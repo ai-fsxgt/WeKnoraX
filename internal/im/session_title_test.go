@@ -121,16 +121,17 @@ func TestIMInitialSessionTitle(t *testing.T) {
 }
 
 func TestBindingContextKeys(t *testing.T) {
+	binding := &UserBinding{ID: "binding-1", BindingScope: BindingScopeConversation}
 	direct := &IncomingMessage{ChatType: ChatTypeDirect, UserID: "user-1"}
-	if got := bindingRequestKey("binding-1", direct); got != "binding-1" {
+	if got := bindingRequestKey(binding, direct); got != "binding-1" {
 		t.Fatalf("direct request key = %q", got)
 	}
 
 	group := &IncomingMessage{ChatType: ChatTypeGroup, UserID: "user-1", ChatID: "group-1"}
-	if got := bindingSessionContextKey(group); got != "user-1" {
+	if got := bindingSessionContextKey(binding, group); got != "user-1" {
 		t.Fatalf("group context key = %q", got)
 	}
-	if got := bindingRequestKey("binding-1", group); got != "binding-1:user-1" {
+	if got := bindingRequestKey(binding, group); got != "binding-1:user-1" {
 		t.Fatalf("group request key = %q", got)
 	}
 
@@ -140,10 +141,10 @@ func TestBindingContextKeys(t *testing.T) {
 		ChatID:   "group-1",
 		ThreadID: "thread-1",
 	}
-	if got := bindingSessionContextKey(groupThread); got != "user-1:thread-1" {
+	if got := bindingSessionContextKey(binding, groupThread); got != "user-1:thread-1" {
 		t.Fatalf("group thread context key = %q", got)
 	}
-	if got := bindingRequestKey("binding-1", groupThread); got != "binding-1:user-1:thread-1" {
+	if got := bindingRequestKey(binding, groupThread); got != "binding-1:user-1:thread-1" {
 		t.Fatalf("group thread request key = %q", got)
 	}
 }

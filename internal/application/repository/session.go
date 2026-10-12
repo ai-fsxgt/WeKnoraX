@@ -156,12 +156,15 @@ func (r *sessionRepository) QueryPaged(
 	platformExpr := imPlatformExpr(r.db)
 	imUserExpr := "COALESCE(NULLIF(imb.external_user_id, ''), " +
 		"json_extract(ics.metadata, '$.legacy_external_user_id'), '')"
+	participantExpr := "json_extract(ics.metadata, '$.user_id')"
 	titleLikeExpr := "LOWER(s.title) LIKE LOWER(?)"
 	if isPostgres {
 		imUserExpr = "COALESCE(NULLIF(imb.external_user_id, ''), " +
 			"ics.metadata ->> 'legacy_external_user_id', '')"
+		participantExpr = "ics.metadata ->> 'user_id'"
 		titleLikeExpr = "s.title ILIKE ?"
 	}
+	imUserExpr = "CASE WHEN imb.binding_scope = 'channel' THEN " + participantExpr + " ELSE " + imUserExpr + " END"
 	// SQLite (the driver used by Lite) does not support NULLS LAST; its default
 	// nulls ordering puts NULLs first for DESC, which is actually what we want
 	// for pinned_at (rows with pinned_at=NULL are never pinned, so they get

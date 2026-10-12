@@ -2668,6 +2668,13 @@
                             "type": "object",
                             "additionalProperties": true
                         }
+                    },
+                    "409": {
+                        "description": "机器人已统一绑定",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
                     }
                 }
             }
@@ -2789,7 +2796,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "获取当前用户可发起个人绑定的已启用机器人列表",
+                "description": "获取已启用机器人列表，包含 binding_mode 与统一模式的 is_bound 状态；已统一绑定的机器人不可生成绑定码",
                 "produces": [
                     "application/json"
                 ],
@@ -2815,7 +2822,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "获取全部系统级 IM 机器人配置，不返回凭证内容",
+                "description": "获取全部系统级 IM 机器人配置及凭据 ID，不返回密钥",
                 "produces": [
                     "application/json"
                 ],
@@ -2839,7 +2846,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "创建系统级 IM 机器人配置",
+                "description": "创建系统级 IM 机器人配置；binding_mode 为 flexible（分别绑定，默认）或 unified（整个机器人统一绑定工作空间）",
                 "consumes": [
                     "application/json"
                 ],
@@ -2894,7 +2901,7 @@
                         "Bearer": []
                     }
                 ],
-                "description": "更新系统级 IM 机器人的名称、模式或凭证",
+                "description": "更新系统级 IM 机器人的名称、连接模式、绑定模式、群聊开关或凭证；存在未撤销绑定时不可切换绑定模式",
                 "consumes": [
                     "application/json"
                 ],
@@ -2914,7 +2921,7 @@
                         "required": true
                     },
                     {
-                        "description": "更新字段（name/mode/output_mode/credentials）",
+                        "description": "渠道配置更新字段",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -2941,6 +2948,13 @@
                     },
                     "404": {
                         "description": "渠道不存在",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "机器人身份冲突或尚有未解除的绑定",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
