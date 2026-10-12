@@ -1547,7 +1547,9 @@ func (s *Service) cancelContextRequests(requestKey string) {
 		s.writeStopEvent(ctx, sessionID, messageID)
 	}
 	if s.redis != nil {
-		if err := s.redis.Set(ctx, RedisKeyStop+requestKey, time.Now().UnixNano(), stopMarkerTTL).Err(); err != nil {
+		// Unified requests are checked against queueTimeout again after all waits,
+		// so an expired marker can never allow an old request to start answering.
+		if err := s.redis.Set(ctx, RedisKeyStop+requestKey, time.Now().UnixNano(), queueTimeout).Err(); err != nil {
 			logger.Warnf(ctx, "[IM] Failed to signal context cancellation: %v", err)
 		}
 	}
@@ -2173,14 +2175,29 @@ func (s *Service) persistIMLastRequestState(ctx context.Context, sessionID, agen
 func (s *Service) executeQARequest(req *qaRequest) {
 	defer req.cancel()
 	if req.serialize && s.redis != nil && !req.queueTimedOut {
+		started := false
 		err := redislock.WithRenewableLock(req.ctx, s.redis, "im:context-lock:"+req.userKey,
 			30*time.Second, 10*time.Second, func(ctx context.Context) error {
+				started = true
 				req.ctx = ctx
 				s.runQARequest(req)
 				return nil
 			})
 		if err != nil && !errors.Is(err, context.Canceled) {
 			logger.Errorf(req.ctx, "[IM] Failed to execute unified conversation: %v", err)
+			if !started && req.ctx.Err() == nil {
+				if bindingErr := s.validateQABinding(req.ctx, req.bindingID, req.session.ID); bindingErr != nil {
+					logger.Warnf(req.ctx,
+						"[IM] Suppressing lock error reply after binding validation failed: %v", bindingErr)
+					return
+				}
+				if sendErr := req.adapter.SendReply(req.ctx, req.msg, &ReplyMessage{
+					Content: "抱歉，暂时无法处理您的消息，请稍后重新发送。",
+					IsFinal: true,
+				}); sendErr != nil {
+					logger.Warnf(req.ctx, "[IM] Failed to send conversation lock error reply: %v", sendErr)
+				}
+			}
 		}
 		return
 	}
@@ -2198,20 +2215,12 @@ func (s *Service) runQARequest(req *qaRequest) {
 		}
 		return
 	}
-	if req.queueTimedOut {
-		if err := req.adapter.SendReply(ctx, req.msg, &ReplyMessage{
-			Content: "您的消息等待超时，请重新发送。",
-			IsFinal: true,
-		}); err != nil {
-			logger.Warnf(ctx, "[IM] Failed to send queue timeout reply: %v", err)
-		}
-		return
-	}
-
 	// Track in-flight request so /stop can cancel it.
-	entry := &inflightEntry{cancel: req.cancel}
-	s.inflight.Store(req.userKey, entry)
-	defer s.inflight.Delete(req.userKey)
+	if !req.queueTimedOut {
+		entry := &inflightEntry{cancel: req.cancel}
+		s.inflight.Store(req.userKey, entry)
+		defer s.inflight.Delete(req.userKey)
+	}
 
 	// Check if a pre-execution /stop was issued while this request was queued.
 	var stopped bool
@@ -2227,6 +2236,17 @@ func (s *Service) runQARequest(req *qaRequest) {
 	}
 	if stopped {
 		logger.Infof(ctx, "[IM] Request cancelled by remote /stop before execution: %s", req.userKey)
+		return
+	}
+	// The global worker gate and the unified context lock can both add waiting
+	// time after dequeue. Expired unified requests must never enter the pipeline.
+	if req.queueTimedOut || (req.serialize && time.Since(req.enqueuedAt) >= queueTimeout) {
+		if err := req.adapter.SendReply(ctx, req.msg, &ReplyMessage{
+			Content: "您的消息等待超时，请重新发送。",
+			IsFinal: true,
+		}); err != nil {
+			logger.Warnf(ctx, "[IM] Failed to send queue timeout reply: %v", err)
+		}
 		return
 	}
 
