@@ -368,7 +368,7 @@ func validateMinerUOutboundURL(rawURL string) error {
 	return nil
 }
 
-// PingMinerU checks if the self-hosted MinerU service is reachable.
+// PingMinerU probes file_parse without uploading a file or starting document parsing.
 func PingMinerU(endpoint, apiKey string) (bool, string) {
 	endpoint = strings.TrimRight(endpoint, "/")
 	if endpoint == "" {
@@ -381,10 +381,16 @@ func PingMinerU(endpoint, apiKey string) (bool, string) {
 	if err != nil {
 		return false, fmt.Sprintf("MinerU API Key 解密失败: %v", err)
 	}
-	req, err := http.NewRequest(http.MethodGet, endpoint+"/docs", nil)
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.Close(); err != nil {
+		return false, fmt.Sprintf("MinerU 请求创建失败: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint+"/file_parse", &body)
 	if err != nil {
 		return false, fmt.Sprintf("MinerU 请求创建失败: %v", err)
 	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
@@ -396,7 +402,25 @@ func PingMinerU(endpoint, apiKey string) (bool, string) {
 	if err != nil {
 		return false, fmt.Sprintf("MinerU 服务不可达: %v", err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		var response struct {
+			Detail []struct {
+				Type string   `json:"type"`
+				Loc  []string `json:"loc"`
+			} `json:"detail"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return false, fmt.Sprintf("MinerU 响应解析失败: %v", err)
+		}
+		// Only the expected missing-file validation error confirms connectivity.
+		if len(response.Detail) == 1 {
+			detail := response.Detail[0]
+			if detail.Type == "missing" && len(detail.Loc) == 2 && detail.Loc[0] == "body" && detail.Loc[1] == "files" {
+				return true, ""
+			}
+		}
+	}
 	if resp.StatusCode >= 400 {
 		return false, fmt.Sprintf("MinerU 服务返回状态 %d", resp.StatusCode)
 	}
