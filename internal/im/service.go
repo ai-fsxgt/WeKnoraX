@@ -3004,7 +3004,8 @@ func (s *Service) handleMessageStream(
 		e.assistantMessageID = assistantMsg.ID
 	}
 	s.storeInflightMapping(qaCtx, userKey, session.ID, assistantMsg.ID)
-	defer s.clearInflightMapping(context.WithoutCancel(ctx), userKey)
+	// User cancellation permits cleanup; lost lock ownership does not.
+	defer s.clearInflightMapping(redislock.OwnershipContext(ctx), userKey)
 
 	// Start StreamManager stop watcher — mirrors web's handleAgentEventsForSSE
 	// stop detection. Cancels qaCtx if a stop event is written by any instance.
