@@ -63,18 +63,18 @@ func (s *Service) validateQABinding(ctx context.Context, bindingID, sessionID st
 	return nil
 }
 
-// A cutoff cancels all already-queued turns without consuming the next message
-// sent after /stop or /clear. Keep it until expiry for workers on other instances.
+// Each stop replaces the shared marker. Comparing generations cancels older
+// requests without comparing wall clocks or consuming a newer request's marker.
 func (s *Service) unifiedRequestStopped(ctx context.Context, req *qaRequest) (bool, error) {
 	if s.redis == nil {
 		return false, nil
 	}
-	cutoff, err := s.redis.Get(ctx, RedisKeyStop+req.userKey).Int64()
+	generation, err := s.redis.Get(ctx, RedisKeyStop+req.userKey).Result()
 	if err == redis.Nil {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return req.enqueuedAt.UnixNano() <= cutoff, nil
+	return generation != req.stopGeneration, nil
 }

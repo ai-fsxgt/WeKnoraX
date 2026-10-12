@@ -1549,7 +1549,7 @@ func (s *Service) cancelContextRequests(requestKey string) {
 	if s.redis != nil {
 		// Unified requests are checked against queueTimeout again after all waits,
 		// so an expired marker can never allow an old request to start answering.
-		if err := s.redis.Set(ctx, RedisKeyStop+requestKey, time.Now().UnixNano(), queueTimeout).Err(); err != nil {
+		if err := s.redis.Set(ctx, RedisKeyStop+requestKey, uuid.New().String(), queueTimeout).Err(); err != nil {
 			logger.Warnf(ctx, "[IM] Failed to signal context cancellation: %v", err)
 		}
 	}
@@ -1949,7 +1949,7 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		qaCancel()
 		logger.Warnf(ctx, "[IM] Queue rejected: user=%s reason=%v", msg.UserID, enqueueErr)
 		_ = adapter.SendReply(ctx, msg, &ReplyMessage{
-			Content: "当前排队人数较多，请稍后再试。",
+			Content: "当前暂时无法接收消息，请稍后再试。",
 			IsFinal: true,
 		})
 		return nil

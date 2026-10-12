@@ -54,6 +54,8 @@ type qaRequest struct {
 	userKey       string
 	enqueuedAt    time.Time
 	queueTimedOut bool
+	// stopGeneration is the Redis cancellation marker observed at admission.
+	stopGeneration string
 }
 
 // QueueMetrics exposes observable queue state.
@@ -140,8 +142,17 @@ func (q *qaQueue) Stop() {
 }
 
 // Enqueue adds a request to the queue. Returns the queue position (0-based)
-// or an error if the queue is full or per-user limit is reached.
+// or an error if admission fails, the queue is full or the per-user limit is reached.
 func (q *qaQueue) Enqueue(req *qaRequest) (position int, err error) {
+	req.enqueuedAt = time.Now()
+	if req.serialize && q.redis != nil {
+		generation, err := q.redis.Get(req.ctx, RedisKeyStop+req.userKey).Result()
+		if err != nil && err != redis.Nil {
+			q.totalRejected.Add(1)
+			return 0, fmt.Errorf("read conversation cancellation marker: %w", err)
+		}
+		req.stopGeneration = generation
+	}
 	// Check global per-user limit via Redis before acquiring local lock.
 	if q.redis != nil {
 		if err := q.redisCheckAndIncrUser(context.Background(), req.userKey); err != nil {
@@ -172,7 +183,6 @@ func (q *qaQueue) Enqueue(req *qaRequest) (position int, err error) {
 		return 0, fmt.Errorf("per-user queue limit reached (%d/%d)", q.perUser[req.userKey], q.maxPerUser)
 	}
 
-	req.enqueuedAt = time.Now()
 	q.queue = append(q.queue, req)
 	if q.redis == nil {
 		q.perUser[req.userKey]++
