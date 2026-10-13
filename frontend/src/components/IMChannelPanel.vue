@@ -209,6 +209,21 @@
         </template>
       </div>
     </SettingDrawer>
+    <t-dialog
+      :visible="bindingModeConfirmVisible && drawerVisible"
+      :header="t('imAdmin.bindingModeChangeTitle')"
+      :body="t('imAdmin.bindingModeChangeConfirm', { channel: editingChannel?.name })"
+      :confirm-btn="{ content: t('imAdmin.bindingModeChangeAction'), theme: 'danger' }"
+      :cancel-btn="{ content: t('common.cancel'), disabled: saving }"
+      :confirm-loading="saving"
+      :close-btn="!saving"
+      :close-on-esc-keydown="!saving"
+      :close-on-overlay-click="false"
+      :z-index="3000"
+      theme="warning"
+      @confirm="saveChannel(true)"
+      @close="bindingModeConfirmVisible = false"
+    />
   </div>
 </template>
 
@@ -246,6 +261,7 @@ const loading = ref(false)
 const saving = ref(false)
 const togglingId = ref('')
 const drawerVisible = ref(false)
+const bindingModeConfirmVisible = ref(false)
 const editingChannel = ref<IMChannelSummary | null>(null)
 const step = ref(0)
 const wechatLoading = ref(false)
@@ -365,6 +381,7 @@ function supportsGroupChat(platform: IMPlatform, mode: string) {
 
 function resetForm() {
   stopWeChatPolling()
+  bindingModeConfirmVisible.value = false
   Object.assign(form, {
     platform: 'wecom',
     name: '',
@@ -444,7 +461,15 @@ async function confirmStep() {
     MessagePlugin.warning(t('agentEditor.im.wechatScanBind'))
     return
   }
+  if (editingChannel.value && form.binding_mode !== editingChannel.value.binding_mode) {
+    bindingModeConfirmVisible.value = true
+    return
+  }
+  await saveChannel(false)
+}
 
+async function saveChannel(confirmBindingReset: boolean) {
+  if (saving.value) return
   saving.value = true
   try {
     const payload = {
@@ -456,7 +481,10 @@ async function confirmStep() {
       credentials: cleanedCredentials(),
     }
     if (editingChannel.value) {
-      await updateSystemIMChannel(editingChannel.value.id, payload)
+      await updateSystemIMChannel(editingChannel.value.id, {
+        ...payload,
+        confirm_binding_reset: confirmBindingReset,
+      })
       MessagePlugin.success(t('common.updateSuccess'))
     } else {
       await createSystemIMChannel({ ...payload, platform: form.platform })
@@ -465,8 +493,11 @@ async function confirmStep() {
     closeDrawer()
     await loadChannels()
   } catch (error: any) {
-    MessagePlugin.error(error?.message === 'binding_mode_in_use'
-      ? t('imAdmin.bindingModeInUse')
+    if (error?.message === 'binding_mode_confirmation_required') {
+      bindingModeConfirmVisible.value = true
+    }
+    MessagePlugin.error(error?.message === 'binding_mode_confirmation_required'
+      ? t('imAdmin.bindingModeConfirmationRequired')
       : error?.message || t('common.operationFailed'))
   } finally {
     saving.value = false
