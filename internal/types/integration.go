@@ -33,7 +33,7 @@ type IntegrationApplication struct {
 	RedirectURIs     StringArray                 `json:"redirect_uris" gorm:"type:jsonb;not null;default:'[]'"`
 	AllowedScopes    StringArray                 `json:"allowed_scopes" gorm:"type:jsonb;not null;default:'[]'"`
 	RetrievalConfig  *IntegrationRetrievalConfig `json:"retrieval_config" gorm:"type:jsonb"`
-	Enabled          bool                        `json:"enabled" gorm:"not null;default:true"`
+	Enabled          bool                        `json:"enabled" gorm:"not null"`
 	CreatedBy        string                      `json:"created_by" gorm:"type:varchar(36);not null"`
 	CreatedAt        time.Time                   `json:"created_at"`
 	UpdatedAt        time.Time                   `json:"updated_at"`
@@ -48,7 +48,7 @@ type TenantIntegrationPolicy struct {
 	ID            string      `json:"id" gorm:"type:varchar(36);primaryKey"`
 	ApplicationID string      `json:"application_id" gorm:"type:varchar(36);not null;uniqueIndex:uq_int_policy"`
 	TenantID      uint64      `json:"tenant_id" gorm:"not null;uniqueIndex:uq_int_policy"`
-	Enabled       bool        `json:"enabled" gorm:"not null;default:true"`
+	Enabled       bool        `json:"enabled" gorm:"not null"`
 	AllowedScopes StringArray `json:"allowed_scopes" gorm:"type:jsonb;not null;default:'[]'"`
 	CreatedAt     time.Time   `json:"created_at"`
 	UpdatedAt     time.Time   `json:"updated_at"`

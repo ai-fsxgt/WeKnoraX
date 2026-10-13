@@ -196,7 +196,7 @@ type IntegrationService struct {
 	kbShareService interfaces.KBShareService
 	tenantService  interfaces.TenantService
 	memberService  interfaces.TenantMemberService
-	modelService   interfaces.ModelService
+	modelRepo      interfaces.ModelRepository
 	lastUsedTouch  sync.Map
 }
 
@@ -209,12 +209,12 @@ func NewIntegrationService(
 	tenantService interfaces.TenantService,
 	memberService interfaces.TenantMemberService,
 	kbShareService interfaces.KBShareService,
-	modelService interfaces.ModelService,
+	modelRepo interfaces.ModelRepository,
 ) *IntegrationService {
 	return &IntegrationService{
 		repo: repo, userRepo: userRepo, kbRepo: kbRepo, kbShareRepo: kbShareRepo,
 		tenantService: tenantService, memberService: memberService,
-		kbShareService: kbShareService, modelService: modelService,
+		kbShareService: kbShareService, modelRepo: modelRepo,
 	}
 }
 

@@ -26,7 +26,9 @@ func (s *IntegrationService) prepareRetrievalConfig(
 		c.FAQScoreBoost < 1 || c.FAQScoreBoost > 2 {
 		return nil, fmt.Errorf("%w: invalid retrieval parameters", ErrIntegrationInvalidApplication)
 	}
-	models, err := s.modelService.ListModels(ctx)
+	// Application administration has no workspace context. Tenant 0 lists
+	// global models; resolveIntegrationRetrievalModels keeps only active built-ins.
+	models, err := s.modelRepo.List(ctx, 0, "", "")
 	if err != nil {
 		return nil, err
 	}
