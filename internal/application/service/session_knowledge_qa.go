@@ -845,12 +845,18 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 		return []*types.SearchResult{}, nil
 	}
 
-	// Create default retrieval parameters — prefer tenant RetrievalConfig, fallback to built-in defaults
+	// Third-party applications carry their own policy; other callers use workspace settings.
 	userID := types.SessionOwnerIDFromContext(ctx)
 
 	// Load tenant-level retrieval config (nil is safe — GetEffective* methods handle nil receiver)
 	var rc *types.RetrievalConfig
-	if tenant, err2 := s.tenantService.GetTenantByID(ctx, tenantID); err2 == nil {
+	retrievalValue := ctx.Value(types.IntegrationRetrievalConfigContextKey)
+	integrationConfig, integrationSearch := retrievalValue.(*types.IntegrationRetrievalConfig)
+	if !integrationSearch {
+		tenant, err := s.tenantService.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
 		rc = tenant.RetrievalConfig
 	}
 
@@ -880,8 +886,33 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 		return nil, err
 	}
 
-	// Use rerank model from RetrievalConfig if set, otherwise auto-select the first available
-	if rc != nil && rc.RerankModelID != "" {
+	if integrationSearch {
+		if integrationConfig == nil {
+			integrationConfig, err = types.DefaultIntegrationRetrievalConfig()
+			if err != nil {
+				return nil, err
+			}
+		}
+		c := *integrationConfig
+		if err := resolveIntegrationRetrievalModels(&c, models); err != nil {
+			return nil, err
+		}
+		chatManage.TenantID = tenantID
+		chatManage.MaxRounds = 0
+		chatManage.EmbeddingTopK = c.EmbeddingTopK
+		chatManage.VectorThreshold = c.VectorThreshold
+		chatManage.KeywordThreshold = c.KeywordThreshold
+		chatManage.RerankTopK = c.RerankTopK
+		chatManage.RerankThreshold = c.RerankThreshold
+		chatManage.RerankModelID = c.RerankModelID
+		chatManage.EnableRewrite = c.EnableRewrite
+		chatManage.QueryUnderstandModelID = c.QueryUnderstandModelID
+		chatManage.RewritePromptSystem = s.cfg.Conversation.RewritePromptSystem
+		chatManage.RewritePromptUser = s.cfg.Conversation.RewritePromptUser
+		chatManage.EnableQueryExpansion = c.EnableQueryExpansion
+		chatManage.FAQPriorityEnabled = c.FAQPriorityEnabled
+		chatManage.FAQScoreBoost = c.FAQScoreBoost
+	} else if rc != nil && rc.RerankModelID != "" {
 		chatManage.RerankModelID = rc.RerankModelID
 	} else {
 		for _, model := range models {
@@ -901,6 +932,11 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 		types.CHUNK_RERANK, // Rerank search results
 		types.CHUNK_MERGE,  // Merge search results
 		types.FILTER_TOP_K, // Filter top K results
+	}
+
+	if integrationSearch {
+		searchEvents[0] = types.CHUNK_SEARCH_PARALLEL
+		searchEvents = append([]types.EventType{types.QUERY_UNDERSTAND}, searchEvents...)
 	}
 
 	logger.Infof(ctx, "Trigger search event list: %v", searchEvents)

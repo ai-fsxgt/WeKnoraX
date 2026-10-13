@@ -25,17 +25,18 @@ const (
 // IntegrationApplication is a SystemAdmin-registered OAuth-style client.
 // ClientSecretHash is never serialized; the plaintext secret is returned once.
 type IntegrationApplication struct {
-	ID               string      `json:"id" gorm:"type:varchar(36);primaryKey"`
-	ClientID         string      `json:"client_id" gorm:"type:varchar(64);not null;uniqueIndex"`
-	ClientSecretHash string      `json:"-" gorm:"type:varchar(64);not null"`
-	Name             string      `json:"name" gorm:"type:varchar(128);not null"`
-	Description      string      `json:"description" gorm:"type:text;not null;default:''"`
-	RedirectURIs     StringArray `json:"redirect_uris" gorm:"type:jsonb;not null;default:'[]'"`
-	AllowedScopes    StringArray `json:"allowed_scopes" gorm:"type:jsonb;not null;default:'[]'"`
-	Enabled          bool        `json:"enabled" gorm:"not null;default:true"`
-	CreatedBy        string      `json:"created_by" gorm:"type:varchar(36);not null"`
-	CreatedAt        time.Time   `json:"created_at"`
-	UpdatedAt        time.Time   `json:"updated_at"`
+	ID               string                      `json:"id" gorm:"type:varchar(36);primaryKey"`
+	ClientID         string                      `json:"client_id" gorm:"type:varchar(64);not null;uniqueIndex"`
+	ClientSecretHash string                      `json:"-" gorm:"type:varchar(64);not null"`
+	Name             string                      `json:"name" gorm:"type:varchar(128);not null"`
+	Description      string                      `json:"description" gorm:"type:text;not null;default:''"`
+	RedirectURIs     StringArray                 `json:"redirect_uris" gorm:"type:jsonb;not null;default:'[]'"`
+	AllowedScopes    StringArray                 `json:"allowed_scopes" gorm:"type:jsonb;not null;default:'[]'"`
+	RetrievalConfig  *IntegrationRetrievalConfig `json:"retrieval_config" gorm:"type:jsonb"`
+	Enabled          bool                        `json:"enabled" gorm:"not null;default:true"`
+	CreatedBy        string                      `json:"created_by" gorm:"type:varchar(36);not null"`
+	CreatedAt        time.Time                   `json:"created_at"`
+	UpdatedAt        time.Time                   `json:"updated_at"`
 }
 
 // TableName returns the integration application table name.

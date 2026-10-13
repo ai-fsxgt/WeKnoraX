@@ -40,6 +40,8 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// Per-API-key operation and KB scopes: a restriction, so dropping it would
 	// hand background work broader reach than the key it came from.
 	TenantAPIKeyScopeContextKey: true,
+	// Search handlers detach the authenticated application retrieval policy.
+	IntegrationRetrievalConfigContextKey: true,
 
 	// Session scope. SessionTenantID re-scopes session/message lookups, while
 	// SandboxTenantID keys the session→sandbox binding to the session owner

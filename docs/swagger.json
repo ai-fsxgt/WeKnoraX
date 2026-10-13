@@ -13023,6 +13023,177 @@
                 }
             }
         },
+        "/system/admin/integration-applications": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "第三方集成"
+                ],
+                "summary": "列出第三方应用",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "注册应用并仅在本次响应中返回客户端密钥",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "第三方集成"
+                ],
+                "summary": "注册第三方应用",
+                "parameters": [
+                    {
+                        "description": "应用配置",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_application_service.IntegrationApplicationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/system/admin/integration-applications/retrieval-defaults": {
+            "get": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "第三方集成"
+                ],
+                "summary": "获取第三方应用的系统默认检索配置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "data": {
+                                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.IntegrationRetrievalConfig"
+                                },
+                                "success": {
+                                    "type": "boolean"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/system/admin/integration-applications/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "第三方集成"
+                ],
+                "summary": "更新第三方应用",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "应用 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "应用配置",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_application_service.IntegrationApplicationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "删除应用及其关联的授权、连接和访问凭证",
+                "tags": [
+                    "第三方集成"
+                ],
+                "summary": "删除第三方应用",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "应用 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/system/admin/list": {
             "get": {
                 "description": "Retrieve a paginated list of users with system administrator\nprivileges (SystemAdmin only). Supports `offset` (default 0)\nand `limit` (default 50, max 200) query parameters. Walks the\npartial-friendly idx_users_is_system_admin index.",
@@ -16101,6 +16272,40 @@
         }
     },
     "definitions": {
+        "github_com_Tencent_WeKnora_internal_application_service.IntegrationApplicationInput": {
+            "type": "object",
+            "properties": {
+                "allowed_scopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "redirect_uris": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "retrieval_config": {
+                    "description": "Nil initializes the application from the system quick-answer template.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.IntegrationRetrievalConfig"
+                        }
+                    ]
+                }
+            }
+        },
         "github_com_Tencent_WeKnora_internal_application_service.WikiLintIssue": {
             "type": "object",
             "properties": {
@@ -17768,6 +17973,44 @@
                 "wiki_enabled": {
                     "description": "WikiEnabled enables automatic wiki page generation from documents",
                     "type": "boolean"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.IntegrationRetrievalConfig": {
+            "type": "object",
+            "properties": {
+                "embedding_top_k": {
+                    "type": "integer"
+                },
+                "enable_query_expansion": {
+                    "type": "boolean"
+                },
+                "enable_rewrite": {
+                    "type": "boolean"
+                },
+                "faq_priority_enabled": {
+                    "type": "boolean"
+                },
+                "faq_score_boost": {
+                    "type": "number"
+                },
+                "keyword_threshold": {
+                    "type": "number"
+                },
+                "query_understand_model_id": {
+                    "type": "string"
+                },
+                "rerank_model_id": {
+                    "type": "string"
+                },
+                "rerank_threshold": {
+                    "type": "number"
+                },
+                "rerank_top_k": {
+                    "type": "integer"
+                },
+                "vector_threshold": {
+                    "type": "number"
                 }
             }
         },

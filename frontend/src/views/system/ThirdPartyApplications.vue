@@ -80,6 +80,7 @@
       icon="link"
       width="620px"
       :confirm-loading="saving"
+      :confirm-disabled="retrievalLoading || !retrievalConfig"
       @confirm="saveApplication"
     >
       <div class="form-stack">
@@ -108,6 +109,46 @@
           <t-checkbox v-model="writeScope">
             {{ t(integrationScopeLabelKeys['knowledge.write']) }}
           </t-checkbox>
+        </div>
+
+        <div v-if="readScope" class="retrieval-section">
+          <t-button
+            variant="text"
+            theme="default"
+            :aria-expanded="retrievalExpanded"
+            @click="retrievalExpanded = !retrievalExpanded"
+          >
+            <template #icon><t-icon :name="retrievalExpanded ? 'chevron-down' : 'chevron-right'" /></template>
+            {{ t('thirdPartyIntegration.retrieval.title') }}
+          </t-button>
+          <p class="field-hint">{{ t('thirdPartyIntegration.retrieval.description') }}</p>
+          <t-loading :loading="retrievalLoading" show-overlay>
+            <div v-if="retrievalExpanded && retrievalConfig" class="retrieval-fields">
+              <label>{{ t('agent.editor.rerankModel') }}</label>
+              <t-select
+                v-model="retrievalConfig.rerank_model_id"
+                :options="modelOptions('Rerank')"
+                :placeholder="t('thirdPartyIntegration.retrieval.defaultModel')"
+                clearable
+                filterable
+              />
+              <div class="switch-row">
+                <label>{{ t('agent.editor.enableRewrite') }}</label>
+                <t-switch v-model="retrievalConfig.enable_rewrite" />
+              </div>
+              <template v-if="retrievalConfig.enable_rewrite">
+                <label>{{ t('agent.editor.queryUnderstandModel') }}</label>
+                <t-select
+                  v-model="retrievalConfig.query_understand_model_id"
+                  :options="modelOptions('KnowledgeQA')"
+                  :placeholder="t('thirdPartyIntegration.retrieval.defaultModel')"
+                  clearable
+                  filterable
+                />
+              </template>
+              <RetrievalSettingsFields :config="retrievalConfig" :show-direct-answer="false" />
+            </div>
+          </t-loading>
         </div>
 
         <div class="switch-row">
@@ -142,22 +183,26 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
 import SettingDrawer from '@/components/settings/SettingDrawer.vue'
+import RetrievalSettingsFields from '@/components/settings/RetrievalSettingsFields.vue'
+import { listModels, type ModelConfig } from '@/api/model'
 import { copyWithToast } from '@/utils/clipboard'
 import { integrationScopeLabelKeys } from '@/utils/integrationScope'
 import {
   createIntegrationApplication,
   deleteIntegrationApplication,
   listIntegrationApplications,
+  getIntegrationRetrievalDefaults,
   rotateIntegrationApplicationSecret,
   testIntegrationApplicationCallbacks,
   updateIntegrationApplication,
   type IntegrationApplication,
   type IntegrationApplicationInput,
   type IntegrationScope,
+  type IntegrationRetrievalConfig,
 } from '@/api/integration'
 
 const { t } = useI18n()
@@ -176,6 +221,47 @@ const secretVisible = ref(false)
 const createdSecret = ref('')
 const secretClientID = ref('')
 const form = reactive({ name: '', description: '', enabled: true })
+const retrievalConfig = ref<IntegrationRetrievalConfig | null>(null)
+const retrievalExpanded = ref(false)
+const retrievalLoading = ref(false)
+const systemModels = ref<ModelConfig[]>([])
+let editorVersion = 0
+
+function modelOptions(type: ModelConfig['type']) {
+  return systemModels.value.filter(model => model.type === type).map(model => ({
+    value: model.id!,
+    label: model.display_name || model.name,
+  }))
+}
+
+async function loadRetrievalConfig(app?: IntegrationApplication) {
+  const version = ++editorVersion
+  retrievalExpanded.value = false
+  retrievalConfig.value = null
+  retrievalLoading.value = true
+  try {
+    const [configuration, models] = await Promise.all([
+      app?.retrieval_config
+        ? Promise.resolve({ data: app.retrieval_config })
+        : getIntegrationRetrievalDefaults(),
+      listModels(),
+    ])
+    if (version !== editorVersion) return
+    retrievalConfig.value = { ...configuration.data }
+    systemModels.value = models.filter(model => model.is_builtin && model.status === 'active')
+  } catch (error: any) {
+    if (version === editorVersion) {
+      MessagePlugin.error(error?.message || t('thirdPartyIntegration.retrieval.loadFailed'))
+    }
+  } finally {
+    if (version === editorVersion) retrievalLoading.value = false
+  }
+}
+
+watch(drawerVisible, visible => {
+  if (!visible) editorVersion++
+}, { flush: 'sync' })
+onUnmounted(() => { editorVersion++ })
 
 function scopeLabels(scopes: IntegrationScope[]) {
   return scopes.map(scope => t(integrationScopeLabelKeys[scope])).join(' · ')
@@ -193,11 +279,14 @@ function resetForm() {
 }
 
 function openCreate() {
+  if (saving.value) return
   resetForm()
   drawerVisible.value = true
+  void loadRetrievalConfig()
 }
 
 function openEdit(app: IntegrationApplication) {
+  if (saving.value) return
   editingId.value = app.id
   form.name = app.name
   form.description = app.description
@@ -207,6 +296,7 @@ function openEdit(app: IntegrationApplication) {
   chatScope.value = app.allowed_scopes.includes('knowledge.chat')
   writeScope.value = app.allowed_scopes.includes('knowledge.write')
   drawerVisible.value = true
+  void loadRetrievalConfig(app)
 }
 
 function applicationInput(): IntegrationApplicationInput | null {
@@ -227,6 +317,11 @@ function applicationInput(): IntegrationApplicationInput | null {
       ...(chatScope.value ? ['knowledge.chat' as const] : []),
       ...(writeScope.value ? ['knowledge.write' as const] : []),
     ],
+    retrieval_config: retrievalConfig.value ? {
+      ...retrievalConfig.value,
+      rerank_model_id: retrievalConfig.value.rerank_model_id || '',
+      query_understand_model_id: retrievalConfig.value.query_understand_model_id || '',
+    } : null,
     enabled: form.enabled,
   }
 }
@@ -244,6 +339,7 @@ async function loadApplications() {
 }
 
 async function saveApplication() {
+  if (saving.value || retrievalLoading.value || !retrievalConfig.value) return
   const input = applicationInput()
   if (!input) return
   saving.value = true
@@ -384,6 +480,8 @@ onMounted(loadApplications)
 .scope-options { display: flex; flex-wrap: wrap; gap: 22px; padding: 12px; border-radius: 8px; background: var(--td-bg-color-secondarycontainer); }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 8px; }
 .switch-row .field-hint { margin: 4px 0 0; }
+.retrieval-section { margin-top: 8px; padding: 12px; border: 1px solid var(--td-component-stroke); border-radius: 8px; }
+.retrieval-fields { display: grid; gap: 10px; padding-top: 12px; }
 .secret-field { display: grid; gap: 6px; margin-top: 16px; }
 .secret-field span { color: var(--td-text-color-secondary); font-size: 13px; }
 .secret-field code { padding: 10px 12px; overflow-wrap: anywhere; border-radius: 6px; background: var(--td-bg-color-secondarycontainer); }
