@@ -19,8 +19,8 @@ definitions:
       retrieval_config:
         allOf:
         - $ref: '#/definitions/github_com_Tencent_WeKnora_internal_types.IntegrationRetrievalConfig'
-        description: Nil initializes the application from the system quick-answer
-          template.
+        description: Nil uses system defaults on creation and preserves the saved
+          configuration on update.
     type: object
   github_com_Tencent_WeKnora_internal_application_service.WikiLintIssue:
     properties:

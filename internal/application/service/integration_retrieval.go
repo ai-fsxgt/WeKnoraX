@@ -36,6 +36,49 @@ func (s *IntegrationService) prepareRetrievalConfig(
 	return &c, nil
 }
 
+// applyIntegrationRetrievalConfig shares application settings between search and knowledge QA.
+func (s *sessionService) applyIntegrationRetrievalConfig(ctx context.Context, cm *types.ChatManage) error {
+	retrievalValue := ctx.Value(types.IntegrationRetrievalConfigContextKey)
+	config, integrationRequest := retrievalValue.(*types.IntegrationRetrievalConfig)
+	if !integrationRequest {
+		return nil
+	}
+	if config == nil {
+		var err error
+		config, err = types.DefaultIntegrationRetrievalConfig()
+		if err != nil {
+			return err
+		}
+	}
+	models, err := s.modelService.ListModels(ctx)
+	if err != nil {
+		return err
+	}
+	c := *config
+	if err := resolveIntegrationRetrievalModels(&c, models); err != nil {
+		return err
+	}
+	quickAnswer := types.GetBuiltinAgent(types.BuiltinQuickAnswerID, 0)
+	if quickAnswer == nil {
+		return fmt.Errorf("system quick-answer template is unavailable")
+	}
+	cm.EmbeddingTopK = c.EmbeddingTopK
+	cm.VectorThreshold = c.VectorThreshold
+	cm.KeywordThreshold = c.KeywordThreshold
+	cm.RerankTopK = c.RerankTopK
+	cm.RerankThreshold = c.RerankThreshold
+	cm.RerankModelID = c.RerankModelID
+	cm.EnableRewrite = c.EnableRewrite
+	cm.QueryUnderstandModelID = c.QueryUnderstandModelID
+	cm.RewritePromptSystem = s.cfg.Conversation.RewritePromptSystem
+	cm.RewritePromptUser = s.cfg.Conversation.RewritePromptUser
+	cm.EnableQueryExpansion = c.EnableQueryExpansion
+	cm.FAQPriorityEnabled = c.FAQPriorityEnabled
+	cm.FAQDirectAnswerThreshold = quickAnswer.Config.FAQDirectAnswerThreshold
+	cm.FAQScoreBoost = c.FAQScoreBoost
+	return nil
+}
+
 // Applications are global: their model choices must be active system models,
 // accessible in every authorized workspace. Blank IDs select the system default.
 func resolveIntegrationRetrievalModels(c *types.IntegrationRetrievalConfig, models []*types.Model) error {

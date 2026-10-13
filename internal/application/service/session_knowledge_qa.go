@@ -152,6 +152,9 @@ func (s *sessionService) KnowledgeQA(
 	// Apply custom agent overrides (system prompt, temperature, retrieval params,
 	// rewrite, fallback, FAQ strategy, history turns)
 	s.applyAgentOverridesToChatManage(ctx, req.CustomAgent, chatManage)
+	if err := s.applyIntegrationRetrievalConfig(ctx, chatManage); err != nil {
+		return err
+	}
 
 	// An agent may opt out of long-term memory. The preference is per-request
 	// rather than per-user, so it travels in the context that the recall
@@ -851,7 +854,7 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 	// Load tenant-level retrieval config (nil is safe — GetEffective* methods handle nil receiver)
 	var rc *types.RetrievalConfig
 	retrievalValue := ctx.Value(types.IntegrationRetrievalConfigContextKey)
-	integrationConfig, integrationSearch := retrievalValue.(*types.IntegrationRetrievalConfig)
+	_, integrationSearch := retrievalValue.(*types.IntegrationRetrievalConfig)
 	if !integrationSearch {
 		tenant, err := s.tenantService.GetTenantByID(ctx, tenantID)
 		if err != nil {
@@ -879,49 +882,29 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 		},
 	}
 
-	// Get default models
-	models, err := s.modelService.ListModels(ctx)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to get models: %v", err)
-		return nil, err
-	}
-
 	if integrationSearch {
-		if integrationConfig == nil {
-			integrationConfig, err = types.DefaultIntegrationRetrievalConfig()
-			if err != nil {
-				return nil, err
-			}
-		}
-		c := *integrationConfig
-		if err := resolveIntegrationRetrievalModels(&c, models); err != nil {
+		if err := s.applyIntegrationRetrievalConfig(ctx, chatManage); err != nil {
 			return nil, err
 		}
 		chatManage.TenantID = tenantID
 		chatManage.MaxRounds = 0
-		chatManage.EmbeddingTopK = c.EmbeddingTopK
-		chatManage.VectorThreshold = c.VectorThreshold
-		chatManage.KeywordThreshold = c.KeywordThreshold
-		chatManage.RerankTopK = c.RerankTopK
-		chatManage.RerankThreshold = c.RerankThreshold
-		chatManage.RerankModelID = c.RerankModelID
-		chatManage.EnableRewrite = c.EnableRewrite
-		chatManage.QueryUnderstandModelID = c.QueryUnderstandModelID
-		chatManage.RewritePromptSystem = s.cfg.Conversation.RewritePromptSystem
-		chatManage.RewritePromptUser = s.cfg.Conversation.RewritePromptUser
-		chatManage.EnableQueryExpansion = c.EnableQueryExpansion
-		chatManage.FAQPriorityEnabled = c.FAQPriorityEnabled
-		chatManage.FAQScoreBoost = c.FAQScoreBoost
-	} else if rc != nil && rc.RerankModelID != "" {
-		chatManage.RerankModelID = rc.RerankModelID
 	} else {
-		for _, model := range models {
-			if model == nil {
-				continue
-			}
-			if model.Type == types.ModelTypeRerank {
-				chatManage.RerankModelID = model.ID
-				break
+		models, err := s.modelService.ListModels(ctx)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to get models: %v", err)
+			return nil, err
+		}
+		if rc != nil && rc.RerankModelID != "" {
+			chatManage.RerankModelID = rc.RerankModelID
+		} else {
+			for _, model := range models {
+				if model == nil {
+					continue
+				}
+				if model.Type == types.ModelTypeRerank {
+					chatManage.RerankModelID = model.ID
+					break
+				}
 			}
 		}
 	}

@@ -16304,7 +16304,7 @@ const docTemplate = `{
                     }
                 },
                 "retrieval_config": {
-                    "description": "Nil initializes the application from the system quick-answer template.",
+                    "description": "Nil uses system defaults on creation and preserves the saved configuration on update.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.IntegrationRetrievalConfig"

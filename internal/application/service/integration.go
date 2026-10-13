@@ -65,7 +65,7 @@ type IntegrationApplicationInput struct {
 	RedirectURIs  []string `json:"redirect_uris"`
 	AllowedScopes []string `json:"allowed_scopes"`
 	Enabled       bool     `json:"enabled"`
-	// Nil initializes the application from the system quick-answer template.
+	// Nil uses system defaults on creation and preserves the saved configuration on update.
 	RetrievalConfig *types.IntegrationRetrievalConfig `json:"retrieval_config"`
 }
 
@@ -271,11 +271,13 @@ func (s *IntegrationService) UpdateApplication(
 	if err != nil {
 		return nil, err
 	}
-	retrievalConfig, err := s.prepareRetrievalConfig(ctx, input.RetrievalConfig)
-	if err != nil {
-		return nil, err
+	if input.RetrievalConfig != nil {
+		retrievalConfig, err := s.prepareRetrievalConfig(ctx, input.RetrievalConfig)
+		if err != nil {
+			return nil, err
+		}
+		app.RetrievalConfig = retrievalConfig
 	}
-	app.RetrievalConfig = retrievalConfig
 	app.Name = name
 	app.Description = strings.TrimSpace(input.Description)
 	app.RedirectURIs = redirectURIs
