@@ -38,6 +38,22 @@ func (h *IntegrationHandler) ListApplications(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": apps})
 }
 
+// GetRetrievalDefaults godoc
+// @Summary 获取第三方应用的系统默认检索配置
+// @Tags 第三方集成
+// @Produce json
+// @Success 200 {object} object{success=boolean,data=types.IntegrationRetrievalConfig}
+// @Security Bearer
+// @Router /system/admin/integration-applications/retrieval-defaults [get]
+func (h *IntegrationHandler) GetRetrievalDefaults(c *gin.Context) {
+	configuration, err := types.DefaultIntegrationRetrievalConfig()
+	if err != nil {
+		writeIntegrationError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": configuration})
+}
+
 // CreateApplication godoc
 // @Summary 注册第三方应用
 // @Description 注册应用并仅在本次响应中返回客户端密钥

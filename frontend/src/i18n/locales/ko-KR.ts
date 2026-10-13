@@ -4709,6 +4709,12 @@ export default {
     noCompatibleKbForAgent: '현재 에이전트의 도구와 범위 내 지식베이스의 기능이 일치하지 않아 참조할 수 있는 지식베이스가 없습니다.'
   },
   thirdPartyIntegration: {
+    retrieval: {
+      title: '고급 검색 설정',
+      description: '시스템 내장 빠른 답변의 기본 검색 전략을 사용합니다. 펼쳐서 변경할 수 있으며 저장한 설정은 이 앱의 모든 연결에 적용됩니다.',
+      defaultModel: '시스템 기본 모델 자동 선택',
+      loadFailed: '검색 설정을 불러오지 못했습니다',
+    },
     system: {
       navLabel: '서드파티 앱', title: '서드파티 앱',
       description: '신뢰할 수 있는 외부 시스템과 콜백 주소 및 요청 가능 권한을 관리합니다.',

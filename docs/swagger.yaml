@@ -1,5 +1,27 @@
 basePath: /api/v1
 definitions:
+  github_com_Tencent_WeKnora_internal_application_service.IntegrationApplicationInput:
+    properties:
+      allowed_scopes:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      enabled:
+        type: boolean
+      name:
+        type: string
+      redirect_uris:
+        items:
+          type: string
+        type: array
+      retrieval_config:
+        allOf:
+        - $ref: '#/definitions/github_com_Tencent_WeKnora_internal_types.IntegrationRetrievalConfig'
+        description: Nil uses system defaults on creation and preserves the saved
+          configuration on update.
+    type: object
   github_com_Tencent_WeKnora_internal_application_service.WikiLintIssue:
     properties:
       auto_fixable:
@@ -1389,6 +1411,31 @@ definitions:
       wiki_enabled:
         description: WikiEnabled enables automatic wiki page generation from documents
         type: boolean
+    type: object
+  github_com_Tencent_WeKnora_internal_types.IntegrationRetrievalConfig:
+    properties:
+      embedding_top_k:
+        type: integer
+      enable_query_expansion:
+        type: boolean
+      enable_rewrite:
+        type: boolean
+      faq_priority_enabled:
+        type: boolean
+      faq_score_boost:
+        type: number
+      keyword_threshold:
+        type: number
+      query_understand_model_id:
+        type: string
+      rerank_model_id:
+        type: string
+      rerank_threshold:
+        type: number
+      rerank_top_k:
+        type: integer
+      vector_threshold:
+        type: number
     type: object
   github_com_Tencent_WeKnora_internal_types.InviteMemberRequest:
     properties:
@@ -14539,6 +14586,112 @@ paths:
       summary: 获取平台审计日志
       tags:
       - 审计日志
+  /system/admin/integration-applications:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 列出第三方应用
+      tags:
+      - 第三方集成
+    post:
+      consumes:
+      - application/json
+      description: 注册应用并仅在本次响应中返回客户端密钥
+      parameters:
+      - description: 应用配置
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_Tencent_WeKnora_internal_application_service.IntegrationApplicationInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 注册第三方应用
+      tags:
+      - 第三方集成
+  /system/admin/integration-applications/retrieval-defaults:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              data:
+                $ref: '#/definitions/github_com_Tencent_WeKnora_internal_types.IntegrationRetrievalConfig'
+              success:
+                type: boolean
+            type: object
+      security:
+      - Bearer: []
+      summary: 获取第三方应用的系统默认检索配置
+      tags:
+      - 第三方集成
+  /system/admin/integration-applications/{id}:
+    delete:
+      description: 删除应用及其关联的授权、连接和访问凭证
+      parameters:
+      - description: 应用 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 删除第三方应用
+      tags:
+      - 第三方集成
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 应用 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 应用配置
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_Tencent_WeKnora_internal_application_service.IntegrationApplicationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - Bearer: []
+      summary: 更新第三方应用
+      tags:
+      - 第三方集成
   /system/admin/list:
     get:
       description: |-

@@ -32,7 +32,7 @@ func TestUpdateBuiltinModel_RequiresSystemAdmin(t *testing.T) {
 			updated = true
 			return nil
 		},
-	}, nil, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil)
 
 	err := svc.UpdateModel(builtinModelContext(false), &types.Model{ID: stored.ID}, true)
 	require.Error(t, err)
@@ -55,7 +55,7 @@ func TestUpdateBuiltinModel_SystemAdminCreatesRuntimeOverride(t *testing.T) {
 			saved = &copy
 			return nil
 		},
-	}, nil, nil, nil, nil, nil)
+	}, nil, nil, nil, nil, nil, nil)
 
 	input := &types.Model{ID: stored.ID, Name: "edited"}
 	require.NoError(t, svc.UpdateModel(builtinModelContext(true), input, true))
@@ -83,7 +83,7 @@ func TestUpdateModelCredentialPreservation(t *testing.T) {
 					saved = &updated
 					return nil
 				},
-			}, nil, nil, nil, nil, nil)
+			}, nil, nil, nil, nil, nil, nil)
 			input := &types.Model{
 				ID: stored.ID,
 				Parameters: types.ModelParameters{
@@ -114,13 +114,13 @@ func TestUpdateModelCredentialPreservation(t *testing.T) {
 			Parameters: types.ModelParameters{APIKey: "original-key", AppSecret: "original-secret"},
 		}
 		require.NoError(t, repo.Create(ctx, stored))
-		svc1 := NewModelService(repo, nil, nil, nil, nil, nil)
+		svc1 := NewModelService(repo, nil, nil, nil, nil, nil, nil)
 		db2, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 		require.NoError(t, err)
-		svc2 := NewModelService(repository.NewModelRepository(db2), nil, nil, nil, nil, nil)
+		svc2 := NewModelService(repository.NewModelRepository(db2), nil, nil, nil, nil, nil, nil)
 		db3, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 		require.NoError(t, err)
-		svc3 := NewModelService(repository.NewModelRepository(db3), nil, nil, nil, nil, nil)
+		svc3 := NewModelService(repository.NewModelRepository(db3), nil, nil, nil, nil, nil, nil)
 		for _, conn := range []*gorm.DB{db, db2, db3} {
 			sqlDB, err := conn.DB()
 			require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestUpdateBuiltinModelCredentials_SystemAdminOnly(t *testing.T) {
 
 	t.Run("tenant admin denied", func(t *testing.T) {
 		stored := &types.Model{ID: "builtin-chat", TenantID: 10000, IsBuiltin: true}
-		svc := NewModelService(&stubModelRepoForDelete{model: stored}, nil, nil, nil, nil, nil)
+		svc := NewModelService(&stubModelRepoForDelete{model: stored}, nil, nil, nil, nil, nil, nil)
 		_, err := svc.UpdateModelCredentials(builtinModelContext(false), stored.ID, &newKey, nil)
 		require.Error(t, err)
 		appErr, ok := apperrors.IsAppError(err)
@@ -208,7 +208,7 @@ func TestUpdateBuiltinModelCredentials_SystemAdminOnly(t *testing.T) {
 				saved = &copy
 				return nil
 			},
-		}, nil, nil, nil, nil, nil)
+		}, nil, nil, nil, nil, nil, nil)
 
 		updated, err := svc.UpdateModelCredentials(
 			builtinModelContext(true), stored.ID, &newKey, nil,

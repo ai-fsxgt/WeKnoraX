@@ -313,6 +313,9 @@ func authenticateIntegrationCredential(
 			Capabilities:             capabilities,
 		},
 	})
+	c.Request = c.Request.WithContext(context.WithValue(
+		c.Request.Context(), types.IntegrationRetrievalConfigContextKey, session.Application.RetrievalConfig,
+	))
 	return true
 }
 

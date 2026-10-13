@@ -1956,6 +1956,12 @@ export default {
     }
   },
   thirdPartyIntegration: {
+    retrieval: {
+      title: 'Advanced retrieval settings',
+      description: 'Uses the system built-in Quick Answer retrieval defaults. Expand to customize; saved settings apply to all connections for this application.',
+      defaultModel: 'Select the system default automatically',
+      loadFailed: 'Failed to load retrieval settings',
+    },
     system: {
       navLabel: 'Third-party apps', title: 'Third-party apps',
       description: 'Register trusted systems and manage their callbacks and requestable permissions.',

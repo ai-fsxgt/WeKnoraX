@@ -4765,6 +4765,12 @@ export default {
     noCompatibleKbForAgent: '当前智能体的工具与作用域内知识库的能力不匹配，暂无可引用的知识库。'
   },
   thirdPartyIntegration: {
+    retrieval: {
+      title: '高级检索设置',
+      description: '默认采用系统内置快速问答的检索策略，可展开自定义；保存后对该应用的所有连接生效。',
+      defaultModel: '自动选择系统默认模型',
+      loadFailed: '加载检索配置失败',
+    },
     system: {
       navLabel: '第三方应用',
       title: '第三方应用',

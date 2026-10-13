@@ -16,6 +16,7 @@ func RegisterIntegrationRoutes(
 	admin := r.Group("/system/admin/integration-applications", g.SystemAdmin())
 	{
 		admin.GET("", handler.ListApplications)
+		admin.GET("/retrieval-defaults", handler.GetRetrievalDefaults)
 		admin.POST("", handler.CreateApplication)
 		admin.PUT("/:id", handler.UpdateApplication)
 		admin.DELETE("/:id", handler.DeleteApplication)

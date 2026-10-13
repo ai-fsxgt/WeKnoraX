@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
-
 	"slices"
+	"strings"
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -56,12 +56,12 @@ func sortByScoreDesc(a, b *types.IndexWithScore) int {
 	} else if a.Score < b.Score {
 		return 1
 	}
-	return 0
+	return strings.Compare(a.ChunkID, b.ChunkID)
 }
 
 // deduplicateByScore deduplicates retrieval results by chunk ID, keeping the highest score
 // for each chunk. Returns the results sorted by score descending.
-// Used when only a single retriever (e.g. vector-only for FAQ) is active.
+// Also normalizes each retriever across stores before hybrid fusion.
 func deduplicateByScore(results []*types.IndexWithScore) []*types.IndexWithScore {
 	chunkInfoMap := make(map[string]*types.IndexWithScore, len(results))
 	for _, r := range results {
@@ -85,7 +85,12 @@ func fuseWithRRF(ctx context.Context, vectorResults, keywordResults []*types.Ind
 	rrfK := retrievalCfg.GetEffectiveRRFK()
 	vectorWeight, keywordWeight := retrievalCfg.GetEffectiveRRFWeights()
 
-	// Build rank maps for each retriever (already sorted by score from retriever)
+	// Fan-out returns stores in completion order. Rank each retriever globally
+	// before fusion so a fast store cannot displace more relevant chunks.
+	vectorResults = deduplicateByScore(vectorResults)
+	keywordResults = deduplicateByScore(keywordResults)
+
+	// Build rank maps for each retriever.
 	vectorRanks := make(map[string]int, len(vectorResults))
 	for i, r := range vectorResults {
 		if _, exists := vectorRanks[r.ChunkID]; !exists {

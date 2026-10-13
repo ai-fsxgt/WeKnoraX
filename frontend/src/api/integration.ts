@@ -2,6 +2,20 @@ import { del, get, post, put } from '@/utils/request'
 
 export type IntegrationScope = 'knowledge.read' | 'knowledge.chat' | 'knowledge.write'
 
+export interface IntegrationRetrievalConfig {
+  embedding_top_k: number
+  vector_threshold: number
+  keyword_threshold: number
+  rerank_top_k: number
+  rerank_threshold: number
+  rerank_model_id: string
+  enable_rewrite: boolean
+  query_understand_model_id: string
+  enable_query_expansion: boolean
+  faq_priority_enabled: boolean
+  faq_score_boost: number
+}
+
 export interface IntegrationApplication {
   id: string
   client_id: string
@@ -9,6 +23,7 @@ export interface IntegrationApplication {
   description: string
   redirect_uris: string[]
   allowed_scopes: IntegrationScope[]
+  retrieval_config: IntegrationRetrievalConfig | null
   enabled: boolean
   created_at: string
   updated_at: string
@@ -91,6 +106,7 @@ export interface IntegrationApplicationInput {
   description: string
   redirect_uris: string[]
   allowed_scopes: IntegrationScope[]
+  retrieval_config: IntegrationRetrievalConfig | null
   enabled: boolean
 }
 
@@ -105,6 +121,10 @@ type DataResponse<T> = { success: boolean; data: T }
 
 export function listIntegrationApplications(): Promise<DataResponse<IntegrationApplication[]>> {
   return get('/api/v1/system/admin/integration-applications')
+}
+
+export function getIntegrationRetrievalDefaults(): Promise<DataResponse<IntegrationRetrievalConfig>> {
+  return get('/api/v1/system/admin/integration-applications/retrieval-defaults')
 }
 
 export function createIntegrationApplication(

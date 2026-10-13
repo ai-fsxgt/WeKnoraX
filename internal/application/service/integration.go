@@ -65,6 +65,8 @@ type IntegrationApplicationInput struct {
 	RedirectURIs  []string `json:"redirect_uris"`
 	AllowedScopes []string `json:"allowed_scopes"`
 	Enabled       bool     `json:"enabled"`
+	// Nil uses system defaults on creation and preserves the saved configuration on update.
+	RetrievalConfig *types.IntegrationRetrievalConfig `json:"retrieval_config"`
 }
 
 // IntegrationApplicationSecretResult returns a client secret exactly once after creation or rotation.
@@ -194,6 +196,7 @@ type IntegrationService struct {
 	kbShareService interfaces.KBShareService
 	tenantService  interfaces.TenantService
 	memberService  interfaces.TenantMemberService
+	modelService   interfaces.ModelService
 	lastUsedTouch  sync.Map
 }
 
@@ -206,11 +209,12 @@ func NewIntegrationService(
 	tenantService interfaces.TenantService,
 	memberService interfaces.TenantMemberService,
 	kbShareService interfaces.KBShareService,
+	modelService interfaces.ModelService,
 ) *IntegrationService {
 	return &IntegrationService{
 		repo: repo, userRepo: userRepo, kbRepo: kbRepo, kbShareRepo: kbShareRepo,
 		tenantService: tenantService, memberService: memberService,
-		kbShareService: kbShareService,
+		kbShareService: kbShareService, modelService: modelService,
 	}
 }
 
@@ -219,6 +223,10 @@ func (s *IntegrationService) CreateApplication(
 	ctx context.Context, createdBy string, input IntegrationApplicationInput,
 ) (*IntegrationApplicationSecretResult, error) {
 	name, redirectURIs, scopes, err := validateApplicationInput(input)
+	if err != nil {
+		return nil, err
+	}
+	retrievalConfig, err := s.prepareRetrievalConfig(ctx, input.RetrievalConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +247,7 @@ func (s *IntegrationService) CreateApplication(
 		Description:      strings.TrimSpace(input.Description),
 		RedirectURIs:     redirectURIs,
 		AllowedScopes:    scopes,
+		RetrievalConfig:  retrievalConfig,
 		Enabled:          input.Enabled,
 		CreatedBy:        createdBy,
 		CreatedAt:        now,
@@ -261,6 +270,13 @@ func (s *IntegrationService) UpdateApplication(
 	app, err := s.repo.GetApplicationByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if input.RetrievalConfig != nil {
+		retrievalConfig, err := s.prepareRetrievalConfig(ctx, input.RetrievalConfig)
+		if err != nil {
+			return nil, err
+		}
+		app.RetrievalConfig = retrievalConfig
 	}
 	app.Name = name
 	app.Description = strings.TrimSpace(input.Description)

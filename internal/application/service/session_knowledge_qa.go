@@ -152,6 +152,9 @@ func (s *sessionService) KnowledgeQA(
 	// Apply custom agent overrides (system prompt, temperature, retrieval params,
 	// rewrite, fallback, FAQ strategy, history turns)
 	s.applyAgentOverridesToChatManage(ctx, req.CustomAgent, chatManage)
+	if err := s.applyIntegrationRetrievalConfig(ctx, chatManage); err != nil {
+		return err
+	}
 
 	// An agent may opt out of long-term memory. The preference is per-request
 	// rather than per-user, so it travels in the context that the recall
@@ -845,12 +848,18 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 		return []*types.SearchResult{}, nil
 	}
 
-	// Create default retrieval parameters — prefer tenant RetrievalConfig, fallback to built-in defaults
+	// Third-party applications carry their own policy; other callers use workspace settings.
 	userID := types.SessionOwnerIDFromContext(ctx)
 
 	// Load tenant-level retrieval config (nil is safe — GetEffective* methods handle nil receiver)
 	var rc *types.RetrievalConfig
-	if tenant, err2 := s.tenantService.GetTenantByID(ctx, tenantID); err2 == nil {
+	retrievalValue := ctx.Value(types.IntegrationRetrievalConfigContextKey)
+	_, integrationSearch := retrievalValue.(*types.IntegrationRetrievalConfig)
+	if !integrationSearch {
+		tenant, err := s.tenantService.GetTenantByID(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
 		rc = tenant.RetrievalConfig
 	}
 
@@ -873,24 +882,29 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 		},
 	}
 
-	// Get default models
-	models, err := s.modelService.ListModels(ctx)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to get models: %v", err)
-		return nil, err
-	}
-
-	// Use rerank model from RetrievalConfig if set, otherwise auto-select the first available
-	if rc != nil && rc.RerankModelID != "" {
-		chatManage.RerankModelID = rc.RerankModelID
+	if integrationSearch {
+		if err := s.applyIntegrationRetrievalConfig(ctx, chatManage); err != nil {
+			return nil, err
+		}
+		chatManage.TenantID = tenantID
+		chatManage.MaxRounds = 0
 	} else {
-		for _, model := range models {
-			if model == nil {
-				continue
-			}
-			if model.Type == types.ModelTypeRerank {
-				chatManage.RerankModelID = model.ID
-				break
+		models, err := s.modelService.ListModels(ctx)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to get models: %v", err)
+			return nil, err
+		}
+		if rc != nil && rc.RerankModelID != "" {
+			chatManage.RerankModelID = rc.RerankModelID
+		} else {
+			for _, model := range models {
+				if model == nil {
+					continue
+				}
+				if model.Type == types.ModelTypeRerank {
+					chatManage.RerankModelID = model.ID
+					break
+				}
 			}
 		}
 	}
@@ -901,6 +915,11 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 		types.CHUNK_RERANK, // Rerank search results
 		types.CHUNK_MERGE,  // Merge search results
 		types.FILTER_TOP_K, // Filter top K results
+	}
+
+	if integrationSearch {
+		searchEvents[0] = types.CHUNK_SEARCH_PARALLEL
+		searchEvents = append([]types.EventType{types.QUERY_UNDERSTAND}, searchEvents...)
 	}
 
 	logger.Infof(ctx, "Trigger search event list: %v", searchEvents)
@@ -930,6 +949,10 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 			logger.Errorf(ctx, "Event triggering failed, event: %v, error type: %s, description: %s, error: %v",
 				event, err.ErrorType, err.Description, err.Err)
 			return nil, err.Err
+		}
+		if event == types.QUERY_UNDERSTAND {
+			// Explicit knowledge searches retain query rewriting but always require KB retrieval.
+			chatManage.Intent = types.IntentKBSearch
 		}
 		logger.Infof(ctx, "Event %v triggered successfully", event)
 	}

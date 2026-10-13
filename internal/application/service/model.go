@@ -27,12 +27,13 @@ var ErrModelNotFound = errors.New("model not found")
 
 // modelService implements the model service interface
 type modelService struct {
-	repo          interfaces.ModelRepository
-	kbRepo        interfaces.KnowledgeBaseRepository
-	agentRepo     interfaces.CustomAgentRepository
-	ollamaService *ollama.OllamaService
-	pooler        embedding.EmbedderPooler
-	tenantService interfaces.TenantService
+	repo            interfaces.ModelRepository
+	kbRepo          interfaces.KnowledgeBaseRepository
+	agentRepo       interfaces.CustomAgentRepository
+	ollamaService   *ollama.OllamaService
+	pooler          embedding.EmbedderPooler
+	tenantService   interfaces.TenantService
+	integrationRepo interfaces.IntegrationRepository
 	// updateMu serialises the DB write and runtime limit publish in this process.
 	// Database transactions protect the read-modify-write across replicas.
 	updateMu sync.Mutex
@@ -45,14 +46,16 @@ func NewModelService(repo interfaces.ModelRepository,
 	ollamaService *ollama.OllamaService,
 	pooler embedding.EmbedderPooler,
 	tenantService interfaces.TenantService,
+	integrationRepo interfaces.IntegrationRepository,
 ) interfaces.ModelService {
 	return &modelService{
-		repo:          repo,
-		kbRepo:        kbRepo,
-		agentRepo:     agentRepo,
-		ollamaService: ollamaService,
-		pooler:        pooler,
-		tenantService: tenantService,
+		repo:            repo,
+		kbRepo:          kbRepo,
+		agentRepo:       agentRepo,
+		ollamaService:   ollamaService,
+		pooler:          pooler,
+		tenantService:   tenantService,
+		integrationRepo: integrationRepo,
 	}
 }
 
@@ -409,6 +412,26 @@ func (s *modelService) DeleteModel(ctx context.Context, id string) error {
 	if kbCount > 0 || agentCount > 0 {
 		logger.Warnf(ctx, "Model %s is in use: kb=%d agent=%d", id, kbCount, agentCount)
 		return apperrors.NewBadRequestError(formatModelInUseMessage(kbCount, agentCount, false))
+	}
+
+	if existingModel.IsBuiltin {
+		applications, err := s.integrationRepo.ListApplications(ctx)
+		if err != nil {
+			logger.ErrorWithFields(ctx, err, map[string]interface{}{
+				"model_id": id,
+			})
+			return err
+		}
+		for _, application := range applications {
+			config := application.RetrievalConfig
+			if config != nil && (config.RerankModelID == id || config.QueryUnderstandModelID == id) {
+				logger.Warnf(ctx, "Model %s is used by third-party application %s retrieval settings",
+					id, application.ID)
+				return apperrors.NewBadRequestError(
+					"model is used by third-party application retrieval settings; update the reference before deleting",
+				)
+			}
+		}
 	}
 
 	if s.tenantService != nil {
