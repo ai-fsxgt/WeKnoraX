@@ -129,6 +129,8 @@ https://WEKNORA_ORIGIN/integrations/authorize
 scope=knowledge.read%20knowledge.chat
 ```
 
+应用当前未允许的 Scope 会被忽略，授权以剩余 Scope 继续；实际授予的 Scope 以 Token 响应中的 `scopes` 为准。
+
 如果用户未登录，WeKnora 会记住完整授权地址并进入登录流程；部署启用 OIDC 时会自动发起现有 OIDC 登录。登录完成后返回授权页。首次连接展示确认页，用户可以多选自己当前加入且允许该应用接入的空间，至少选择一个空间后完成授权。
 
 第三方不传递也不保存 WeKnora 空间 ID。空间归属完全由当前登录用户在 WeKnora 授权页中选择，避免把用户级空间错误配置为应用级固定参数。
@@ -279,6 +281,8 @@ X-API-Key: wkic_xxx
 
 第三方申请 `knowledge.read knowledge.write`，在应用配置、授权空间策略允许后，
 由用户确认授权。已有连接不会自动获得写权限，必须重新授权并替换凭证。
+应用未允许写入时授权仍会成功，仅授予只读；空间策略未允许写入时该空间仍可选择，
+其中知识库按只读处理，写入请求返回 403。
 
 `knowledge.write` 只开放普通文档知识库中 Markdown 知识的新增和更新：
 
