@@ -229,7 +229,7 @@ func TestChannelConfigEventReloadsOtherReplica(t *testing.T) {
 	updated := *channel
 	updated.OutputMode = "stream"
 	updated.Credentials = types.JSON(`{"token":"v2"}`)
-	if err := svcOne.UpdateChannel(&updated); err != nil {
+	if err := svcOne.UpdateChannel(&updated, false); err != nil {
 		t.Fatalf("update channel: %v", err)
 	}
 

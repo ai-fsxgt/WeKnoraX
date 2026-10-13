@@ -12,8 +12,8 @@ import (
 // ErrChannelAlreadyBound prevents replacing a unified bot's authority with another code.
 var ErrChannelAlreadyBound = errors.New("unified bot is already bound; revoke its binding first")
 
-// ErrChannelModeInUse prevents reinterpreting existing bindings in a different mode.
-var ErrChannelModeInUse = errors.New("revoke all bot bindings before changing binding mode")
+// ErrBindingModeConfirmationRequired prevents silently revoking bindings during a mode change.
+var ErrBindingModeConfirmationRequired = errors.New("confirm revoking all bot bindings before changing binding mode")
 
 func channelHasUnifiedBinding(tx *gorm.DB, channelID string) (bool, error) {
 	var count int64

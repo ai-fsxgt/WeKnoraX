@@ -145,7 +145,7 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 //
 // UpdateIMChannel godoc
 // @Summary      更新 IM 渠道
-// @Description  更新系统级 IM 机器人的名称、连接模式、绑定模式、群聊开关或凭证；存在未撤销绑定时不可切换绑定模式
+// @Description  更新系统级 IM 机器人配置；切换绑定模式须设置 confirm_binding_reset=true，统一撤销该机器人的全部绑定及待用授权码，停止相关问答并保留历史消息
 // @Tags         IM 渠道
 // @Accept       json
 // @Produce      json
@@ -154,7 +154,7 @@ func (h *IMHandler) ListIMChannels(c *gin.Context) {
 // @Success      200      {object}  map[string]interface{}  "更新后的渠道"
 // @Failure      400      {object}  map[string]interface{}  "请求参数错误"
 // @Failure      404      {object}  map[string]interface{}  "渠道不存在"
-// @Failure      409      {object}  map[string]interface{}  "机器人身份冲突或尚有未解除的绑定"
+// @Failure      409      {object}  map[string]interface{}  "机器人身份冲突或尚未确认解除全部绑定"
 // @Security     Bearer
 // @Router       /system/admin/im-channels/{id} [put]
 func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
@@ -171,12 +171,13 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 	}
 
 	var req struct {
-		Name           *string    `json:"name"`
-		Mode           *string    `json:"mode"`
-		OutputMode     *string    `json:"output_mode"`
-		BindingMode    *string    `json:"binding_mode"`
-		AllowGroupChat *bool      `json:"allow_group_chat"`
-		Credentials    types.JSON `json:"credentials"`
+		Name                *string    `json:"name"`
+		Mode                *string    `json:"mode"`
+		OutputMode          *string    `json:"output_mode"`
+		BindingMode         *string    `json:"binding_mode"`
+		ConfirmBindingReset bool       `json:"confirm_binding_reset"`
+		AllowGroupChat      *bool      `json:"allow_group_chat"`
+		Credentials         types.JSON `json:"credentials"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -211,10 +212,10 @@ func (h *IMHandler) UpdateIMChannel(c *gin.Context) {
 		channel.OutputMode = "full"
 	}
 
-	if err := h.imService.UpdateChannel(channel); err != nil {
+	if err := h.imService.UpdateChannel(channel, req.ConfirmBindingReset); err != nil {
 		logger.Errorf(c.Request.Context(), "[IM] Update channel failed: %v", err)
-		if errors.Is(err, im.ErrChannelModeInUse) {
-			c.JSON(http.StatusConflict, gin.H{"error": "binding_mode_in_use"})
+		if errors.Is(err, im.ErrBindingModeConfirmationRequired) {
+			c.JSON(http.StatusConflict, gin.H{"error": "binding_mode_confirmation_required"})
 			return
 		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {

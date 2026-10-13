@@ -2908,7 +2908,7 @@ const docTemplate = `{
                         "Bearer": []
                     }
                 ],
-                "description": "更新系统级 IM 机器人的名称、连接模式、绑定模式、群聊开关或凭证；存在未撤销绑定时不可切换绑定模式",
+                "description": "更新系统级 IM 机器人配置；切换绑定模式须设置 confirm_binding_reset=true，统一撤销该机器人的全部绑定及待用授权码，停止相关问答并保留历史消息",
                 "consumes": [
                     "application/json"
                 ],
@@ -2961,7 +2961,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "机器人身份冲突或尚有未解除的绑定",
+                        "description": "机器人身份冲突或尚未确认解除全部绑定",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true

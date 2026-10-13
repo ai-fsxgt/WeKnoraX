@@ -3436,7 +3436,7 @@ func (s *Service) CreateChannel(channel *IMChannel) error {
 
 // UpdateChannel updates a channel and restarts it if needed.
 // Returns a duplicate_bot error if the bot identity is already used by another channel.
-func (s *Service) UpdateChannel(channel *IMChannel) error {
+func (s *Service) UpdateChannel(channel *IMChannel, confirmBindingReset bool) error {
 	newIdentity := channel.computeBotIdentity()
 	if err := s.checkDuplicateBot(channel, channel.ID); err != nil {
 		return err
@@ -3455,15 +3455,8 @@ func (s *Service) UpdateChannel(channel *IMChannel) error {
 		}
 		identityChanged := stored.BotIdentity != newIdentity
 		modeChanged := stored.BindingMode != channel.BindingMode
-		if modeChanged {
-			var count int64
-			if err := tx.Model(&UserBinding{}).
-				Where("im_channel_id = ? AND revoked_at IS NULL", channel.ID).Count(&count).Error; err != nil {
-				return err
-			}
-			if count > 0 {
-				return ErrChannelModeInUse
-			}
+		if modeChanged && !confirmBindingReset {
+			return ErrBindingModeConfirmationRequired
 		}
 		if identityChanged || modeChanged {
 			now := time.Now().UTC()

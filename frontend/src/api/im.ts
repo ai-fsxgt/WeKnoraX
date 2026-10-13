@@ -100,7 +100,7 @@ export function createSystemIMChannel(data: IMChannelMutation) {
   return post<{ data: IMChannelSummary }>('/api/v1/system/admin/im-channels', data)
 }
 
-export function updateSystemIMChannel(id: string, data: IMChannelMutation) {
+export function updateSystemIMChannel(id: string, data: IMChannelMutation & { confirm_binding_reset?: boolean }) {
   return put<{ data: IMChannelSummary }>(`/api/v1/system/admin/im-channels/${id}`, data)
 }
 
