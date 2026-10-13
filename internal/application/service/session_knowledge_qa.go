@@ -967,6 +967,10 @@ func (s *sessionService) SearchKnowledge(ctx context.Context,
 				event, err.ErrorType, err.Description, err.Err)
 			return nil, err.Err
 		}
+		if event == types.QUERY_UNDERSTAND {
+			// Explicit knowledge searches retain query rewriting but always require KB retrieval.
+			chatManage.Intent = types.IntentKBSearch
+		}
 		logger.Infof(ctx, "Event %v triggered successfully", event)
 	}
 

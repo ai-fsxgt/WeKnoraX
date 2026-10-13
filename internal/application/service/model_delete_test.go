@@ -138,7 +138,7 @@ func TestDeleteModel_RejectsWhenReferenced(t *testing.T) {
 		&stubModelRepoForDelete{model: &types.Model{ID: modelID, TenantID: 1}},
 		&stubKBRepoForModelDelete{count: 1},
 		&stubAgentRepoForModelDelete{count: 0},
-		nil, nil, nil,
+		nil, nil, nil, nil,
 	)
 
 	err := svc.DeleteModel(ctx, modelID)
@@ -157,7 +157,7 @@ func TestDeleteModel_RejectsWhenUsedByAgent(t *testing.T) {
 		&stubModelRepoForDelete{model: &types.Model{ID: modelID, TenantID: 1}},
 		&stubKBRepoForModelDelete{count: 0},
 		&stubAgentRepoForModelDelete{count: 2},
-		nil, nil, nil,
+		nil, nil, nil, nil,
 	)
 
 	err := svc.DeleteModel(ctx, modelID)
@@ -183,7 +183,7 @@ func TestDeleteModel_SucceedsWhenUnreferenced(t *testing.T) {
 		},
 		&stubKBRepoForModelDelete{},
 		&stubAgentRepoForModelDelete{},
-		nil, nil, nil,
+		nil, nil, nil, nil,
 	)
 
 	require.NoError(t, svc.DeleteModel(ctx, modelID))
@@ -252,6 +252,7 @@ func TestDeleteModel_RejectsWhenUsedByMemory(t *testing.T) {
 				MemoryConfig: &types.MemoryConfig{Enabled: true, EmbeddingModelID: modelID},
 			},
 		},
+		nil,
 	)
 
 	err := svc.DeleteModel(ctx, modelID)
@@ -282,6 +283,7 @@ func TestDeleteModel_RejectsWhenUsedByMemoryExtraction(t *testing.T) {
 				},
 			},
 		},
+		nil,
 	)
 
 	err := svc.DeleteModel(ctx, modelID)
