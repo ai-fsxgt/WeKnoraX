@@ -148,7 +148,9 @@ async function submit(approved: boolean, reuseExisting = false) {
   try {
     const response = await authorizeIntegration(
       {
-        parameters: parametersFromRoute(),
+        // Submit the scopes shown on this page so a later application change
+        // cannot grant permissions the user has not seen.
+        parameters: { ...parametersFromRoute(), scope: authorization.value!.scopes.join(' ') },
         approved,
         reuse_existing: reuseExisting,
         tenant_ids: selectedTenantIDs.value,

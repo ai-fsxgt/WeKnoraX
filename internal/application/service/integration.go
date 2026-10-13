@@ -495,10 +495,15 @@ func (s *IntegrationService) listAuthorizableTenants(
 	if err != nil {
 		return nil, err
 	}
+	// knowledge.write is resolved per workspace at request time, so a workspace
+	// that only denies writes stays authorizable as read-only.
+	tenantScopes := intersectIntegrationScopes(requestedScopes, []string{
+		types.IntegrationScopeKnowledgeRead, types.IntegrationScopeKnowledgeChat,
+	})
 	views := make([]IntegrationTenantView, 0, len(tenantIDs))
 	for tenantID, role := range roleByTenant {
 		policy := policyByTenant[tenantID]
-		if policy != nil && (!policy.Enabled || !scopesSubset(requestedScopes, policy.AllowedScopes)) {
+		if policy != nil && (!policy.Enabled || !scopesSubset(tenantScopes, policy.AllowedScopes)) {
 			continue
 		}
 		tenant := tenantByID[tenantID]
@@ -997,10 +1002,12 @@ func (s *IntegrationService) validateAuthorizationParameters(
 		return nil, nil, ErrIntegrationInvalidPKCE
 	}
 	scopes, err := validateScopes(params.Scopes)
-	if err != nil || !scopesSubset(scopes, app.AllowedScopes) {
+	if err != nil {
 		return nil, nil, ErrIntegrationInvalidScope
 	}
-	return app, scopes, nil
+	// Grant only the requested scopes the application currently allows.
+	// knowledge.read is mandatory on both sides, so it always remains.
+	return app, intersectIntegrationScopes(scopes, app.AllowedScopes), nil
 }
 
 func (s *IntegrationService) buildIntegrationTenantViews(
