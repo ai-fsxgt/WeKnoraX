@@ -210,6 +210,7 @@
       </div>
     </SettingDrawer>
     <t-dialog
+      attach="body"
       :visible="bindingModeConfirmVisible && drawerVisible"
       :header="t('imAdmin.bindingModeChangeTitle')"
       :body="t('imAdmin.bindingModeChangeConfirm', { channel: editingChannel?.name })"
