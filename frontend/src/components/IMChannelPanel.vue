@@ -493,6 +493,9 @@ async function saveChannel(confirmBindingReset: boolean) {
     closeDrawer()
     await loadChannels()
   } catch (error: any) {
+    if (error?.message === 'binding_mode_confirmation_required') {
+      bindingModeConfirmVisible.value = true
+    }
     MessagePlugin.error(error?.message === 'binding_mode_confirmation_required'
       ? t('imAdmin.bindingModeConfirmationRequired')
       : error?.message || t('common.operationFailed'))
