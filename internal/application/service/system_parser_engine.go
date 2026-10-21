@@ -13,12 +13,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/utils"
 )
 
-var systemParserEngineNames = []string{
-	docparser.MinerUEngineName, docparser.MinerUCloudEngineName,
-	docparser.PaddleOCRVLEngineName, docparser.PaddleOCRVLCloudEngineName,
-	docparser.WeKnoraCloudEngineName, docparser.PDFSpecializedEngineName,
-}
-
 // SystemParserEngineService manages and resolves platform-owned parser configurations.
 type SystemParserEngineService struct {
 	repo interfaces.SystemParserEngineRepository
@@ -30,12 +24,8 @@ func NewSystemParserEngineService(repo interfaces.SystemParserEngineRepository) 
 }
 
 func systemParserRegistration(name string) (docparser.EngineRegistration, error) {
-	for _, engine := range systemParserEngineNames {
-		if engine == name {
-			if registration, ok := docparser.LookupEngine(name); ok {
-				return registration, nil
-			}
-		}
+	if registration, ok := docparser.LookupEngine(name); ok && registration.SupportsSystemConfig() {
+		return registration, nil
 	}
 	return nil, apperrors.NewBadRequestError("Unsupported system parser engine: " + name)
 }
@@ -57,12 +47,10 @@ func (s *SystemParserEngineService) List(ctx context.Context) ([]types.SystemPar
 	for _, record := range records {
 		byName[record.Engine] = record
 	}
-	result := make([]types.SystemParserEngineView, 0, len(systemParserEngineNames))
-	for _, name := range systemParserEngineNames {
-		registration, err := systemParserRegistration(name)
-		if err != nil {
-			return nil, err
-		}
+	registrations := docparser.ListSystemEngines()
+	result := make([]types.SystemParserEngineView, 0, len(registrations))
+	for _, registration := range registrations {
+		name := registration.Name()
 		record := byName[name]
 		cfg, err := decodeSystemParserConfig(record.Config)
 		if err != nil {
@@ -126,7 +114,8 @@ func selectSystemParserConfig(name string, cfg types.SystemParserEngineConfig) t
 			MinerUEndpoint: strings.TrimSpace(cfg.MinerUEndpoint), MinerUSelfHostedAPIKey: cfg.MinerUSelfHostedAPIKey,
 			MinerUModel: cfg.MinerUModel, MinerUVLMServerURL: strings.TrimSpace(cfg.MinerUVLMServerURL),
 			MinerUEnableFormula: cfg.MinerUEnableFormula, MinerUEnableTable: cfg.MinerUEnableTable,
-			MinerUParseMethod: cfg.MinerUParseMethod, MinerULanguage: cfg.MinerULanguage,
+			MinerUParseMethod: types.ResolveMinerUParseMethod(cfg.MinerUParseMethod, cfg.MinerUEnableOCR),
+			MinerULanguage:    cfg.MinerULanguage,
 		}
 	case docparser.MinerUCloudEngineName:
 		selected.ParserEngineConfig = types.ParserEngineConfig{

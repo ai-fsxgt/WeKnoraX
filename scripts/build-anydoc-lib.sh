@@ -41,24 +41,24 @@ case "$target" in
   *) lib_name=libanydoc_go.a ;;
 esac
 
-# The crate version to patch is read from Cargo.toml rather than repeated here,
-# so an upgrade is a one-line change to the `anydoc = "=X.Y.Z"` pin.
+# Read the crate version to patch from Cargo.toml rather than repeating it here.
 anydoc_version=$(sed -n 's/^anydoc = "=\([0-9][^"]*\)".*/\1/p' "$crate_dir/Cargo.toml" | head -1)
 if [ -z "$anydoc_version" ]; then
   echo "error: no pinned 'anydoc = \"=X.Y.Z\"' dependency in $crate_dir/Cargo.toml" >&2
   exit 1
 fi
 
-# document_to_markdown is private in published anydoc. Copy the pinned version
-# and re-export that one function so anydoc-go can keep the official serializer.
+# Copy the pinned anydoc release, expose the official Markdown serializer,
+# and update its ZIP dependencies to versions with the security fixes.
 prepare_patched_anydoc() {
   local dest="$crate_dir/patched-anydoc"
-  # The marker records which version was patched: after a version bump the
+  local patch_revision="$anydoc_version-zip-9.0.5"
+  # The marker records the crate version and dependency patch: after a change the
   # copy left by the previous build is the wrong crate, and reusing it would
   # fail deep inside cargo's patch resolution instead of here. Cargo.toml is
   # required too: a truncated leftover with only the marker would otherwise
   # skip the copy and fail with "failed to read .../Cargo.toml".
-  if [ -f "$dest/.weknora-patched" ] && [ "$(cat "$dest/.weknora-patched")" = "$anydoc_version" ] && [ -f "$dest/Cargo.toml" ]; then
+  if [ -f "$dest/.weknora-patched" ] && [ "$(cat "$dest/.weknora-patched")" = "$patch_revision" ] && [ -f "$dest/Cargo.toml" ]; then
     return
   fi
 
@@ -91,7 +91,13 @@ prepare_patched_anydoc() {
   fi
   sed -i.bak 's/^use render::markdown::document_to_markdown;/pub use render::markdown::document_to_markdown;/' "$dest/src/lib.rs"
   rm -f "$dest/src/lib.rs.bak"
-  printf '%s\n' "$anydoc_version" > "$dest/.weknora-patched"
+  # calamine also depends on zip; update both so zip 8 is removed from the tree.
+  sed -i.bak \
+    -e '/^\[dependencies.calamine\]/,/^\[/s/^version = "0.36.1"$/version = "0.37.0"/' \
+    -e '/^\[dependencies.zip\]/,/^\[/s/^version = "8.6.0"$/version = "9.0.5"/' \
+    "$dest/Cargo.toml"
+  rm -f "$dest/Cargo.toml.bak"
+  printf '%s\n' "$patch_revision" > "$dest/.weknora-patched"
   rm -rf "$crate_dir/.anydoc-unpack" "$crate_dir/.anydoc-$anydoc_version.crate"
 }
 

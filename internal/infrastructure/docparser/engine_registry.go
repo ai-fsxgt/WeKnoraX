@@ -17,6 +17,8 @@ type EngineRegistration interface {
 	Name() string
 	Description() string
 	FileTypes(docreaderConnected bool) []string
+	// SupportsSystemConfig reports whether the engine accepts platform-managed configuration.
+	SupportsSystemConfig() bool
 	CheckAvailable(docreaderConnected bool, overrides map[string]string) (available bool, reason string)
 	// NewReader builds the reader for one parse request. Returning an error
 	// means this engine cannot serve the request (missing credentials,
@@ -58,6 +60,17 @@ func LookupEngine(name string) (EngineRegistration, bool) {
 		}
 	}
 	return nil, false
+}
+
+// ListSystemEngines returns registered engines that support platform-managed configuration.
+func ListSystemEngines() []EngineRegistration {
+	engines := make([]EngineRegistration, 0, len(localEngines))
+	for _, engine := range localEngines {
+		if engine.SupportsSystemConfig() {
+			engines = append(engines, engine)
+		}
+	}
+	return engines
 }
 
 // NewReader builds the reader for an engine.

@@ -50,6 +50,8 @@ type pdfSpecializedEngine struct{}
 
 func (e *pdfSpecializedEngine) Name() string { return PDFSpecializedEngineName }
 
+func (e *pdfSpecializedEngine) SupportsSystemConfig() bool { return true }
+
 func (e *pdfSpecializedEngine) Description() string { return "PDF 专用解析服务" }
 
 func (e *pdfSpecializedEngine) FileTypes(_ bool) []string { return []string{"pdf"} }
@@ -83,6 +85,8 @@ func (e *pdfSpecializedEngine) NewReader(_ context.Context, _ ReaderDeps) (inter
 type builtinEngine struct{}
 
 func (e *builtinEngine) Name() string { return BuiltinEngineName }
+
+func (e *builtinEngine) SupportsSystemConfig() bool { return false }
 
 func (e *builtinEngine) Description() string { return "DocReader built-in parser engine" }
 
@@ -118,6 +122,8 @@ type simpleEngine struct{}
 
 func (e *simpleEngine) Name() string { return SimpleEngineName }
 
+func (e *simpleEngine) SupportsSystemConfig() bool { return false }
+
 func (e *simpleEngine) Description() string {
 	return "Simple format & image parsing (no external service required)"
 }
@@ -147,6 +153,8 @@ type anydocEngine struct{}
 
 func (e *anydocEngine) Name() string { return AnydocEngineName }
 
+func (e *anydocEngine) SupportsSystemConfig() bool { return false }
+
 func (e *anydocEngine) Description() string {
 	return "anydoc in-process office document converter (no external service required)"
 }
@@ -174,6 +182,8 @@ func (e *anydocEngine) NewReader(_ context.Context, deps ReaderDeps) (interfaces
 type weKnoraCloudEngine struct{}
 
 func (e *weKnoraCloudEngine) Name() string { return WeKnoraCloudEngineName }
+
+func (e *weKnoraCloudEngine) SupportsSystemConfig() bool { return true }
 
 func (e *weKnoraCloudEngine) Description() string { return "Cloud document reader" }
 
@@ -209,6 +219,8 @@ type mineruEngine struct{}
 
 func (e *mineruEngine) Name() string { return MinerUEngineName }
 
+func (e *mineruEngine) SupportsSystemConfig() bool { return true }
+
 func (e *mineruEngine) Description() string { return "MinerU self-hosted service" }
 
 func (e *mineruEngine) FileTypes(_ bool) []string {
@@ -234,6 +246,8 @@ func (e *mineruEngine) NewReader(_ context.Context, deps ReaderDeps) (interfaces
 type mineruCloudEngine struct{}
 
 func (e *mineruCloudEngine) Name() string { return MinerUCloudEngineName }
+
+func (e *mineruCloudEngine) SupportsSystemConfig() bool { return true }
 
 func (e *mineruCloudEngine) Description() string { return "MinerU Cloud API" }
 
@@ -261,6 +275,8 @@ type paddleOCRVLEngine struct{}
 
 func (e *paddleOCRVLEngine) Name() string { return PaddleOCRVLEngineName }
 
+func (e *paddleOCRVLEngine) SupportsSystemConfig() bool { return true }
+
 func (e *paddleOCRVLEngine) Description() string { return "PaddleOCR-VL self-hosted service" }
 
 func (e *paddleOCRVLEngine) FileTypes(_ bool) []string {
@@ -286,6 +302,8 @@ func (e *paddleOCRVLEngine) NewReader(_ context.Context, deps ReaderDeps) (inter
 type paddleOCRVLCloudEngine struct{}
 
 func (e *paddleOCRVLCloudEngine) Name() string { return PaddleOCRVLCloudEngineName }
+
+func (e *paddleOCRVLCloudEngine) SupportsSystemConfig() bool { return true }
 
 func (e *paddleOCRVLCloudEngine) Description() string { return "PaddleOCR-VL Cloud API" }
 
