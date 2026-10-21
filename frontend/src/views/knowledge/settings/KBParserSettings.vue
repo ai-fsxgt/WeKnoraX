@@ -10,6 +10,12 @@
       <span>{{ $t('kbSettings.parser.loading') }}</span>
     </div>
 
+    <t-alert v-else-if="loadError" theme="error" :message="loadError">
+      <template #operation>
+        <t-button size="small" variant="text" @click="loadEngines(true)">{{ $t('settings.parser.retry') }}</t-button>
+      </template>
+    </t-alert>
+
     <div v-else-if="fileTypeGroups.length === 0" class="empty-hint">
       <p>{{ $t('kbSettings.parser.noEngineAvailable') }}</p>
     </div>
@@ -36,17 +42,38 @@
               @change="(val: string) => handleEngineChange(group.extensions, val)"
               :style="embedded ? undefined : { width: '280px' }"
               :class="{ 'parser-engine-select--embedded': embedded }"
-              :status="hasAvailableEngine(group.extensions) ? 'default' : 'warning'"
+              :status="isSystemSelectionUnavailable(group.extensions) || !hasAvailableEngine(group.extensions) ? 'warning' : 'default'"
+              :value-display="getSelectedLabel(group.extensions)"
               :placeholder="$t('kbSettings.parser.noEngine')"
               :popup-props="{ overlayInnerStyle: { maxHeight: '240px' } }"
             >
-              <t-option
-                v-for="opt in getEngineOptions(group.extensions)"
-                :key="opt.value"
-                :value="opt.value"
-                :label="opt.selectLabel"
-              />
+              <t-option-group
+                v-if="getEngineOptions(group.extensions).length"
+                :divider="getSystemEngineOptions(group.extensions).length > 0"
+              >
+                <t-option
+                  v-for="opt in getEngineOptions(group.extensions)"
+                  :key="opt.value"
+                  :value="opt.value"
+                  :label="opt.selectLabel"
+                />
+              </t-option-group>
+              <t-option-group
+                v-if="getSystemEngineOptions(group.extensions).length"
+                :divider="getEngineOptions(group.extensions).length > 0"
+              >
+                <t-option
+                  v-for="opt in getSystemEngineOptions(group.extensions)"
+                  :key="opt.value"
+                  :value="opt.value"
+                  :label="opt.selectLabel"
+                />
+              </t-option-group>
             </t-select>
+            <p v-if="isSystemSelectionUnavailable(group.extensions)" class="system-engine-warning">
+              <t-icon name="info-circle" />
+              {{ $t('systemParser.selectionUnavailable') }}
+            </p>
             <t-checkbox
               v-if="group.extensions.includes('xlsx') && getEngineForGroup(group.extensions) === 'builtin'"
               class="xlsx-header-option"
@@ -69,9 +96,12 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { type ParserEngineInfo } from '@/api/system'
+import type { ParserEngineRule } from '@/types/knowledgeProcess'
 import { useEditorResourcesStore } from '@/stores/editorResources'
 import { useUIStore } from '@/stores/ui'
 import { storeToRefs } from 'pinia'
+
+export type { ParserEngineRule } from '@/types/knowledgeProcess'
 
 const { t } = useI18n()
 const editorResources = useEditorResourcesStore()
@@ -80,12 +110,6 @@ function getEngineDisplayName(engineName: string): string {
   const key = `kbSettings.parser.engines.${engineName}.name`
   const translated = t(key)
   return translated !== key ? translated : engineName
-}
-
-export interface ParserEngineRule {
-  file_types: string[]
-  engine: string
-  xlsx_first_row_as_header?: boolean
 }
 
 interface EngineOption {
@@ -103,6 +127,7 @@ interface Props {
   parserEngineRules?: ParserEngineRule[]
   /** Compact layout for upload-confirm dialog */
   embedded?: boolean
+  allowSystemEngines?: boolean
   /** When set, only show file-type groups matching these extensions */
   relevantExtensions?: string[]
 }
@@ -110,6 +135,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   parserEngineRules: () => [],
   embedded: false,
+  allowSystemEngines: false,
   relevantExtensions: () => [],
 })
 
@@ -120,14 +146,21 @@ const emit = defineEmits<{
 const uiStore = useUIStore()
 const localEngineRules = ref<ParserEngineRule[]>([...props.parserEngineRules])
 const parserEngines = ref<ParserEngineInfo[]>([])
+const systemParserEngines = ref<ParserEngineInfo[]>([])
 const loading = ref(true)
+const loadError = ref('')
+let loadVersion = 0
+onUnmounted(() => { loadVersion += 1 })
 
 const allFileTypes = computed(() => {
   const s = new Set<string>()
-  for (const engine of parserEngines.value) {
+  for (const engine of [...parserEngines.value, ...systemParserEngines.value]) {
     for (const ft of engine.FileTypes || []) {
       s.add(ft)
     }
+  }
+  for (const rule of localEngineRules.value) {
+    for (const ft of rule.file_types) s.add(ft)
   }
   return s
 })
@@ -178,11 +211,32 @@ const fileTypeGroups = computed(() => {
     groups.push({ key: `dynamic-${ext}`, label: ext.toUpperCase(), icon: 'file-code', extensions: [ext] })
   }
 
+  // A system parser may support PNG/JPEG but not every image format. Split
+  // these rows by actual capabilities so selecting a group never saves an
+  // unsupported extension or hides a valid system option.
+  const selectableGroups = props.allowSystemEngines ? groups.flatMap(group => {
+    const buckets = new Map<string, string[]>()
+    for (const ext of group.extensions) {
+      const supported = systemParserEngines.value.filter(engine => engine.FileTypes.includes(ext))
+      const rule = localEngineRules.value.find(item => item.file_types.includes(ext))
+      const key = JSON.stringify([supported.map(engine => engine.Name), rule?.source || 'tenant', rule?.engine || ''])
+      const bucket = buckets.get(key) || []
+      bucket.push(ext)
+      buckets.set(key, bucket)
+    }
+    return [...buckets.values()].map(extensions => ({
+      ...group,
+      key: `${group.key}-${extensions.join('-')}`,
+      extensions,
+    }))
+  }) : groups
+
   const rel = props.relevantExtensions
-  if (!rel?.length) return groups
+  if (!rel?.length) return selectableGroups
   const relSet = new Set(rel)
-  const filtered = groups.filter(g => g.extensions.some(e => relSet.has(e)))
-  return filtered.length > 0 ? filtered : groups
+  return selectableGroups
+    .map(group => ({ ...group, extensions: group.extensions.filter(ext => relSet.has(ext)) }))
+    .filter(group => group.extensions.length > 0)
 })
 
 function getEngineOptions(extensions: string[]): EngineOption[] {
@@ -209,8 +263,37 @@ function getEngineOptions(extensions: string[]): EngineOption[] {
     }))
 }
 
+function getSystemEngineOptions(extensions: string[]): EngineOption[] {
+  if (!props.allowSystemEngines) return []
+  return systemParserEngines.value
+    .filter(engine => extensions.every(ext => engine.FileTypes.includes(ext)))
+    .map(engine => ({
+      value: `system:${engine.Name}`,
+      selectLabel: t('systemParser.optionLabel', { name: getEngineDisplayName(engine.Name) }),
+      isDefault: false,
+    }))
+}
+
+function isSystemSelectionUnavailable(extensions: string[]): boolean {
+  const rule = getRuleForGroup(extensions)
+  return rule?.source === 'system'
+    && !getSystemEngineOptions(extensions).some(option => option.value === `system:${rule.engine}`)
+}
+
+function getSelectedLabel(extensions: string[]): string | undefined {
+  const value = getEngineForGroup(extensions)
+  const option = [...getEngineOptions(extensions), ...getSystemEngineOptions(extensions)]
+    .find(item => item.value === value)
+  if (option) return option.selectLabel
+  const rule = getRuleForGroup(extensions)
+  if (rule?.source === 'system') {
+    return t('systemParser.optionLabel', { name: getEngineDisplayName(rule.engine) })
+  }
+  return undefined
+}
+
 function hasAvailableEngine(extensions: string[]): boolean {
-  return getEngineOptions(extensions).length > 0
+  return getEngineOptions(extensions).length > 0 || getSystemEngineOptions(extensions).length > 0
 }
 
 function getDefaultEngine(extensions: string[]): string {
@@ -221,7 +304,7 @@ function getDefaultEngine(extensions: string[]): string {
 function getEngineForGroup(extensions: string[]): string {
   for (const rule of localEngineRules.value) {
     if (rule.file_types.some(ft => extensions.includes(ft))) {
-      return rule.engine
+      return rule.source === 'system' ? `system:${rule.engine}` : rule.engine
     }
   }
   return getDefaultEngine(extensions)
@@ -229,13 +312,15 @@ function getEngineForGroup(extensions: string[]): string {
 
 function handleEngineChange(extensions: string[], engine: string) {
   const currentRule = getRuleForGroup(extensions)
-  const otherRules = localEngineRules.value.filter(
-    r => !r.file_types.some(ft => extensions.includes(ft))
-  )
+  const otherRules = localEngineRules.value
+    .map(rule => ({ ...rule, file_types: rule.file_types.filter(ft => !extensions.includes(ft)) }))
+    .filter(rule => rule.file_types.length > 0)
+  const systemSelection = engine.startsWith('system:')
   if (engine) {
     otherRules.push({
       file_types: [...extensions],
-      engine,
+      engine: systemSelection ? engine.slice('system:'.length) : engine,
+      ...(systemSelection ? { source: 'system' as const } : {}),
       ...(currentRule?.xlsx_first_row_as_header !== undefined
         ? { xlsx_first_row_as_header: currentRule.xlsx_first_row_as_header }
         : {}),
@@ -266,18 +351,12 @@ function handleXLSXFirstRowAsHeaderChange(extensions: string[], checked: boolean
 }
 
 function buildCompleteRules(): ParserEngineRule[] {
-  const rules: ParserEngineRule[] = []
+  const rules = localEngineRules.value.map(rule => ({ ...rule, file_types: [...rule.file_types] }))
   for (const group of fileTypeGroups.value) {
-    const engine = getEngineForGroup(group.extensions)
-    if (engine) {
-      const currentRule = getRuleForGroup(group.extensions)
-      rules.push({
-        file_types: [...group.extensions],
-        engine,
-        ...(currentRule?.xlsx_first_row_as_header !== undefined
-          ? { xlsx_first_row_as_header: currentRule.xlsx_first_row_as_header }
-          : {}),
-      })
+    const missingTypes = group.extensions.filter(ext => !rules.some(rule => rule.file_types.includes(ext)))
+    const engine = getDefaultEngine(missingTypes)
+    if (missingTypes.length && engine) {
+      rules.push({ file_types: missingTypes, engine })
     }
   }
   return rules
@@ -288,15 +367,20 @@ function goToParserSettings() {
 }
 
 async function loadEngines(force = false) {
+  const version = ++loadVersion
   loading.value = true
+  loadError.value = ''
   try {
     await editorResources.ensureParserEngines(force)
-    parserEngines.value = editorResources.parserEngines as ParserEngineInfo[]
-  } catch {
-    parserEngines.value = []
-  } finally {
-    loading.value = false
+    if (version !== loadVersion) return
+    parserEngines.value = editorResources.parserEngines
+    systemParserEngines.value = props.allowSystemEngines ? editorResources.systemParserEngines : []
     ensureCompleteRules()
+  } catch (error: any) {
+    if (version !== loadVersion) return
+    loadError.value = error?.message || t('settings.parser.loadFailed')
+  } finally {
+    if (version === loadVersion) loading.value = false
   }
 }
 
@@ -309,7 +393,7 @@ function ensureCompleteRules() {
   }
 }
 
-onMounted(loadEngines)
+onMounted(() => loadEngines(props.allowSystemEngines))
 
 const { showSettingsModal } = storeToRefs(uiStore)
 watch(showSettingsModal, (open, wasOpen) => {
@@ -476,6 +560,21 @@ watch(() => props.parserEngineRules, (v) => {
     &:hover {
       text-decoration: underline;
     }
+  }
+}
+
+.system-engine-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  color: var(--td-warning-color);
+  font-size: 12px;
+  line-height: 1.5;
+
+  .t-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
   }
 }
 

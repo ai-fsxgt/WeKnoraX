@@ -34,6 +34,11 @@ func NewTenantService(repo interfaces.TenantRepository, storageRepo interfaces.S
 // CreateTenant creates a new tenant
 func (s *tenantService) CreateTenant(ctx context.Context, tenant *types.Tenant) (*types.Tenant, error) {
 	logger.Info(ctx, "Start creating tenant")
+	if tenant.ParserEngineConfig != nil {
+		if err := validateTenantParserRules(tenant.ParserEngineConfig.ChatParserEngineRules); err != nil {
+			return nil, err
+		}
+	}
 
 	if tenant.Name == "" {
 		logger.Error(ctx, "Workspace name cannot be empty")
@@ -137,6 +142,11 @@ func (s *tenantService) ListTenants(ctx context.Context) ([]*types.Tenant, error
 
 // UpdateTenant updates an existing tenant's information
 func (s *tenantService) UpdateTenant(ctx context.Context, tenant *types.Tenant) (*types.Tenant, error) {
+	if tenant.ParserEngineConfig != nil {
+		if err := validateTenantParserRules(tenant.ParserEngineConfig.ChatParserEngineRules); err != nil {
+			return nil, err
+		}
+	}
 	if tenant.ID == 0 {
 		logger.Error(ctx, "Workspace ID cannot be 0")
 		return nil, errors.New("tenant ID cannot be 0")

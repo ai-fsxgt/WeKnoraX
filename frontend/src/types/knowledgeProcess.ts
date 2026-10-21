@@ -3,6 +3,7 @@
 export interface ParserEngineRule {
   file_types: string[]
   engine: string
+  source?: 'tenant' | 'system'
   xlsx_first_row_as_header?: boolean
 }
 

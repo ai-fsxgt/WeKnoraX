@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
+	"github.com/Tencent/WeKnora/internal/application/service"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/assets"
 	"github.com/Tencent/WeKnora/internal/config"
@@ -64,6 +65,7 @@ type InitializationHandler struct {
 	documentReader   interfaces.DocumentReader
 	pooler           embedding.EmbedderPooler
 	storageResolver  interfaces.StorageBackendResolver
+	systemParserSvc  *service.SystemParserEngineService
 }
 
 // NewInitializationHandler 创建初始化处理器
@@ -78,6 +80,7 @@ func NewInitializationHandler(
 	documentReader interfaces.DocumentReader,
 	pooler embedding.EmbedderPooler,
 	storageResolver interfaces.StorageBackendResolver,
+	systemParserSvc *service.SystemParserEngineService,
 ) *InitializationHandler {
 	return &InitializationHandler{
 		config:           config,
@@ -90,6 +93,7 @@ func NewInitializationHandler(
 		documentReader:   documentReader,
 		pooler:           pooler,
 		storageResolver:  storageResolver,
+		systemParserSvc:  systemParserSvc,
 	}
 }
 
@@ -330,6 +334,11 @@ func (h *InitializationHandler) UpdateKBConfig(c *gin.Context) {
 	}
 	if len(req.DocumentSplitting.Separators) > 0 {
 		kb.ChunkingConfig.Separators = req.DocumentSplitting.Separators
+	}
+	if err := h.systemParserSvc.ValidateRules(ctx,
+		req.DocumentSplitting.ParserEngineRules, kb.ChunkingConfig.ParserEngineRules); err != nil {
+		_ = c.Error(err)
+		return
 	}
 	kb.ChunkingConfig.ParserEngineRules = req.DocumentSplitting.ParserEngineRules
 	kb.ChunkingConfig.EnableParentChild = req.DocumentSplitting.EnableParentChild

@@ -235,10 +235,15 @@ func (c *AutoTagConfig) Normalize() {
 type ParserEngineRule struct {
 	FileTypes []string `yaml:"file_types" json:"file_types"`
 	Engine    string   `yaml:"engine"     json:"engine"`
+	// Empty and tenant use the workspace configuration; system uses the platform configuration.
+	Source string `yaml:"source,omitempty" json:"source,omitempty"`
 	// XLSXFirstRowAsHeader restores row-1 column context for flat XLSX tables.
 	// nil preserves the parser default; an explicit false disables the mode.
 	XLSXFirstRowAsHeader *bool `yaml:"xlsx_first_row_as_header,omitempty" json:"xlsx_first_row_as_header,omitempty"`
 }
+
+// ParserEngineSourceSystem selects the platform-owned parser configuration.
+const ParserEngineSourceSystem = "system"
 
 // ChunkingConfig represents the document splitting configuration
 type ChunkingConfig struct {

@@ -150,6 +150,9 @@ func (s *knowledgeService) CreateKnowledgeFromFile(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	if err := s.systemParserSvc.ValidateSelection(ctx, eff.ChunkingConfig, getFileType(safeFilename)); err != nil {
+		return nil, err
+	}
 
 	// Prepare knowledge record
 	logger.Info(ctx, "Preparing knowledge record")
@@ -396,6 +399,9 @@ func (s *knowledgeService) CreateKnowledgeFromURL(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	if err := s.systemParserSvc.ValidateSelection(ctx, eff.ChunkingConfig, "url"); err != nil {
+		return nil, err
+	}
 
 	if err := s.repo.CreateKnowledge(ctx, knowledge); err != nil {
 		logger.Errorf(ctx, "Failed to create knowledge record: %v", err)
@@ -631,6 +637,9 @@ func (s *knowledgeService) createKnowledgeFromFileURL(
 
 	eff, err := resolveFileImportProcessConfig(ctx, kb, fileType, processOverrides, enableMultimodel)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.systemParserSvc.ValidateSelection(ctx, eff.ChunkingConfig, fileType); err != nil {
 		return nil, err
 	}
 	if processOverrides != nil {

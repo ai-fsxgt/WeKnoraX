@@ -1,4 +1,18 @@
 export default {
+  systemParser: {
+    pdfDescription: '通过专用服务异步解析 PDF 文档',
+    title: '系统解析引擎',
+    description: '集中配置第三方解析服务。配置并启用后，所有工作空间都可以在知识库中选择使用。',
+    enabled: '已启用',
+    disabled: '已停用',
+    notConfigured: '待配置',
+    enableLabel: '向所有工作空间开放',
+    enableHint: '启用后可在知识库中选择。停用会阻止新的解析任务，不影响已完成的文档。',
+    secretHint: '已保存的密钥以 *** 显示；留空或保持 *** 将保留原密钥。',
+    pdfEndpointHint: '填写 PDF 专用解析服务的根地址，不包含 /pdf_parse 路径。',
+    optionLabel: '系统 · {name}',
+    selectionUnavailable: '该系统引擎已停用或不再可用，请选择其他引擎后再解析。',
+  },
   platformApiKeys: {
     title: '平台 API Key',
     description: '为跨空间自动化创建平台级凭据；调用空间接口时通过 X-Tenant-ID 指定目标空间。',

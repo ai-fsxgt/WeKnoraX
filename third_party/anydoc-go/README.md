@@ -136,11 +136,14 @@ Keep this list current: it is the diff a future upgrade has to re-apply. Items
 6. `scripts/build-anydoc-lib.sh` copies the pinned anydoc release to
    `patched-anydoc/` (gitignored) and re-exports `document_to_markdown`, which
    is crate-private in the published crate. It reads the version from the
-   `anydoc = "=X.Y.Z"` pin above and checks it against `version.go`, so a bump
-   is one line and cannot half-land.
+   `anydoc = "=X.Y.Z"` pin above and checks it against `version.go` to keep
+   the Rust crate and reported Go version aligned.
    `src/asset_links.rs` then rewrites `ImageSource::Asset`
    to `External("images/image-N.ext")` so the official serializer emits in-place
    image links. `anydoc_to_markdown_with_asset_links` is the ABI for that path.
+   The same patch updates `zip` to 9.0.5 and `calamine` to 0.37.0, which also
+   uses zip 9, so neither dependency path retains vulnerable zip 8. The patch
+   marker includes this revision to rebuild copies left by earlier builds.
 
 ## Dependency pinning and audit
 
@@ -156,15 +159,14 @@ kills the process with a stack overflow (`RUSTSEC-2026-0187`), which neither
 and the same input comes back as an ordinary error;
 `TestDeeplyNestedPDFFailsWithoutKillingTheProcess` keeps it that way.
 
-Moving the pin to 0.1.9 added no crate and removed none: `lopdf` stays at 0.42
-and the whole tree below `pdf-inspector` is unchanged, so the lockfile diff is
-three version lines and one checksum. The audit result is therefore the same
-one described below.
+The anydoc 0.1.9 pin keeps `lopdf` at 0.42. Its ZIP dependencies are patched to
+`zip` 9.0.5 and `calamine` 0.37.0 to address `RUSTSEC-2026-0367`,
+`RUSTSEC-2026-0368`, and `RUSTSEC-2026-0369`; updating only the direct zip
+dependency would leave calamine's vulnerable zip 8 in the tree.
 
-`cargo audit` currently reports one allowed warning: `ttf-parser` 0.25.1 is
-unmaintained (`RUSTSEC-2026-0192`), pulled in transitively by the PDF stack. It
-is not a vulnerability and nothing here can fix it, so warnings report without
-failing the job.
+`cargo audit` also reports allowed warnings for the unmaintained `ttf-parser`
+0.25.1 (`RUSTSEC-2026-0192`) and the yanked `chacha20` 0.10.1. These warnings
+do not fail the job; vulnerability findings do.
 
 ## Known upstream limitation
 

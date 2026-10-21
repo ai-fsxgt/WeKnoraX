@@ -9,7 +9,8 @@ export interface VersionedRequestCoordinator<T> {
  *
  * A forced read requested while another read is running is queued after the
  * current request. Invalidating the coordinator also prevents an older
- * response from overwriting state changed by a newer write.
+ * response from overwriting state changed by a newer write and makes the
+ * next read request fresh data.
  */
 export function createVersionedRequestCoordinator<T>(
   request: () => Promise<T>,
@@ -20,6 +21,7 @@ export function createVersionedRequestCoordinator<T>(
   let completedSequence = 0
   let forceTargetSequence = 0
   let inFlight: Promise<void> | null = null
+  let inFlightRevision = 0
   let forceQueue: Promise<void> | null = null
 
   const start = (): Promise<void> => {
@@ -33,6 +35,7 @@ export function createVersionedRequestCoordinator<T>(
     })()
 
     inFlight = current
+    inFlightRevision = requestRevision
     void current.then(
       () => {
         completedSequence = Math.max(completedSequence, sequence)
@@ -48,10 +51,9 @@ export function createVersionedRequestCoordinator<T>(
 
   const fetch = (force = false): Promise<void> => {
     if (!inFlight) return start()
-    if (!force) return inFlight
+    if (!force && inFlightRevision === revision) return inFlight
 
-    // A force call always requires at least one request newer than the one
-    // that was in flight when force was requested.
+    // A forced read or a read after invalidation requires a newer request.
     forceTargetSequence = Math.max(forceTargetSequence, startedSequence + 1)
     if (!forceQueue) {
       const queued = (async () => {

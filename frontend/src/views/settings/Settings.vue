@@ -126,6 +126,9 @@
                   <div v-if="currentSection === 'parser'" class="section">
                     <ParserEngineSettings />
                   </div>
+                  <div v-if="currentSection === 'system-parser'" class="section">
+                    <ParserEngineSettings system />
+                  </div>
 
                   <!-- 存储引擎 -->
                   <div v-if="currentSection === 'storage'" class="section">
@@ -390,6 +393,7 @@ const navItems = computed(() => {
     { key: 'memory', icon: 'bulletpoint', label: t('memoryWorkspaceSettings.title') },
     { key: 'vectorstore', icon: 'data-base', label: t('settings.vectorStoreEngine') },
     { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
+    { key: 'system-parser', icon: 'file-search', label: t('systemParser.title') },
     { key: 'storage', icon: 'cloud', label: t('settings.storageEngine') },
     { key: 'sandbox', icon: 'server', label: t('settings.sandbox.title') },
     { key: 'mcp', icon: 'tools', label: t('settings.mcpService') },
@@ -457,6 +461,7 @@ const navGroups = computed<NavGroup[]>(() => {
         'system-tenants',
         'models',
         'system-global',
+        'system-parser',
         'runtime-queues',
         'platform-api-keys',
         'system-audit-log',

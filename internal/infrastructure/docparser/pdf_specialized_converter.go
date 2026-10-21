@@ -16,6 +16,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/utils"
 )
 
 const (
@@ -41,6 +42,14 @@ func NewPDFSpecializedReader(endpoint string) *PDFSpecializedReader {
 			},
 		},
 	}
+}
+
+// NewSafePDFSpecializedReader validates outbound connections for an endpoint
+// supplied through platform settings instead of the deployment environment.
+func NewSafePDFSpecializedReader(endpoint string) *PDFSpecializedReader {
+	reader := NewPDFSpecializedReader(endpoint)
+	reader.client.Transport = utils.NewSSRFSafeHTTPClient(utils.SSRFSafeHTTPClientConfig{}).Transport
+	return reader
 }
 
 func pdfSpecializedParserConfig() (bool, string) {

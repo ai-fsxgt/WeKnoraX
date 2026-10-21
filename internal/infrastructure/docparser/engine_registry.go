@@ -17,6 +17,8 @@ type EngineRegistration interface {
 	Name() string
 	Description() string
 	FileTypes(docreaderConnected bool) []string
+	// SupportsSystemConfig reports whether the engine accepts platform-managed configuration.
+	SupportsSystemConfig() bool
 	CheckAvailable(docreaderConnected bool, overrides map[string]string) (available bool, reason string)
 	// NewReader builds the reader for one parse request. Returning an error
 	// means this engine cannot serve the request (missing credentials,
@@ -50,14 +52,25 @@ func RegisterEngine(e EngineRegistration) {
 	localEngines = append(localEngines, e)
 }
 
-// lookupEngine returns the locally registered engine with this name.
-func lookupEngine(name string) (EngineRegistration, bool) {
+// LookupEngine returns a registration without probing unrelated engines.
+func LookupEngine(name string) (EngineRegistration, bool) {
 	for _, engine := range localEngines {
 		if engine.Name() == name {
 			return engine, true
 		}
 	}
 	return nil, false
+}
+
+// ListSystemEngines returns registered engines that support platform-managed configuration.
+func ListSystemEngines() []EngineRegistration {
+	engines := make([]EngineRegistration, 0, len(localEngines))
+	for _, engine := range localEngines {
+		if engine.SupportsSystemConfig() {
+			engines = append(engines, engine)
+		}
+	}
+	return engines
 }
 
 // NewReader builds the reader for an engine.
@@ -69,7 +82,7 @@ func lookupEngine(name string) (EngineRegistration, bool) {
 func NewReader(
 	ctx context.Context, engine, fileType string, isURL bool, deps ReaderDeps,
 ) (interfaces.DocReader, error) {
-	if registration, ok := lookupEngine(engine); ok {
+	if registration, ok := LookupEngine(engine); ok {
 		return registration.NewReader(ctx, deps)
 	}
 	if engine == "" && !isURL && IsSimpleFormat(fileType) {

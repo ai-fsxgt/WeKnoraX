@@ -74,6 +74,21 @@ func TestPlatformControlPlaneRoutesDeclarePlatformCapabilities(t *testing.T) {
 			[]types.APIKeyCapability{types.APIKeyCapabilitySystemSettingsManage},
 		},
 		{
+			http.MethodGet, "/api/v1/system/admin/parser-engines",
+			[]types.APIKeyCapability{
+				types.APIKeyCapabilitySystemSettingsRead,
+				types.APIKeyCapabilitySystemSettingsManage,
+			},
+		},
+		{
+			http.MethodPut, "/api/v1/system/admin/parser-engines/:engine",
+			[]types.APIKeyCapability{types.APIKeyCapabilitySystemSettingsManage},
+		},
+		{
+			http.MethodPost, "/api/v1/system/admin/parser-engines/:engine/check",
+			[]types.APIKeyCapability{types.APIKeyCapabilitySystemSettingsManage},
+		},
+		{
 			http.MethodGet, "/api/v1/system/admin/runtime/queues",
 			[]types.APIKeyCapability{
 				types.APIKeyCapabilitySystemRuntimeRead,

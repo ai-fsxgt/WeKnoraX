@@ -16269,6 +16269,109 @@
                     }
                 }
             }
+        },
+        "/system/admin/parser-engines": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "系统管理"
+                ],
+                "summary": "获取系统解析引擎配置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SystemParserEngineView"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/system/admin/parser-engines/{engine}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "系统管理"
+                ],
+                "summary": "保存系统解析引擎配置与启用状态",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "解析引擎名称",
+                        "name": "engine",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "配置",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.UpdateSystemParserEngineRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/system/admin/parser-engines/{engine}/check": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "系统管理"
+                ],
+                "summary": "检测系统解析引擎连接",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "解析引擎名称",
+                        "name": "engine",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "待检测的配置",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SystemParserEngineConfig"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.ParserEngineInfo"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -19835,6 +19938,10 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "source": {
+                    "description": "Empty and tenant use the workspace configuration; system uses the platform configuration.",
+                    "type": "string"
                 },
                 "xlsx_first_row_as_header": {
                     "description": "XLSXFirstRowAsHeader restores row-1 column context for flat XLSX tables.\nnil preserves the parser default; an explicit false disables the mode.",
@@ -24500,6 +24607,191 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.ParserEngineInfo": {
+            "type": "object",
+            "properties": {
+                "Available": {
+                    "type": "boolean"
+                },
+                "Description": {
+                    "type": "string"
+                },
+                "FileTypes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "Name": {
+                    "type": "string"
+                },
+                "UnavailableReason": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.SystemParserEngineConfig": {
+            "type": "object",
+            "properties": {
+                "chat_parser_engine_rules": {
+                    "description": "ChatParserEngineRules selects parser engines for session-scoped chat\ndocuments. Knowledge bases keep their own rules in ChunkingConfig.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.ParserEngineRule"
+                    }
+                },
+                "mineru_api_key": {
+                    "description": "MinerU 云 API Key",
+                    "type": "string"
+                },
+                "mineru_cloud_enable_formula": {
+                    "type": "boolean"
+                },
+                "mineru_cloud_enable_ocr": {
+                    "type": "boolean"
+                },
+                "mineru_cloud_enable_table": {
+                    "type": "boolean"
+                },
+                "mineru_cloud_language": {
+                    "type": "string"
+                },
+                "mineru_cloud_model": {
+                    "description": "MinerU 云 API 解析参数",
+                    "type": "string"
+                },
+                "mineru_enable_formula": {
+                    "type": "boolean"
+                },
+                "mineru_enable_ocr": {
+                    "description": "MinerUEnableOCR is retained for compatibility with configurations saved\nbefore parse_method supported auto/ocr/txt.",
+                    "type": "boolean"
+                },
+                "mineru_enable_table": {
+                    "type": "boolean"
+                },
+                "mineru_endpoint": {
+                    "description": "MinerU 自建服务端点",
+                    "type": "string"
+                },
+                "mineru_language": {
+                    "type": "string"
+                },
+                "mineru_model": {
+                    "description": "MinerU 自建解析参数",
+                    "type": "string"
+                },
+                "mineru_parse_method": {
+                    "type": "string"
+                },
+                "mineru_self_hosted_api_key": {
+                    "description": "MinerU 自建服务 API Key",
+                    "type": "string"
+                },
+                "mineru_vlm_server_url": {
+                    "description": "vLLM 服务器地址 (vlm-http-client / hybrid-http-client)",
+                    "type": "string"
+                },
+                "odl_hybrid": {
+                    "description": "OpenDataLoader PDF (docreader engine); hybrid requires opendataloader-pdf-hybrid service.",
+                    "type": "string"
+                },
+                "odl_hybrid_fallback": {
+                    "type": "boolean"
+                },
+                "odl_hybrid_mode": {
+                    "description": "auto, full",
+                    "type": "string"
+                },
+                "odl_hybrid_url": {
+                    "description": "e.g. http://odl-hybrid:5002",
+                    "type": "string"
+                },
+                "odl_markdown_with_html": {
+                    "type": "boolean"
+                },
+                "paddleocr_vl_cloud_model": {
+                    "description": "e.g. PaddleOCR-VL-1.6",
+                    "type": "string"
+                },
+                "paddleocr_vl_cloud_token": {
+                    "description": "PaddleOCR-VL AI Studio cloud API.",
+                    "type": "string"
+                },
+                "paddleocr_vl_cloud_use_chart_recognition": {
+                    "type": "boolean"
+                },
+                "paddleocr_vl_cloud_use_seal_recognition": {
+                    "type": "boolean"
+                },
+                "paddleocr_vl_endpoint": {
+                    "description": "PaddleOCR-VL self-hosted pipeline service (full /layout-parsing API).",
+                    "type": "string"
+                },
+                "paddleocr_vl_use_chart_recognition": {
+                    "type": "boolean"
+                },
+                "paddleocr_vl_use_seal_recognition": {
+                    "type": "boolean"
+                },
+                "pdf_specialized_endpoint": {
+                    "type": "string"
+                },
+                "weknoracloud_app_id": {
+                    "type": "string"
+                },
+                "weknoracloud_app_secret": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.SystemParserEngineView": {
+            "type": "object",
+            "properties": {
+                "Available": {
+                    "type": "boolean"
+                },
+                "config": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SystemParserEngineConfig"
+                },
+                "configured": {
+                    "type": "boolean"
+                },
+                "Description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "FileTypes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "Name": {
+                    "type": "string"
+                },
+                "UnavailableReason": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.UpdateSystemParserEngineRequest": {
+            "type": "object",
+            "required": [
+                "config",
+                "enabled"
+            ],
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SystemParserEngineConfig"
+                },
+                "enabled": {
+                    "type": "boolean"
                 }
             }
         }

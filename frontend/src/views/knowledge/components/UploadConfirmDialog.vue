@@ -193,6 +193,7 @@
 
                   <div v-show="activeSection === 'parser'" class="section">
                     <KBParserSettings
+                      allow-system-engines
                       :relevant-extensions="batchFileExts"
                       :parser-engine-rules="uiState.chunkingConfig.parserEngineRules"
                       @update:parser-engine-rules="handleParserEngineRulesUpdate"
@@ -586,6 +587,7 @@ interface ChunkingUIConfig {
   parserEngineRules?: Array<{
     file_types: string[]
     engine: string
+    source?: 'tenant' | 'system'
     xlsx_first_row_as_header?: boolean
   }>
   enableParentChild: boolean
