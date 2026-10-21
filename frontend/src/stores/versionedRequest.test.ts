@@ -35,7 +35,7 @@ test('force queues a fresh request behind an existing request', async () => {
   assert.deepEqual(applied, ['old', 'fresh'])
 })
 
-test('an invalidated older response cannot overwrite newer state', async () => {
+test('a read after invalidation fetches fresh data and ignores the older response', async () => {
   const first = deferred<string>()
   const second = deferred<string>()
   const requests = [first, second]
@@ -48,13 +48,15 @@ test('an invalidated older response cannot overwrite newer state', async () => {
 
   const initial = coordinator.fetch()
   coordinator.invalidate()
-  const forced = coordinator.fetch(true)
+  const refreshed = coordinator.fetch()
 
   first.resolve('stale')
   await initial
   await new Promise<void>(resolve => queueMicrotask(resolve))
+  assert.equal(calls, 2)
+  assert.deepEqual(applied, [])
   second.resolve('fresh')
-  await forced
+  await refreshed
 
   assert.deepEqual(applied, ['fresh'])
 })

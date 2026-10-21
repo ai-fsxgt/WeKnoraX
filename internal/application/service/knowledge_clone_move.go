@@ -1210,6 +1210,16 @@ func (s *knowledgeService) moveKnowledgeItem(ctx context.Context, knowledge *typ
 				"(source KB %s, target KB %s); use reparse mode", sourceKB.ID, targetKB.ID)
 	}
 
+	if mode == "reparse" {
+		processOverrides, err := knowledge.ProcessOverrides()
+		if err != nil {
+			return err
+		}
+		if err := s.validateKnowledgeParserSelection(ctx, targetKB, knowledge, processOverrides); err != nil {
+			return err
+		}
+	}
+
 	// Mark as processing during move
 	knowledge.ParseStatus = types.ParseStatusProcessing
 	if err := s.repo.UpdateKnowledge(ctx, knowledge); err != nil {
@@ -1355,14 +1365,6 @@ func (s *knowledgeService) moveKnowledgeReparse(
 	_, targetKB *types.KnowledgeBase,
 ) error {
 	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
-
-	processOverrides, err := knowledge.ProcessOverrides()
-	if err != nil {
-		return err
-	}
-	if err := s.validateKnowledgeParserSelection(ctx, targetKB, knowledge, processOverrides); err != nil {
-		return err
-	}
 
 	// 1. Clean up existing chunks and vector indices
 	if err := s.cleanupKnowledgeResources(ctx, knowledge); err != nil {
