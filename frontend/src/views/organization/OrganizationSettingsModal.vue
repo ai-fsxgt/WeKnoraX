@@ -136,22 +136,23 @@
                               <span class="invite-method-title">{{ $t('organization.inviteCode') }}</span>
                             </div>
                             <div class="invite-code-box">
-                              <span class="invite-code-value">{{ inviteCode }}</span>
+                              <span class="invite-code-value">{{ isInviteCodeExpired ? '********' : inviteCode }}</span>
                               <div class="invite-code-actions">
-                                <t-tooltip :content="$t('common.copy')">
-                                  <t-button variant="text" size="small" @click="copyInviteCode">
-                                    <t-icon name="file-copy" />
-                                  </t-button>
-                                </t-tooltip>
-                                <t-tooltip :content="$t('organization.refreshInviteCode')">
-                                  <t-button variant="text" size="small" @click="refreshInviteCode"
-                                    :loading="refreshingCode">
-                                    <t-icon name="refresh" />
-                                  </t-button>
-                                </t-tooltip>
+                                <t-button variant="text" size="small" :disabled="isInviteCodeExpired"
+                                  @click="copyInviteCode">
+                                  <template #icon><t-icon name="file-copy" /></template>
+                                  {{ $t('common.copy') }}
+                                </t-button>
+                                <t-button variant="text" size="small" @click="refreshInviteCode"
+                                  :loading="refreshingCode">
+                                  <template #icon><t-icon name="refresh" /></template>
+                                  {{ $t('organization.refreshInviteCode') }}
+                                </t-button>
                               </div>
                             </div>
-                            <p v-if="inviteCode" class="invite-remaining">{{ remainingValidityText }}</p>
+                            <p v-if="inviteCode" class="invite-remaining" :class="{ 'is-expired': isInviteCodeExpired }">
+                              {{ remainingValidityText }}
+                            </p>
                           </div>
 
                           <div class="invite-divider"></div>
@@ -169,23 +170,25 @@
                               @change="handleValidityChange" />
                           </div>
 
-                          <div class="invite-divider"></div>
+                          <template v-if="!isInviteCodeExpired">
+                            <div class="invite-divider"></div>
 
-                          <!-- 邀请链接 -->
-                          <div class="invite-method">
-                            <div class="invite-method-header">
-                              <t-icon name="link" class="invite-icon" />
-                              <span class="invite-method-title">{{ $t('organization.settings.inviteLink') }}</span>
+                            <!-- 邀请链接 -->
+                            <div class="invite-method">
+                              <div class="invite-method-header">
+                                <t-icon name="link" class="invite-icon" />
+                                <span class="invite-method-title">{{ $t('organization.settings.inviteLink') }}</span>
+                              </div>
+                              <div class="invite-link-box">
+                                <span class="invite-link-value">{{ inviteLink }}</span>
+                                <t-tooltip :content="$t('common.copy')">
+                                  <t-button variant="text" size="small" @click="copyInviteLink">
+                                    <t-icon name="file-copy" />
+                                  </t-button>
+                                </t-tooltip>
+                              </div>
                             </div>
-                            <div class="invite-link-box">
-                              <span class="invite-link-value">{{ inviteLink }}</span>
-                              <t-tooltip :content="$t('common.copy')">
-                                <t-button variant="text" size="small" @click="copyInviteLink">
-                                  <t-icon name="file-copy" />
-                                </t-button>
-                              </t-tooltip>
-                            </div>
-                          </div>
+                          </template>
 
                           <div class="invite-divider"></div>
 
@@ -898,6 +901,7 @@ const submitting = ref(false)
 const refreshingCode = ref(false)
 const inviteCode = ref('')
 const inviteCodeExpiresAt = ref<string | null>(null)
+const currentTime = ref(Date.now())
 const upgradePopupVisible = ref(false)
 const upgradeSubmitting = ref(false)
 const hasPendingUpgrade = ref(false)
@@ -1289,8 +1293,13 @@ const isOwnerMember = (member: OrganizationMember): boolean => {
   return member.user_id === orgInfo.value?.owner_id
 }
 
+const isInviteCodeExpired = computed(() => {
+  const expiresAt = inviteCodeExpiresAt.value
+  return expiresAt !== null && new Date(expiresAt).getTime() <= currentTime.value
+})
+
 const inviteLink = computed(() => {
-  if (!inviteCode.value) return ''
+  if (!inviteCode.value || isInviteCodeExpired.value) return ''
   return `${window.location.origin}/join?code=${inviteCode.value}`
 })
 
@@ -1305,9 +1314,8 @@ const remainingValidityText = computed(() => {
   const at = inviteCodeExpiresAt.value
   if (!at) return t('organization.settings.remainingValidityNever')
   const exp = new Date(at)
-  const now = new Date()
-  if (exp.getTime() <= now.getTime()) return t('organization.settings.remainingValidityExpired')
-  const days = Math.ceil((exp.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+  if (isInviteCodeExpired.value) return t('organization.settings.remainingValidityExpired')
+  const days = Math.ceil((exp.getTime() - currentTime.value) / (24 * 60 * 60 * 1000))
   return t('organization.settings.remainingValidity', { n: days })
 })
 
@@ -1694,6 +1702,7 @@ const copySpaceId = async () => {
 }
 
 const copyInviteCode = async () => {
+  if (isInviteCodeExpired.value) return
   await copyWithToast(inviteCode.value, 'common.copied')
 }
 
@@ -1866,8 +1875,13 @@ const unlockBackgroundScroll = () => {
 }
 
 // Watch
-watch(() => props.visible, (newVal) => {
+watch(() => props.visible, (newVal, _oldVal, onCleanup) => {
   if (newVal) {
+    currentTime.value = Date.now()
+    const timer = setInterval(() => {
+      currentTime.value = Date.now()
+    }, 1000)
+    onCleanup(() => clearInterval(timer))
     lockBackgroundScroll()
     void scrollContentToTop()
     currentSection.value = 'basic'
@@ -2532,6 +2546,10 @@ watch(addMemberPopupVisible, (visible) => {
     margin: 8px 0 0;
     font-size: 12px;
     color: var(--td-text-color-secondary);
+
+    &.is-expired {
+      color: var(--td-error-color);
+    }
   }
 
   .invite-validity-desc {
