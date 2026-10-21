@@ -2451,23 +2451,21 @@ func (s *knowledgeService) reparseKnowledge(ctx context.Context, existing *types
 		return nil, werrors.NewBadRequestError(ErrDataTableNotParse.Error())
 	}
 
-	// Allocate a fresh span tree attempt up front. Doing this BEFORE
-	// the cleanup + enqueue means: (a) the UI immediately sees a new
-	// attempt with all five stages back to "pending" instead of the
-	// previous run's "failed" badge lingering; (b) the worker's
-	// fallback path won't double-allocate when payload.Attempt is
-	// already set on the queued task.
-	reparseAttempt := 0
-	if root, n, err := s.tracker().OpenAttempt(ctx, existing.ID, ""); err == nil && root != nil {
-		reparseAttempt = n
-	} else if err != nil {
-		logger.Warnf(ctx, "[Reparse] OpenAttempt failed for %s: %v (will fall back in worker)", existing.ID, err)
-	}
-
 	// Get knowledge base configuration
 	kb, err := s.kbService.GetKnowledgeBaseByID(ctx, existing.KnowledgeBaseID)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to get knowledge base for reparse: %v", err)
+		return nil, err
+	}
+
+	effectiveOverrides := processOverrides
+	if effectiveOverrides == nil {
+		effectiveOverrides, err = existing.ProcessOverrides()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := s.validateKnowledgeParserSelection(ctx, kb, existing, effectiveOverrides); err != nil {
 		return nil, err
 	}
 
@@ -2491,6 +2489,19 @@ func (s *knowledgeService) reparseKnowledge(ctx context.Context, existing *types
 
 	processOverrides, _ = existing.ProcessOverrides()
 	reparseEff := ResolveProcessConfig(kb, processOverrides)
+
+	// Allocate a fresh span tree attempt up front. Doing this BEFORE
+	// the cleanup + enqueue means: (a) the UI immediately sees a new
+	// attempt with all five stages back to "pending" instead of the
+	// previous run's "failed" badge lingering; (b) the worker's
+	// fallback path won't double-allocate when payload.Attempt is
+	// already set on the queued task.
+	reparseAttempt := 0
+	if root, n, err := s.tracker().OpenAttempt(ctx, existing.ID, ""); err == nil && root != nil {
+		reparseAttempt = n
+	} else if err != nil {
+		logger.Warnf(ctx, "[Reparse] OpenAttempt failed for %s: %v (will fall back in worker)", existing.ID, err)
+	}
 
 	// Keep wiki's pending queue consistent across both manual and non-manual
 	// paths. The destructive work (swapping old wiki contributions for new)
@@ -3716,13 +3727,45 @@ func (s *knowledgeService) convert(
 	s.beginStage(ctx, knowledge.ID, types.StageDocReader, docInput)
 	isURL := payload.URL != ""
 	fileType := payload.FileType
-	tenantOverrides := s.getParserEngineOverridesFromContext(ctx)
+	selectionType := fileType
+	if isURL {
+		selectionType = "url"
+	}
+	rule := eff.ChunkingConfig.ResolveParserEngineRule(selectionType)
+	parserEngine := eff.ChunkingConfig.ResolveParserEngine(selectionType)
+	var reader interfaces.DocReader
+	var mergedOverrides map[string]string
 	var uploadOverrides map[string]string
 	if processOverrides, err := knowledge.ProcessOverrides(); err == nil && processOverrides != nil {
 		uploadOverrides = processOverrides.ParserEngineOverrides
 	}
-	mergedOverrides := MergeParserEngineOverrides(tenantOverrides, uploadOverrides)
-	applyParserRuleOverrides(mergedOverrides, eff.ChunkingConfig, fileType)
+	if rule != nil {
+		if err := validateParserEngineSource(*rule, true); err != nil {
+			s.failStage(ctx, knowledge.ID, types.StageDocReader,
+				werrors.ErrCodeDocReaderUnavailable, err.Error(), err)
+			return s.failKnowledge(ctx, knowledge, isLastRetry, "%v", err)
+		}
+	}
+	if rule != nil && rule.Source == types.ParserEngineSourceSystem {
+		var err error
+		reader, mergedOverrides, err = s.systemParserSvc.NewReader(ctx, *rule, selectionType)
+		if err != nil {
+			s.failStage(ctx, knowledge.ID, types.StageDocReader,
+				werrors.ErrCodeDocReaderUnavailable, err.Error(), err)
+			return s.failKnowledge(ctx, knowledge, isLastRetry, "%v", err)
+		}
+		// Per-document options are separate from platform connection parameters.
+		if forceScanned, ok := uploadOverrides["pdf_force_scanned"]; ok {
+			if mergedOverrides == nil {
+				mergedOverrides = make(map[string]string)
+			}
+			mergedOverrides["pdf_force_scanned"] = forceScanned
+		}
+	} else {
+		tenantOverrides := s.getParserEngineOverridesFromContext(ctx)
+		mergedOverrides = MergeParserEngineOverrides(tenantOverrides, uploadOverrides)
+		applyParserRuleOverrides(mergedOverrides, eff.ChunkingConfig, fileType)
+	}
 	if err := validateParserEngineOverrideURLs(mergedOverrides); err != nil {
 		logger.Errorf(ctx, "Parser endpoint rejected for SSRF protection: %v", err)
 		knowledge.ParseStatus = "failed"
@@ -3747,15 +3790,12 @@ func (s *knowledgeService) convert(
 		}
 	}
 
-	parserEngine := eff.ChunkingConfig.ResolveParserEngine(fileType)
-	if isURL {
-		parserEngine = eff.ChunkingConfig.ResolveParserEngine("url")
-	}
-
 	logger.Infof(ctx, "[convert] kb=%s fileType=%s isURL=%v engine=%q rules=%+v",
 		kb.ID, fileType, isURL, parserEngine, eff.ChunkingConfig.ParserEngineRules)
 
-	var reader interfaces.DocReader = s.resolveDocReader(ctx, parserEngine, fileType, isURL, mergedOverrides)
+	if rule == nil || rule.Source != types.ParserEngineSourceSystem {
+		reader = s.resolveDocReader(ctx, parserEngine, fileType, isURL, mergedOverrides)
+	}
 	if reader == nil {
 		logger.Errorf(ctx, "[convert] no doc reader for kb=%s knowledge=%s fileType=%s engine=%q isURL=%v",
 			kb.ID, knowledge.ID, fileType, parserEngine, isURL)

@@ -80,6 +80,7 @@ type SystemHandler struct {
 	// unit tests, in which case only the legacy config is consulted.
 	storageBackendRepo interfaces.StorageBackendRepository
 	sandboxConfigSvc   sandboxConfigService
+	systemParserSvc    *service.SystemParserEngineService
 	// startup snapshot for GET /system/capabilities; bound in router.NewRouter.
 	deploymentCapabilities DeploymentCapabilitiesData
 }
@@ -98,6 +99,7 @@ func NewSystemHandler(cfg *config.Config,
 	storageBackendRepo interfaces.StorageBackendRepository,
 	sandboxConfigSvc *service.TenantSandboxConfigService,
 	runtimeCancellationSvc *service.RuntimeTaskCancellationService,
+	systemParserSvc *service.SystemParserEngineService,
 ) *SystemHandler {
 	return &SystemHandler{
 		cfg:                    cfg,
@@ -113,6 +115,7 @@ func NewSystemHandler(cfg *config.Config,
 		runtimeCancellationSvc: runtimeCancellationSvc,
 		storageBackendRepo:     storageBackendRepo,
 		sandboxConfigSvc:       sandboxConfigSvc,
+		systemParserSvc:        systemParserSvc,
 	}
 }
 
@@ -480,6 +483,11 @@ func (h *SystemHandler) getDocReaderConnInfo() (addr, transport string) {
 // @Success      200  {object}  map[string]interface{}  "解析引擎列表"
 // @Router       /system/parser-engines [get]
 func (h *SystemHandler) ListParserEngines(c *gin.Context) {
+	systemEngines, err := h.systemParserSvc.Available(c.Request.Context())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
 	var overrides map[string]string
 	if v, exists := c.Get(types.TenantInfoContextKey.String()); exists {
 		if tenant, ok := v.(*types.Tenant); ok && tenant != nil {
@@ -499,7 +507,10 @@ func (h *SystemHandler) ListParserEngines(c *gin.Context) {
 	connected := reader != nil && reader.IsConnected()
 	remoteEngines := h.fetchRemoteEngines(c.Request.Context(), reader, overrides)
 	engines := docparser.ListAllEngines(connected, overrides, remoteEngines)
-	c.JSON(200, gin.H{"code": 0, "msg": "success", "data": engines, "docreader_addr": docreaderAddr, "docreader_transport": docreaderTransport, "connected": connected})
+	c.JSON(200, gin.H{
+		"code": 0, "msg": "success", "data": engines, "system_engines": systemEngines,
+		"docreader_addr": docreaderAddr, "docreader_transport": docreaderTransport, "connected": connected,
+	})
 }
 
 // ReconnectDocReader reconnects the document converter to a new (or same) DocReader address.

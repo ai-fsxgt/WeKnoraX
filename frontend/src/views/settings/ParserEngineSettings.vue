@@ -1,9 +1,9 @@
 <template>
   <div class="parser-engine-settings">
     <div class="section-header">
-      <h2>{{ $t('settings.parser.title') }}</h2>
+      <h2>{{ system ? $t('systemParser.title') : $t('settings.parser.title') }}</h2>
       <p class="section-description">
-        {{ $t('settings.parser.description') }}
+        {{ system ? $t('systemParser.description') : $t('settings.parser.description') }}
       </p>
     </div>
 
@@ -30,7 +30,7 @@
       <div v-else class="engine-cards">
         <!-- 当后端未返回 builtin 引擎项时，仍展示 DocReader 状态卡片 -->
         <button
-          v-if="!hasBuiltinEngine"
+          v-if="!system && !hasBuiltinEngine"
           type="button"
           class="engine-card engine-card--builtin"
           :class="{ 'engine-card--active': drawerVisible && currentEngine?.Name === 'builtin' }"
@@ -67,7 +67,15 @@
           <div class="engine-card__body">
             <div class="engine-card__header">
               <h3 class="engine-card__title">{{ getEngineDisplayName(engine.Name) }}</h3>
-              <span v-if="engine.Available" class="engine-card__status engine-card__status--on">
+              <span
+                v-if="system"
+                class="engine-card__status"
+                :class="systemEngineEnabled(engine.Name) ? 'engine-card__status--on' : 'engine-card__status--off'"
+              >
+                <span class="engine-card__status-dot" />
+                {{ systemEngineStatus(engine.Name) }}
+              </span>
+              <span v-else-if="engine.Available" class="engine-card__status engine-card__status--on">
                 <span class="engine-card__status-dot" />
                 {{ $t('settings.parser.available') }}
               </span>
@@ -98,7 +106,8 @@
       v-model:visible="drawerVisible"
       :title="drawerTitle"
       :class="currentEngine ? `parser-engine-drawer parser-engine-drawer--${currentEngine.Name}` : 'parser-engine-drawer'"
-      :hide-footer="!authStore.hasRole('admin') && !needsTestButton"
+      :hide-footer="!canManage && !needsTestButton"
+      :confirm-disabled="!canManage || checking || loading"
       :confirm-loading="saving"
       @confirm="onSave"
       @cancel="drawerVisible = false"
@@ -125,7 +134,7 @@
         配置/状态时才挂载。
       -->
       <template v-if="needsTestButton" #footer-left>
-        <t-button variant="outline" :loading="checking" @click="onCheck">
+        <t-button variant="outline" :loading="checking" :disabled="saving" @click="onCheck">
           <template #icon>
             <t-icon v-if="!checking && saveSuccess && checkMessage" name="check-circle-filled"
               class="status-icon available" />
@@ -140,6 +149,14 @@
       </template>
 
       <div v-if="currentEngine">
+        <t-alert v-if="saveMessage && !saveSuccess" theme="error" :message="saveMessage" class="save-error" />
+        <section v-if="system" class="setting-drawer__section system-availability">
+          <div class="system-availability__copy">
+            <h4 class="setting-drawer__section-title">{{ $t('systemParser.enableLabel') }}</h4>
+            <p class="form-desc">{{ $t('systemParser.enableHint') }}</p>
+          </div>
+          <t-switch v-model="systemEnabled" :disabled="saving" :aria-label="$t('systemParser.enableLabel')" />
+        </section>
         <!--
           Section 1 — 支持文件类型。放在内容开头作为引擎"能干什么"的
           一目了然概览，对所有引擎都有意义；与状态/配置区分开。
@@ -161,7 +178,7 @@
           只有有内容时才渲染，避免空 section 空底部分隔线。
         -->
         <section
-          v-if="currentEngine.Name === 'builtin' || currentEngine.Name === 'weknoracloud'"
+          v-if="!system && (currentEngine.Name === 'builtin' || currentEngine.Name === 'weknoracloud')"
           class="setting-drawer__section"
         >
           <h4 class="setting-drawer__section-title">{{ $t('settings.parser.statusSection', '状态信息') }}</h4>
@@ -211,6 +228,29 @@
               </a>
             </div>
           </template>
+        </section>
+
+        <section v-if="system && currentEngine.Name === 'weknoracloud'" class="setting-drawer__section">
+          <h4 class="setting-drawer__section-title">{{ $t('settings.parser.configSection') }}</h4>
+          <div class="form-item">
+            <label class="form-label">App ID</label>
+            <t-input v-model="config.weknoracloud_app_id" autocomplete="off" />
+          </div>
+          <div class="form-item">
+            <label class="form-label">App Secret</label>
+            <t-input v-model="config.weknoracloud_app_secret" type="password" autocomplete="new-password">
+              <template #prefix-icon><t-icon name="lock-on" /></template>
+            </t-input>
+            <p class="form-desc">{{ $t('systemParser.secretHint') }}</p>
+          </div>
+        </section>
+        <section v-if="system && currentEngine.Name === 'pdf_specialized'" class="setting-drawer__section">
+          <h4 class="setting-drawer__section-title">{{ $t('settings.parser.configSection') }}</h4>
+          <div class="form-item">
+            <label class="form-label">{{ $t('settings.parser.selfHostedEndpoint') }}</label>
+            <t-input v-model="config.pdf_specialized_endpoint" placeholder="https://parser.example.com" clearable />
+            <p class="form-desc">{{ $t('systemParser.pdfEndpointHint') }}</p>
+          </div>
         </section>
 
         <!-- Section 3 — mineru 自建配置 -->
@@ -382,10 +422,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUIStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
+import { useEditorResourcesStore } from '@/stores/editorResources'
 import { MessagePlugin } from 'tdesign-vue-next'
 import SettingDrawer from '@/components/settings/SettingDrawer.vue'
 import {
@@ -393,14 +434,27 @@ import {
   getParserEngineConfig,
   updateParserEngineConfig,
   checkParserEngines,
+  listSystemParserEngines,
+  updateSystemParserEngine,
+  checkSystemParserEngine,
+  type SystemParserEngineConfig,
+  type SystemParserEngineInfo,
   type ParserEngineInfo,
   type ParserEngineConfig,
 } from '@/api/system'
 import { getWeKnoraCloudStatus } from '@/api/model'
 
+const props = withDefaults(defineProps<{ system?: boolean }>(), { system: false })
 const { t } = useI18n()
 const uiStore = useUIStore()
 const authStore = useAuthStore()
+const editorResources = useEditorResourcesStore()
+const canManage = computed(() => props.system ? authStore.isSystemAdmin : authStore.hasRole('admin'))
+const systemEngines = ref<SystemParserEngineInfo[]>([])
+const systemEnabled = ref(false)
+let active = true
+let drawerVersion = 0
+onUnmounted(() => { active = false; drawerVersion += 1 })
 
 const CONFIGURABLE_ENGINES = new Set(['mineru', 'mineru_cloud', 'paddleocr_vl', 'paddleocr_vl_cloud'])
 
@@ -439,7 +493,7 @@ const connected = ref(false)
 const loading = ref(true)
 const error = ref('')
 
-const config = ref<ParserEngineConfig>({ ...DEFAULT_PARSER_CONFIG })
+const config = ref<SystemParserEngineConfig>({ ...DEFAULT_PARSER_CONFIG })
 const saving = ref(false)
 const saveMessage = ref('')
 const saveSuccess = ref(false)
@@ -449,6 +503,7 @@ const checkMessage = ref('')
 const hasBuiltinEngine = computed(() => engines.value.some(e => e.Name === 'builtin'))
 
 const drawerVisible = ref(false)
+watch(drawerVisible, (visible) => { if (!visible) drawerVersion += 1 })
 const currentEngine = ref<ParserEngineInfo | null>(null)
 const drawerTitle = computed(() => {
   return currentEngine.value ? getEngineDisplayName(currentEngine.value.Name) : ''
@@ -507,12 +562,21 @@ function getEngineDisplayName(engineName: string): string {
 }
 
 function getEngineDisplayDesc(engineName: string, fallback: string): string {
+  if (props.system && engineName === 'pdf_specialized') return t('systemParser.pdfDescription')
   const key = `kbSettings.parser.engines.${engineName}.desc`
   const translated = t(key)
   return translated !== key ? translated : fallback
 }
 
 function openDrawer(engine: ParserEngineInfo) {
+  if (saving.value || checking.value) return
+  drawerVersion += 1
+  if (props.system) {
+    const saved = systemEngines.value.find(item => item.Name === engine.Name)
+    if (!saved) return
+    config.value = { ...DEFAULT_PARSER_CONFIG, ...saved.config }
+    systemEnabled.value = saved.enabled
+  }
   currentEngine.value = engine
   drawerVisible.value = true
   saveMessage.value = ''
@@ -569,11 +633,38 @@ async function loadConfig() {
   }
 }
 
+function systemEngineEnabled(name: string): boolean {
+  const engine = systemEngines.value.find(item => item.Name === name)
+  return engine?.enabled === true && engine.configured
+}
+
+function systemEngineStatus(name: string): string {
+  const engine = systemEngines.value.find(item => item.Name === name)
+  if (!engine?.configured) return t('systemParser.notConfigured')
+  return engine.enabled ? t('systemParser.enabled') : t('systemParser.disabled')
+}
+
+async function loadSystemEngines() {
+  const data = await listSystemParserEngines()
+  if (!active) return
+  systemEngines.value = data
+  engines.value = data
+}
+
 async function loadAll() {
   loading.value = true
   error.value = ''
-  await Promise.all([loadEngines(), loadConfig(), checkWkcStatus()])
-  loading.value = false
+  try {
+    if (props.system) {
+      await loadSystemEngines()
+    } else {
+      await Promise.all([loadEngines(), loadConfig(), checkWkcStatus()])
+    }
+  } catch (e: any) {
+    if (active) error.value = e?.message || t('settings.parser.loadFailed')
+  } finally {
+    if (active) loading.value = false
+  }
 }
 
 function buildConfigPayload(): ParserEngineConfig {
@@ -607,6 +698,11 @@ function buildConfigPayload(): ParserEngineConfig {
 }
 
 async function onCheck() {
+  if (checking.value || saving.value) return
+  if (props.system) {
+    await onSystemCheck()
+    return
+  }
   if (!connected) {
     checkMessage.value = t('settings.parser.ensureDocreaderConnected')
     return
@@ -660,6 +756,11 @@ async function onCheck() {
 }
 
 async function onSave() {
+  if (!canManage.value || saving.value || checking.value) return
+  if (props.system) {
+    await onSystemSave()
+    return
+  }
   saving.value = true
   saveMessage.value = ''
   try {
@@ -673,6 +774,51 @@ async function onSave() {
     saveMessage.value = e?.message || t('settings.parser.saveFailed')
   } finally {
     saving.value = false
+  }
+}
+
+async function onSystemCheck() {
+  const engine = currentEngine.value
+  if (!engine) return
+  const version = drawerVersion
+  checking.value = true
+  checkMessage.value = ''
+  saveMessage.value = ''
+  try {
+    const result = await checkSystemParserEngine(engine.Name, { ...config.value })
+    if (!active || version !== drawerVersion) return
+    saveSuccess.value = result.Available === true
+    checkMessage.value = result.Available
+      ? t('settings.parser.checkSuccess')
+      : result.UnavailableReason || t('settings.parser.checkFailed')
+  } catch (e: any) {
+    if (!active || version !== drawerVersion) return
+    saveSuccess.value = false
+    checkMessage.value = e?.message || t('settings.parser.checkFailed')
+  } finally {
+    if (active) checking.value = false
+  }
+}
+
+async function onSystemSave() {
+  const engine = currentEngine.value
+  if (!engine) return
+  const version = drawerVersion
+  saving.value = true
+  saveMessage.value = ''
+  try {
+    await updateSystemParserEngine(engine.Name, systemEnabled.value, { ...config.value })
+    editorResources.invalidate('parserEngines')
+    if (!active) return
+    if (version === drawerVersion) drawerVisible.value = false
+    MessagePlugin.success(t('settings.parser.saveSuccess'))
+    await loadAll()
+  } catch (e: any) {
+    if (!active || version !== drawerVersion) return
+    saveSuccess.value = false
+    saveMessage.value = e?.message || t('settings.parser.saveFailed')
+  } finally {
+    if (active) saving.value = false
   }
 }
 
@@ -710,6 +856,20 @@ onMounted(loadAll)
 .parser-engine-settings {
   width: 100%;
 }
+
+.system-availability {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+
+  .form-desc { margin-bottom: 0; }
+  .t-switch { flex-shrink: 0; }
+}
+
+.save-error { margin-bottom: 20px; }
+
+.engine-card__status--off { color: var(--td-text-color-placeholder); }
 
 .section-header {
   margin-bottom: 28px;

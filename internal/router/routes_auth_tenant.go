@@ -291,6 +291,13 @@ func RegisterSystemAdminRoutes(
 			apiKeyPlatform(types.APIKeyCapabilitySystemSettingsManage), handler.UpdateSystemSetting)
 		g.apiKeyRoute(adminRoutes, http.MethodDelete, "/settings/:key",
 			apiKeyPlatform(types.APIKeyCapabilitySystemSettingsManage), handler.ResetSystemSetting)
+		g.apiKeyRoute(adminRoutes, http.MethodGet, "/parser-engines",
+			apiKeyPlatform(types.APIKeyCapabilitySystemSettingsRead, types.APIKeyCapabilitySystemSettingsManage),
+			handler.ListSystemParserEngines)
+		g.apiKeyRoute(adminRoutes, http.MethodPut, "/parser-engines/:engine",
+			apiKeyPlatform(types.APIKeyCapabilitySystemSettingsManage), handler.UpdateSystemParserEngine)
+		g.apiKeyRoute(adminRoutes, http.MethodPost, "/parser-engines/:engine/check",
+			apiKeyPlatform(types.APIKeyCapabilitySystemSettingsManage), handler.CheckSystemParserEngine)
 
 		// Runtime operations: live asynq queue depths, safe task projections,
 		// and state-checked task actions for the SystemAdmin dashboard. Lite

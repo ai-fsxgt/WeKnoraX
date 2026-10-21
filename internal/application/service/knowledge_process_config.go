@@ -12,6 +12,21 @@ import (
 
 const xlsxFirstRowAsHeaderOverride = "xlsx_first_row_as_header"
 
+func (s *knowledgeService) validateKnowledgeParserSelection(
+	ctx context.Context, kb *types.KnowledgeBase, knowledge *types.Knowledge,
+	overrides *types.KnowledgeProcessOverrides,
+) error {
+	if knowledge.IsManual() {
+		return nil
+	}
+	fileType := resolveKnowledgeFileType(knowledge.FileName, knowledge.FileType)
+	if knowledge.Type == "url" {
+		fileType = "url"
+	}
+	eff := ResolveProcessConfig(kb, overrides)
+	return s.systemParserSvc.ValidateSelection(ctx, eff.ChunkingConfig, fileType)
+}
+
 func applyParserRuleOverrides(
 	overrides map[string]string,
 	config types.ChunkingConfig,

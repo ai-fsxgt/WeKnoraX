@@ -282,6 +282,9 @@ func TestCreateKnowledgeFromFile_PersistsProcessOverrides(t *testing.T) {
 	chunkSize := 512
 	overrides := &types.KnowledgeProcessOverrides{
 		ChunkingConfig: &types.ChunkingConfig{ChunkSize: chunkSize},
+		ParserEngineRules: []types.ParserEngineRule{
+			{FileTypes: []string{"pdf"}, Engine: "mineru", Source: types.ParserEngineSourceSystem},
+		},
 	}
 
 	knowledge, err := svc.CreateKnowledgeFromFile(
@@ -306,6 +309,7 @@ func TestCreateKnowledgeFromFile_PersistsProcessOverrides(t *testing.T) {
 	require.NotNil(t, parsed)
 	require.NotNil(t, parsed.ChunkingConfig)
 	require.Equal(t, chunkSize, parsed.ChunkingConfig.ChunkSize)
+	require.Equal(t, overrides.ParserEngineRules, parsed.ParserEngineRules)
 
 	metadataMap, err := repo.createdKnowledge.Metadata.Map()
 	require.NoError(t, err)

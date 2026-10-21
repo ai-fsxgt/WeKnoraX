@@ -41,6 +41,7 @@ export const SYSTEM_ADMIN_SETTINGS_SECTIONS = new Set([
   'system-users',
   'system-tenants',
   'system-global',
+  'system-parser',
   'runtime-queues',
   'platform-api-keys',
   'system-audit-log',

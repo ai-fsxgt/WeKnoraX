@@ -47,6 +47,7 @@ type knowledgeBaseService struct {
 	dsRepo          interfaces.DataSourceRepository
 	syncLogRepo     interfaces.SyncLogRepository
 	dsScheduler     *datasource.Scheduler
+	systemParserSvc *SystemParserEngineService
 	audit           interfaces.AuditLogService
 }
 
@@ -70,6 +71,7 @@ func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 	syncLogRepo interfaces.SyncLogRepository,
 	dsScheduler *datasource.Scheduler,
 	audit interfaces.AuditLogService,
+	systemParserSvc *SystemParserEngineService,
 ) interfaces.KnowledgeBaseService {
 	return &knowledgeBaseService{
 		repo:            repo,
@@ -90,6 +92,7 @@ func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 		dsRepo:          dsRepo,
 		syncLogRepo:     syncLogRepo,
 		dsScheduler:     dsScheduler,
+		systemParserSvc: systemParserSvc,
 		audit:           audit,
 	}
 }
@@ -132,6 +135,9 @@ func (s *knowledgeBaseService) CreateKnowledgeBase(ctx context.Context,
 		kb.CreatorID = uid
 	}
 	kb.EnsureDefaults()
+	if err := s.systemParserSvc.ValidateRules(ctx, kb.ChunkingConfig.ParserEngineRules, nil); err != nil {
+		return nil, err
+	}
 	applyTenantDefaultStorageProvider(ctx, kb)
 	if err := s.applyAndValidateStorageBackend(ctx, kb); err != nil {
 		return nil, err
@@ -521,6 +527,10 @@ func (s *knowledgeBaseService) UpdateKnowledgeBase(ctx context.Context,
 	kb.Name = name
 	kb.Description = description
 	if config != nil {
+		if err := s.systemParserSvc.ValidateRules(ctx,
+			config.ChunkingConfig.ParserEngineRules, kb.ChunkingConfig.ParserEngineRules); err != nil {
+			return nil, err
+		}
 		kb.ChunkingConfig = config.ChunkingConfig
 		kb.ImageProcessingConfig = config.ImageProcessingConfig
 		if config.FAQConfig != nil {

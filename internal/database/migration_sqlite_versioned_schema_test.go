@@ -18,6 +18,7 @@ var versionedSQLiteTables = []string{
 	"task_pending_ops",
 	"task_dead_letters",
 	"system_settings",
+	"system_parser_engines",
 	"knowledge_processing_spans",
 	"knowledge_tag_relations",
 	"integration_applications",
@@ -46,7 +47,7 @@ var versionedSQLiteColumns = map[string][]string{
 	"im_channel_sessions": {"binding_id", "context_key"},                      // 000091, 000092
 }
 
-const expectedSQLiteMigrationVersion = 21
+const expectedSQLiteMigrationVersion = 22
 
 func TestSQLiteMigrationsCreateVersionedSchema(t *testing.T) {
 	repoRoot := sqliteRepoRoot(t)

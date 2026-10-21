@@ -263,6 +263,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWebSearchProviderRepository))
 	must(container.Provide(repository.NewVectorStoreRepository))
 	must(container.Provide(repository.NewStorageBackendRepository))
+	must(container.Provide(repository.NewSystemParserEngineRepository))
+	must(container.Provide(service.NewSystemParserEngineService))
 	must(container.Provide(repository.NewResourceRepository))
 	must(container.Provide(repository.NewTemporaryDocumentRepository))
 	must(container.Provide(service.NewResourceCatalog))

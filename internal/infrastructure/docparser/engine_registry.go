@@ -50,8 +50,8 @@ func RegisterEngine(e EngineRegistration) {
 	localEngines = append(localEngines, e)
 }
 
-// lookupEngine returns the locally registered engine with this name.
-func lookupEngine(name string) (EngineRegistration, bool) {
+// LookupEngine returns a registration without probing unrelated engines.
+func LookupEngine(name string) (EngineRegistration, bool) {
 	for _, engine := range localEngines {
 		if engine.Name() == name {
 			return engine, true
@@ -69,7 +69,7 @@ func lookupEngine(name string) (EngineRegistration, bool) {
 func NewReader(
 	ctx context.Context, engine, fileType string, isURL bool, deps ReaderDeps,
 ) (interfaces.DocReader, error) {
-	if registration, ok := lookupEngine(engine); ok {
+	if registration, ok := LookupEngine(engine); ok {
 		return registration.NewReader(ctx, deps)
 	}
 	if engine == "" && !isURL && IsSimpleFormat(fileType) {

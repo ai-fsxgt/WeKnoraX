@@ -1,4 +1,18 @@
 export default {
+  systemParser: {
+    pdfDescription: '전용 서비스를 통해 PDF 문서를 비동기로 분석합니다',
+    title: '시스템 파서',
+    description: '타사 문서 분석 서비스를 중앙에서 설정합니다. 설정 후 활성화하면 모든 워크스페이스의 지식베이스에서 선택할 수 있습니다.',
+    enabled: '활성화됨',
+    disabled: '비활성화됨',
+    notConfigured: '미설정',
+    enableLabel: '모든 워크스페이스에 제공',
+    enableHint: '활성화한 파서는 지식베이스에서 선택할 수 있습니다. 비활성화하면 새 분석 작업이 차단되며 완료된 문서에는 영향을 주지 않습니다.',
+    secretHint: '저장된 비밀 키는 ***로 표시됩니다. 비워 두거나 ***를 유지하면 기존 키가 보존됩니다.',
+    pdfEndpointHint: '/pdf_parse 경로를 제외한 PDF 분석 서비스의 기본 URL을 입력하세요.',
+    optionLabel: '시스템 · {name}',
+    selectionUnavailable: '이 시스템 파서는 비활성화되었거나 사용할 수 없습니다. 문서를 분석하기 전에 다른 파서를 선택하세요.',
+  },
   platformApiKeys: {
     title: '플랫폼 API 키',
     description: '워크스페이스 간 자동화를 위한 플랫폼 자격 증명입니다. 워크스페이스 API에는 X-Tenant-ID를 사용하세요.',

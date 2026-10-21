@@ -1,4 +1,18 @@
 export default {
+  systemParser: {
+    pdfDescription: 'Parse PDF documents asynchronously using a dedicated service',
+    title: 'System parsers',
+    description: 'Configure third-party parsing services centrally. Once configured and enabled, they can be selected in knowledge bases across all workspaces.',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    notConfigured: 'Not configured',
+    enableLabel: 'Available to all workspaces',
+    enableHint: 'Enabled parsers can be selected in knowledge bases. Disabling blocks new parsing tasks without affecting completed documents.',
+    secretHint: 'Saved secrets appear as ***. Leave blank or keep *** to retain the saved secret.',
+    pdfEndpointHint: 'Enter the PDF parsing service root URL, without the /pdf_parse path.',
+    optionLabel: 'System · {name}',
+    selectionUnavailable: 'This system parser is disabled or unavailable. Select another parser before processing documents.',
+  },
   menu: {
     knowledgeBase: 'Knowledge Base',
     agents: 'Agents',

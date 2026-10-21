@@ -15,6 +15,7 @@ import { listMCPServices, type MCPService } from '@/api/mcp-service'
 import { listSkills, type SkillInfo } from '@/api/skill'
 import { getAgentTypePresets, getPlaceholders, type AgentTypePreset, type PlaceholdersResponse } from '@/api/agent'
 import { getTenantRetrievalConfig } from '@/api/retrieval'
+import { createVersionedRequestCoordinator } from './versionedRequest'
 
 const CACHE_TTL_MS = 60_000
 
@@ -62,10 +63,16 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
   const placeholders = ref<PlaceholdersResponse | null>(null)
   const tenantRetrievalConfig = ref<Record<string, unknown> | null>(null)
   const parserEngines = ref<ParserEngineInfo[]>([])
+  const systemParserEngines = ref<ParserEngineInfo[]>([])
   const systemInfo = ref<SystemInfo | null>(null)
 
   const loadedAt = ref<Partial<Record<EditorResourceKey, number>>>({})
   const inflight = new Map<EditorResourceKey, Promise<void>>()
+  const parserRequest = createVersionedRequestCoordinator(getParserEngines, (response) => {
+    parserEngines.value = response.data
+    systemParserEngines.value = response.system_engines
+    loadedAt.value.parserEngines = Date.now()
+  })
 
   function isFresh(key: EditorResourceKey): boolean {
     const at = loadedAt.value[key]
@@ -157,11 +164,8 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
   }
 
   async function ensureParserEngines(force = false): Promise<void> {
-    return runOnce('parserEngines', force, async () => {
-      const resp = await getParserEngines()
-      parserEngines.value = resp?.data && Array.isArray(resp.data) ? resp.data : []
-      loadedAt.value.parserEngines = Date.now()
-    })
+    if (!force && isFresh('parserEngines')) return
+    return parserRequest.fetch(force)
   }
 
   async function ensureSystemInfo(force = false): Promise<void> {
@@ -198,11 +202,14 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
       placeholders.value = null
       tenantRetrievalConfig.value = null
       parserEngines.value = []
+      systemParserEngines.value = []
+      parserRequest.invalidate()
       systemInfo.value = null
       inflight.clear()
       return
     }
     keys.forEach((k) => {
+      if (k === 'parserEngines') parserRequest.invalidate()
       delete loadedAt.value[k]
       inflight.delete(k)
     })
@@ -220,6 +227,7 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
     placeholders,
     tenantRetrievalConfig,
     parserEngines,
+    systemParserEngines,
     systemInfo,
     ensureStorageEngine,
     resolveUsableStorageProvider,

@@ -55,6 +55,7 @@ type knowledgeService struct {
 	tenantRepo      interfaces.TenantRepository
 	tenantService   interfaces.TenantService
 	documentReader  interfaces.DocumentReader
+	systemParserSvc *SystemParserEngineService
 	chunkService    interfaces.ChunkService
 	chunkRepo       interfaces.ChunkRepository
 	tagRepo         interfaces.KnowledgeTagRepository
@@ -120,6 +121,7 @@ func NewKnowledgeService(
 	taskPendingRepo interfaces.TaskPendingOpsRepository,
 	spanTracker SpanTracker,
 	audit interfaces.AuditLogService,
+	systemParserSvc *SystemParserEngineService,
 ) (interfaces.KnowledgeService, error) {
 	return &knowledgeService{
 		config:          config,
@@ -128,6 +130,7 @@ func NewKnowledgeService(
 		tenantRepo:      tenantRepo,
 		tenantService:   tenantService,
 		documentReader:  documentReader,
+		systemParserSvc: systemParserSvc,
 		chunkService:    chunkService,
 		chunkRepo:       chunkRepo,
 		tagRepo:         tagRepo,

@@ -184,31 +184,21 @@ const missingStorageEngine = computed(() => {
 const parserEngines = computed<ParserEngineInfo[]>(() => editorResources.parserEngines);
 
 const supportedFileTypes = computed<Set<string>>(() => {
-  const engines = parserEngines.value
-  if (!engines.length) return new Set<string>()
-
-  const rules: { file_types: string[]; engine: string }[] =
+  const engines = [
+    ...parserEngines.value.map(engine => ({ ...engine, source: 'tenant' })),
+    ...editorResources.systemParserEngines.map(engine => ({ ...engine, source: 'system' })),
+  ]
+  const rules: { file_types: string[]; engine: string; source?: string }[] =
     kbInfo.value?.chunking_config?.parser_engine_rules || []
-
-  const ruleMap = new Map<string, string>()
-  for (const r of rules) {
-    for (const ft of r.file_types) ruleMap.set(ft, r.engine)
-  }
-
   const available = new Set<string>()
-  const availableEngineNames = new Set(
-    engines.filter(e => e.Available !== false).map(e => e.Name)
-  )
-
   for (const engine of engines) {
-    for (const ft of engine.FileTypes || []) {
-      if (available.has(ft)) continue
-
-      const explicitEngine = ruleMap.get(ft)
-      if (explicitEngine) {
-        if (availableEngineNames.has(explicitEngine)) available.add(ft)
-      } else {
-        if (engine.Available !== false) available.add(ft)
+    if (engine.Available === false) continue
+    for (const fileType of engine.FileTypes) {
+      const rule = rules.find(item => item.file_types.includes(fileType))
+      if (rule) {
+        if (rule.engine === engine.Name && (rule.source || 'tenant') === engine.source) available.add(fileType)
+      } else if (engine.source === 'tenant') {
+        available.add(fileType)
       }
     }
   }

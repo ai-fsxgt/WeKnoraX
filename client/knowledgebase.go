@@ -114,6 +114,7 @@ type GraphRelation struct {
 type ParserEngineRule struct {
 	FileTypes []string `json:"file_types"`
 	Engine    string   `json:"engine"`
+	Source    string   `json:"source,omitempty"`
 }
 
 // QuestionGenerationConfig controls LLM-generated questions per chunk during parsing.

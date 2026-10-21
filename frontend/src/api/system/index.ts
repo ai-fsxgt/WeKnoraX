@@ -153,7 +153,7 @@ export interface ParserEnginesResponse {
   connected?: boolean
 }
 
-export function getParserEngines(): Promise<ParserEnginesResponse> {
+export function getParserEngines(): Promise<ParserEnginesResponse & { system_engines: ParserEngineInfo[] }> {
   return get('/api/v1/system/parser-engines')
 }
 
@@ -168,6 +168,30 @@ export function getParserEngineConfig(): Promise<{ data: ParserEngineConfig }> {
 
 export function updateParserEngineConfig(config: ParserEngineConfig): Promise<{ data: ParserEngineConfig }> {
   return put('/api/v1/tenants/kv/parser-engine-config', config)
+}
+
+export interface SystemParserEngineConfig extends ParserEngineConfig {
+  weknoracloud_app_id?: string
+  weknoracloud_app_secret?: string
+  pdf_specialized_endpoint?: string
+}
+
+export interface SystemParserEngineInfo extends ParserEngineInfo {
+  enabled: boolean
+  configured: boolean
+  config: SystemParserEngineConfig
+}
+
+export function listSystemParserEngines(): Promise<SystemParserEngineInfo[]> {
+  return get('/api/v1/system/admin/parser-engines')
+}
+
+export function updateSystemParserEngine(engine: string, enabled: boolean, config: SystemParserEngineConfig): Promise<void> {
+  return put(`/api/v1/system/admin/parser-engines/${engine}`, { enabled, config })
+}
+
+export function checkSystemParserEngine(engine: string, config: SystemParserEngineConfig): Promise<ParserEngineInfo> {
+  return post(`/api/v1/system/admin/parser-engines/${engine}/check`, config)
 }
 
 export function reconnectDocReader(addr: string): Promise<ParserEnginesResponse & { msg?: string }> {

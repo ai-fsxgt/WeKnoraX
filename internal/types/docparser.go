@@ -42,11 +42,11 @@ type ImageRef struct {
 
 // ParserEngineInfo describes a registered parser engine.
 type ParserEngineInfo struct {
-	Name              string
-	Description       string
-	FileTypes         []string
-	Available         bool
-	UnavailableReason string
+	Name              string   `json:"Name"`
+	Description       string   `json:"Description"`
+	FileTypes         []string `json:"FileTypes"`
+	Available         bool     `json:"Available"`
+	UnavailableReason string   `json:"UnavailableReason"`
 }
 
 // --- Internal types used by chunking pipeline ---

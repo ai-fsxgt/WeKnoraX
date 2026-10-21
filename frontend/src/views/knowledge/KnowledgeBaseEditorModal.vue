@@ -246,6 +246,7 @@
                 <!-- 解析引擎 -->
                 <div v-if="!isFAQ && formData && currentSection === 'parser'" class="section">
                   <KBParserSettings
+                    allow-system-engines
                     :parser-engine-rules="formData.chunkingConfig.parserEngineRules"
                     @update:parser-engine-rules="handleParserEngineRulesUpdate"
                   />

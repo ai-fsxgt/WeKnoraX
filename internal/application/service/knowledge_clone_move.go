@@ -1356,6 +1356,14 @@ func (s *knowledgeService) moveKnowledgeReparse(
 ) error {
 	tenantID := ctx.Value(types.TenantIDContextKey).(uint64)
 
+	processOverrides, err := knowledge.ProcessOverrides()
+	if err != nil {
+		return err
+	}
+	if err := s.validateKnowledgeParserSelection(ctx, targetKB, knowledge, processOverrides); err != nil {
+		return err
+	}
+
 	// 1. Clean up existing chunks and vector indices
 	if err := s.cleanupKnowledgeResources(ctx, knowledge); err != nil {
 		logger.Warnf(ctx, "moveKnowledgeReparse: cleanup partial error for knowledge %s: %v", knowledge.ID, err)
