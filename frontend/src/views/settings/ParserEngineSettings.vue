@@ -150,12 +150,12 @@
 
       <div v-if="currentEngine">
         <t-alert v-if="saveMessage && !saveSuccess" theme="error" :message="saveMessage" class="save-error" />
-        <section v-if="system" class="setting-drawer__section system-availability">
-          <div class="system-availability__copy">
+        <section v-if="system" class="setting-drawer__section">
+          <div class="system-availability">
             <h4 class="setting-drawer__section-title">{{ $t('systemParser.enableLabel') }}</h4>
-            <p class="form-desc">{{ $t('systemParser.enableHint') }}</p>
+            <t-switch v-model="systemEnabled" :disabled="saving" :aria-label="$t('systemParser.enableLabel')" />
           </div>
-          <t-switch v-model="systemEnabled" :disabled="saving" :aria-label="$t('systemParser.enableLabel')" />
+          <p class="form-desc">{{ $t('systemParser.enableHint') }}</p>
         </section>
         <!--
           Section 1 — 支持文件类型。放在内容开头作为引擎"能干什么"的
@@ -863,7 +863,6 @@ onMounted(loadAll)
   justify-content: space-between;
   gap: 24px;
 
-  .form-desc { margin-bottom: 0; }
   .t-switch { flex-shrink: 0; }
 }
 
