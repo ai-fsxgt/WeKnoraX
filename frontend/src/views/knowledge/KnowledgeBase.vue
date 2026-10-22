@@ -49,6 +49,7 @@ import DocumentCardView from './components/DocumentCardView.vue';
 import DocumentBatchBar from './components/DocumentBatchBar.vue';
 import KbUploadSourceDropdown from './components/KbUploadSourceDropdown.vue';
 import { filterUploadFiles } from './utils/uploadSources';
+import { getAllowedKnowledgeFileTypes } from '@/utils/fileTypeVerification';
 import KbFolderTree from './components/KbFolderTree.vue';
 import TagEditDialog from './components/TagEditDialog.vue';
 import BatchTagDialog from './components/BatchTagDialog.vue';
@@ -206,7 +207,7 @@ const supportedFileTypes = computed<Set<string>>(() => {
 })
 
 const acceptFileTypes = computed(() =>
-  [...supportedFileTypes.value].map(t => '.' + t).join(',')
+  getAllowedKnowledgeFileTypes(supportedFileTypes.value).map(t => '.' + t).join(',')
 )
 
 const unsupportedFileTypes = computed<string[]>(() => {
