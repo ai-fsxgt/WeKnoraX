@@ -826,6 +826,19 @@ export async function purgeArchivedRuntimeTasks(
   return response as unknown as { success: boolean; deleted: number }
 }
 
+/**
+ * Move every archived (finally-failed) task in one queue back to pending.
+ * Backend: POST /api/v1/system/admin/runtime/queues/{queue}/archived/run.
+ */
+export async function runArchivedRuntimeTasks(
+  queue: string,
+): Promise<{ success: boolean; run: number }> {
+  const response = await post(
+    `/api/v1/system/admin/runtime/queues/${encodeURIComponent(queue)}/archived/run`,
+  )
+  return response as unknown as { success: boolean; run: number }
+}
+
 export interface RuntimeTaskCancellation {
   id: string
   queue: string

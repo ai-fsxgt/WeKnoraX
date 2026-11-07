@@ -3867,6 +3867,10 @@ export default {
           purgeArchivedConfirm: 'Remove all {count} failed records from this queue at once. This only clears failed tasks in the queue — it does not affect running or pending tasks, nor does it roll back the business status of documents that already failed. Clear them?',
           purgeArchivedSuccess: 'Cleared {count} failed tasks',
           purgeArchivedError: 'Failed to clear failed tasks',
+          runArchived: 'Retry all',
+          runArchivedConfirm: 'Move all {count} failed tasks in this queue back to pending. Retry counts are not reset, so a task that fails again returns to the failed list. Retry them?',
+          runArchivedSuccess: 'Resubmitted {count} failed tasks',
+          runArchivedError: 'Failed to retry failed tasks',
           cancelPending: 'Cancel pending tasks',
           cancelPendingConfirm: 'Cancel tasks pending in this queue when the operation starts (currently about {count}) and settle their business state. Document cancellation stops the entire document pipeline and related tasks. Required cleanup is retained. New tasks are excluded; failures and tasks whose state changes are kept. Processing continues in the background after closing this page. Continue?',
           cancelPendingError: 'Failed to start cancellation',
@@ -4189,6 +4193,7 @@ export default {
           'system.queue_task_run_now': 'Queue task run now',
           'system.queue_task_cancelled': 'Queue task cancelled',
           'system.queue_archived_purged': 'All failed tasks cleared',
+          'system.queue_archived_run': 'All failed tasks retried',
           'system.queue_pending_cancelled': 'Pending task cancellation started'
         },
         outcome: {

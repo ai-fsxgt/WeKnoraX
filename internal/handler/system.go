@@ -2409,6 +2409,40 @@ func (h *SystemHandler) PurgeArchivedRuntimeTasks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "deleted": deleted})
 }
 
+// RunArchivedRuntimeTasks moves every archived (finally-failed) task in one
+// queue back to pending. Cancellation reservations are skipped.
+// @Summary      Run all archived tasks in a queue
+// @Tags         System Admin
+// @Produce      json
+// @Param        queue path string true "Queue name"
+// @Success      200 {object} map[string]interface{}
+// @Router       /system/admin/runtime/queues/{queue}/archived/run [post]
+func (h *SystemHandler) RunArchivedRuntimeTasks(c *gin.Context) {
+	queue := c.Param("queue")
+	if !isKnownRuntimeQueue(queue) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid queue"})
+		return
+	}
+	inspector, supported := h.taskInspector.(interfaces.RuntimeTaskInspector)
+	if !supported {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Task queue is unavailable"})
+		return
+	}
+	run, available, err := inspector.RunArchivedRuntimeTasks(c.Request.Context(), queue)
+	if !available {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Task queue is unavailable"})
+		return
+	}
+	if err != nil {
+		logger.Errorf(c.Request.Context(), "run archived queue tasks queue=%s: %v", queue, err)
+		c.JSON(http.StatusConflict, gin.H{"error": "Archived tasks could not be run"})
+		return
+	}
+	h.emitQueueTaskAudit(c.Request.Context(), types.AuditActionSystemQueueArchivedRun, queue, "",
+		map[string]string{"run": strconv.Itoa(run)})
+	c.JSON(http.StatusOK, gin.H{"success": true, "run": run})
+}
+
 // StartRuntimeTaskCancellation starts a best-effort business cancellation job
 // for a snapshot of the queue. New tasks are excluded from that snapshot.
 // @Summary      Start cancellation of pending queue tasks

@@ -110,4 +110,7 @@ type RuntimeTaskInspector interface {
 	// document status flipped to "failed" on their last retry, mirroring the
 	// semantics of deleting archived records one by one.
 	PurgeArchivedRuntimeTasks(ctx context.Context, queue string) (deleted int, supported bool, err error)
+	// RunArchivedRuntimeTasks moves every archived task in one queue back to
+	// pending, skipping cancellation reservations like the purge does.
+	RunArchivedRuntimeTasks(ctx context.Context, queue string) (run int, supported bool, err error)
 }

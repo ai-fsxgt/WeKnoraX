@@ -146,6 +146,8 @@ const (
 	// archived (finally-failed) task in one queue in a single action. The
 	// detail payload records the queue and how many records were removed.
 	AuditActionSystemQueueArchivedPurged AuditAction = "system.queue_archived_purged"
+	// AuditActionSystemQueueArchivedRun records re-running every archived task in one queue.
+	AuditActionSystemQueueArchivedRun AuditAction = "system.queue_archived_run"
 	// AuditActionSystemQueuePendingCancelled records a bulk business cancellation request.
 	AuditActionSystemQueuePendingCancelled AuditAction = "system.queue_pending_cancelled"
 

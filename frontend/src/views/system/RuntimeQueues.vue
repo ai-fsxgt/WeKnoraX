@@ -362,6 +362,21 @@
             </t-popconfirm>
             <t-popconfirm
               v-if="taskState === 'archived' && tasks.length > 0"
+              :content="t('system.globalSettings.runtime.tasks.runArchivedConfirm', { count: taskStateCount(taskQueue, 'archived') })"
+              @confirm="runArchivedTasks"
+            >
+              <t-button
+                variant="text"
+                size="small"
+                :loading="runningArchived"
+                :disabled="Boolean(taskActionID) || purging"
+              >
+                <template #icon><t-icon name="refresh" /></template>
+                {{ t('system.globalSettings.runtime.tasks.runArchived') }}
+              </t-button>
+            </t-popconfirm>
+            <t-popconfirm
+              v-if="taskState === 'archived' && tasks.length > 0"
               theme="danger"
               :content="t('system.globalSettings.runtime.tasks.purgeArchivedConfirm', { count: taskStateCount(taskQueue, 'archived') })"
               @confirm="purgeArchivedTasks"
@@ -371,7 +386,7 @@
                 size="small"
                 theme="danger"
                 :loading="purging"
-                :disabled="Boolean(taskActionID)"
+                :disabled="Boolean(taskActionID) || runningArchived"
               >
                 <template #icon><t-icon name="clear" /></template>
                 {{ t('system.globalSettings.runtime.tasks.purgeArchived') }}
@@ -548,6 +563,7 @@ import {
   getRuntimeQueues,
   mutateRuntimeTask,
   purgeArchivedRuntimeTasks,
+  runArchivedRuntimeTasks,
   startRuntimeTaskCancellation,
   getRuntimeTaskCancellation,
   type RuntimeTaskCancellation,
@@ -586,6 +602,7 @@ const tasksSentinelRef = ref<HTMLElement | null>(null)
 const taskActionID = ref('')
 const taskAction = ref<RuntimeTaskAction | ''>('')
 const purging = ref(false)
+const runningArchived = ref(false)
 const startingCancellation = ref(false)
 const cancellation = ref<RuntimeTaskCancellation | null>(null)
 const cancellationError = ref('')
@@ -938,6 +955,22 @@ async function purgeArchivedTasks() {
     MessagePlugin.error(err?.message || t('system.globalSettings.runtime.tasks.purgeArchivedError'))
   } finally {
     purging.value = false
+  }
+}
+
+async function runArchivedTasks() {
+  const queue = taskQueue.value?.name
+  if (!queue || runningArchived.value) return
+  runningArchived.value = true
+  try {
+    const { run } = await runArchivedRuntimeTasks(queue)
+    MessagePlugin.success(t('system.globalSettings.runtime.tasks.runArchivedSuccess', { count: run }))
+    await Promise.all([reloadRuntimeTasks(), load(false)])
+    taskQueue.value = queues.value.find((item) => item.name === queue) ?? taskQueue.value
+  } catch (err: any) {
+    MessagePlugin.error(err?.message || t('system.globalSettings.runtime.tasks.runArchivedError'))
+  } finally {
+    runningArchived.value = false
   }
 }
 

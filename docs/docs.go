@@ -13403,6 +13403,35 @@ const docTemplate = `{
                 }
             }
         },
+        "/system/admin/runtime/queues/{queue}/archived/run": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System Admin"
+                ],
+                "summary": "Run all archived tasks in a queue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Queue name",
+                        "name": "queue",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/system/admin/runtime/queues/{queue}/cancellations": {
             "get": {
                 "produces": [
@@ -16806,6 +16835,7 @@ const docTemplate = `{
                 "system.queue_task_run_now",
                 "system.queue_task_cancelled",
                 "system.queue_archived_purged",
+                "system.queue_archived_run",
                 "system.queue_pending_cancelled",
                 "kb.created",
                 "kb.updated",
@@ -16870,6 +16900,7 @@ const docTemplate = `{
                 "AuditActionSystemQueueTaskRunNow",
                 "AuditActionSystemQueueTaskCancelled",
                 "AuditActionSystemQueueArchivedPurged",
+                "AuditActionSystemQueueArchivedRun",
                 "AuditActionSystemQueuePendingCancelled",
                 "AuditActionKBCreated",
                 "AuditActionKBUpdated",
