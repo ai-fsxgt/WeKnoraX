@@ -13921,6 +13921,79 @@ const docTemplate = `{
                 }
             }
         },
+        "/system/admin/users/overview": {
+            "get": {
+                "description": "Platform totals plus per-user workspace, knowledge-base, document and storage usage.\nSystemAdmin only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System Admin"
+                ],
+                "summary": "Platform user overview",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Username, name, or email search",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Only users who created at least one knowledge base",
+                        "name": "has_knowledge_base",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "created_at",
+                            "knowledge_base_count",
+                            "storage_size"
+                        ],
+                        "type": "string",
+                        "description": "Sort",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Page size (max 100)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.SystemUserOverviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden: not a system admin",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/system/admin/users/reset-password": {
             "post": {
                 "description": "Replace another user's local password and revoke all of their existing sessions (SystemAdmin only).\nA system administrator cannot reset their own password through this endpoint; self-service password change still requires the old password.",
@@ -21163,6 +21236,64 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_Tencent_WeKnora_internal_types.SystemUserOverviewItem": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "document_count": {
+                    "type": "integer"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "knowledge_base_count": {
+                    "type": "integer"
+                },
+                "storage_size": {
+                    "type": "integer"
+                },
+                "username": {
+                    "type": "string"
+                },
+                "workspace_count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_Tencent_WeKnora_internal_types.SystemUserOverviewSummary": {
+            "type": "object",
+            "properties": {
+                "active_users": {
+                    "type": "integer"
+                },
+                "document_count": {
+                    "type": "integer"
+                },
+                "knowledge_base_count": {
+                    "type": "integer"
+                },
+                "storage_quota": {
+                    "type": "integer"
+                },
+                "storage_used": {
+                    "type": "integer"
+                },
+                "total_users": {
+                    "type": "integer"
+                },
+                "users_with_knowledge_bases": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_Tencent_WeKnora_internal_types.TOSEngineConfig": {
             "type": "object",
             "properties": {
@@ -23856,6 +23987,23 @@ const docTemplate = `{
                 },
                 "suggestion_set_id": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handler.SystemUserOverviewResponse": {
+            "type": "object",
+            "properties": {
+                "summary": {
+                    "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SystemUserOverviewSummary"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "users": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_Tencent_WeKnora_internal_types.SystemUserOverviewItem"
+                    }
                 }
             }
         },
