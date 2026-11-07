@@ -2708,6 +2708,37 @@ export default {
     auditTarget: '空间配额：{name}（ID: {id}）',
     auditDiff: '增加 {increase} GB：{before} GB → {after} GB'
   },
+  systemUserOverview: {
+    title: '用户概览',
+    description: '查看所有用户创建的知识库、文档数量和空间占用。用户的占用空间只统计其创建的知识库。',
+    summary: {
+      users: '用户总数',
+      activeUsers: '其中启用 {count} 位',
+      usersWithKnowledgeBases: '已创建知识库的用户',
+      knowledgeBases: '知识库总数',
+      documents: '文档总数',
+      storage: '存储已用',
+      quota: '总配额 {quota}'
+    },
+    searchPlaceholder: '搜索用户名、姓名或邮箱',
+    onlyWithKnowledgeBase: '只看已创建知识库的用户',
+    search: '查询',
+    sort: {
+      createdAt: '按注册时间',
+      knowledgeBaseCount: '按知识库数',
+      storageSize: '按占用空间'
+    },
+    columns: {
+      user: '用户',
+      status: '状态',
+      workspaces: '所属空间',
+      knowledgeBases: '知识库',
+      documents: '文档',
+      storage: '占用空间',
+      createdAt: '注册时间'
+    },
+    empty: '没有找到符合条件的用户'
+  },
   systemUsers: {
     navLabel: '用户管理',
     title: '用户管理',

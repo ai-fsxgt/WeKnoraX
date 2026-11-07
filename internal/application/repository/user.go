@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -172,21 +173,7 @@ func (r *userRepository) ListSystemUsers(
 	var users []*types.User
 	var total int64
 
-	base := r.db.WithContext(ctx).Model(&types.User{})
-	if normalized := strings.TrimSpace(query); normalized != "" {
-		like := "%" + escapeLikePattern(normalized) + "%"
-		base = base.Where(
-			`(LOWER(username) LIKE LOWER(?) ESCAPE ? OR `+
-				`LOWER(email) LIKE LOWER(?) ESCAPE ? OR `+
-				`LOWER(name) LIKE LOWER(?) ESCAPE ?)`,
-			like,
-			`\`,
-			like,
-			`\`,
-			like,
-			`\`,
-		)
-	}
+	base := systemUserSearch(r.db.WithContext(ctx).Model(&types.User{}), query)
 	if isActive != nil {
 		base = base.Where("is_active = ?", *isActive)
 	}
@@ -205,6 +192,125 @@ func (r *userRepository) ListSystemUsers(
 		return nil, 0, err
 	}
 	return users, total, nil
+}
+
+// systemUserSearch applies the case-insensitive username/email/name search
+// shared by the SystemAdmin user console and user overview.
+func systemUserSearch(db *gorm.DB, query string) *gorm.DB {
+	normalized := strings.TrimSpace(query)
+	if normalized == "" {
+		return db
+	}
+	like := "%" + escapeLikePattern(normalized) + "%"
+	return db.Where(
+		`(LOWER(users.username) LIKE LOWER(?) ESCAPE ? OR `+
+			`LOWER(users.email) LIKE LOWER(?) ESCAPE ? OR `+
+			`LOWER(users.name) LIKE LOWER(?) ESCAPE ?)`,
+		like,
+		`\`,
+		like,
+		`\`,
+		like,
+		`\`,
+	)
+}
+
+var systemUserOverviewOrder = map[types.SystemUserOverviewSort]string{
+	types.SystemUserOverviewSortCreatedAt:          "users.created_at DESC, users.id ASC",
+	types.SystemUserOverviewSortKnowledgeBaseCount: "COALESCE(kbs.kb_count, 0) DESC, users.created_at DESC, users.id ASC",
+	types.SystemUserOverviewSortStorageSize:        "COALESCE(kbs.storage_size, 0) DESC, users.created_at DESC, users.id ASC",
+}
+
+// knowledgeStatsByCreator aggregates non-temporary knowledge bases and their
+// documents per creator.
+func (r *userRepository) knowledgeStatsByCreator(ctx context.Context) *gorm.DB {
+	return r.db.WithContext(ctx).Model(&types.KnowledgeBase{}).
+		Select("knowledge_bases.creator_id AS user_id, "+
+			"COUNT(DISTINCT knowledge_bases.id) AS kb_count, "+
+			"COUNT(knowledges.id) AS doc_count, "+
+			"COALESCE(SUM(knowledges.storage_size), 0) AS storage_size").
+		Joins("LEFT JOIN knowledges ON knowledges.knowledge_base_id = knowledge_bases.id "+
+			"AND knowledges.deleted_at IS NULL").
+		Where("knowledge_bases.is_temporary = ?", false).
+		Group("knowledge_bases.creator_id")
+}
+
+// ListSystemUserOverview returns a stable page of per-user workspace and
+// knowledge-base usage for the SystemAdmin overview.
+func (r *userRepository) ListSystemUserOverview(
+	ctx context.Context, filter types.SystemUserOverviewFilter,
+) ([]*types.SystemUserOverviewItem, int64, error) {
+	order, ok := systemUserOverviewOrder[filter.SortBy]
+	if !ok {
+		return nil, 0, fmt.Errorf("unsupported user overview sort: %s", filter.SortBy)
+	}
+	workspaces := r.db.WithContext(ctx).Model(&types.TenantMember{}).
+		Select("user_id, COUNT(*) AS workspace_count").
+		Where("status = ?", types.TenantMemberStatusActive).
+		Group("user_id")
+	base := r.db.WithContext(ctx).Model(&types.User{}).
+		Joins("LEFT JOIN (?) AS ws ON ws.user_id = users.id", workspaces).
+		Joins("LEFT JOIN (?) AS kbs ON kbs.user_id = users.id", r.knowledgeStatsByCreator(ctx))
+	base = systemUserSearch(base, filter.Query)
+	if filter.HasKnowledgeBase {
+		base = base.Where("kbs.kb_count > 0")
+	}
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	items := make([]*types.SystemUserOverviewItem, 0)
+	if err := base.Select("users.id, users.username, users.email, users.is_active, users.created_at, " +
+		"COALESCE(ws.workspace_count, 0) AS workspace_count, " +
+		"COALESCE(kbs.kb_count, 0) AS knowledge_base_count, " +
+		"COALESCE(kbs.doc_count, 0) AS document_count, " +
+		"COALESCE(kbs.storage_size, 0) AS storage_size").
+		Order(order).Offset(filter.Offset).Limit(filter.Limit).Find(&items).Error; err != nil {
+		return nil, 0, err
+	}
+	return items, total, nil
+}
+
+// GetSystemUserOverviewSummary returns platform-wide user, knowledge-base and
+// workspace storage totals.
+func (r *userRepository) GetSystemUserOverviewSummary(ctx context.Context) (*types.SystemUserOverviewSummary, error) {
+	db := r.db.WithContext(ctx)
+	summary := &types.SystemUserOverviewSummary{}
+	if err := db.Model(&types.User{}).Count(&summary.TotalUsers).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&types.User{}).Where("is_active = ?", true).Count(&summary.ActiveUsers).Error; err != nil {
+		return nil, err
+	}
+	creators := db.Model(&types.KnowledgeBase{}).Select("creator_id").Where("is_temporary = ?", false)
+	if err := db.Model(&types.User{}).Where("id IN (?)", creators).
+		Count(&summary.UsersWithKnowledgeBases).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&types.KnowledgeBase{}).Where("is_temporary = ?", false).
+		Count(&summary.KnowledgeBaseCount).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Model(&types.Knowledge{}).
+		Joins("JOIN knowledge_bases ON knowledge_bases.id = knowledges.knowledge_base_id "+
+			"AND knowledge_bases.deleted_at IS NULL AND knowledge_bases.is_temporary = ?", false).
+		Count(&summary.DocumentCount).Error; err != nil {
+		return nil, err
+	}
+	var storage struct {
+		StorageUsed  int64
+		StorageQuota int64
+	}
+	if err := db.Model(&types.Tenant{}).
+		Select("COALESCE(SUM(storage_used), 0) AS storage_used, " +
+			"CASE WHEN MIN(storage_quota) <= 0 THEN 0 ELSE COALESCE(SUM(storage_quota), 0) END AS storage_quota").
+		Scan(&storage).Error; err != nil {
+		return nil, err
+	}
+	summary.StorageUsed = storage.StorageUsed
+	summary.StorageQuota = storage.StorageQuota
+	return summary, nil
 }
 
 // SetSystemUserActive updates only the account-state columns while holding a

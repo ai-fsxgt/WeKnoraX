@@ -358,6 +358,54 @@ export async function listSystemUsers(
   return response as unknown as ListSystemUsersResponse
 }
 
+export type SystemUserOverviewSort = 'created_at' | 'knowledge_base_count' | 'storage_size'
+
+export interface SystemUserOverviewSummary {
+  total_users: number
+  active_users: number
+  users_with_knowledge_bases: number
+  knowledge_base_count: number
+  document_count: number
+  storage_used: number
+  // 0 表示存在不限容量的空间
+  storage_quota: number
+}
+
+export interface SystemUserOverviewItem {
+  id: string
+  username: string
+  email: string
+  is_active: boolean
+  workspace_count: number
+  knowledge_base_count: number
+  document_count: number
+  storage_size: number
+  created_at: string
+}
+
+export interface SystemUserOverviewResponse {
+  summary: SystemUserOverviewSummary
+  total: number
+  users: SystemUserOverviewItem[]
+}
+
+export async function listSystemUserOverview(params: {
+  query: string
+  has_knowledge_base: boolean
+  sort_by: SystemUserOverviewSort
+  page: number
+  page_size: number
+}): Promise<SystemUserOverviewResponse> {
+  const qs = new URLSearchParams({
+    query: params.query,
+    has_knowledge_base: String(params.has_knowledge_base),
+    sort_by: params.sort_by,
+    page: String(params.page),
+    page_size: String(params.page_size),
+  })
+  return await get(`/api/v1/system/admin/users/overview?${qs}`) as unknown as SystemUserOverviewResponse
+}
+
 export async function updateSystemUserStatus(
   userId: string,
   isActive: boolean,

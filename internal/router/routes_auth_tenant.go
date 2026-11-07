@@ -270,6 +270,7 @@ func RegisterSystemAdminRoutes(
 		adminRoutes.POST("/revoke", handler.RevokeSystemAdmin)
 		adminRoutes.GET("/list", handler.ListSystemAdmins)
 		adminRoutes.GET("/users", handler.ListSystemUsers)
+		adminRoutes.GET("/users/overview", handler.ListSystemUserOverview)
 		adminRoutes.POST("/users/reset-password", handler.ResetUserPassword)
 		adminRoutes.POST("/users/create", handler.CreateSystemUser)
 		adminRoutes.PUT("/users/:user_id/status", handler.UpdateSystemUserStatus)

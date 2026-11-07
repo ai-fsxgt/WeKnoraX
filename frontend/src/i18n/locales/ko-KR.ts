@@ -2706,6 +2706,37 @@ export default {
     auditTarget: '공간 할당량: {name} (ID: {id})',
     auditDiff: '{increase} GB 추가: {before} GB → {after} GB'
   },
+  systemUserOverview: {
+    title: '사용자 개요',
+    description: '각 사용자가 만든 지식베이스, 문서 수, 저장 공간 사용량을 확인합니다. 사용자의 저장 공간은 본인이 만든 지식베이스만 집계합니다.',
+    summary: {
+      users: '전체 사용자',
+      activeUsers: '활성 {count}명',
+      usersWithKnowledgeBases: '지식베이스를 만든 사용자',
+      knowledgeBases: '지식베이스 수',
+      documents: '문서 수',
+      storage: '사용 중인 저장 공간',
+      quota: '총 할당량 {quota}'
+    },
+    searchPlaceholder: '사용자 이름, 이름 또는 이메일 검색',
+    onlyWithKnowledgeBase: '지식베이스를 만든 사용자만',
+    search: '검색',
+    sort: {
+      createdAt: '가입일순',
+      knowledgeBaseCount: '지식베이스 수순',
+      storageSize: '저장 공간순'
+    },
+    columns: {
+      user: '사용자',
+      status: '상태',
+      workspaces: '워크스페이스',
+      knowledgeBases: '지식베이스',
+      documents: '문서',
+      storage: '저장 공간',
+      createdAt: '가입일'
+    },
+    empty: '조건에 맞는 사용자가 없습니다'
+  },
   systemUsers: {
     navLabel: '사용자 관리',
     title: '사용자 관리',

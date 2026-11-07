@@ -163,6 +163,10 @@
                     <SystemAuditLog />
                   </div>
 
+                  <div v-if="currentSection === 'system-user-overview'" class="section">
+                    <SystemUserOverview />
+                  </div>
+
                   <div v-if="currentSection === 'system-users'" class="section">
                     <SystemUsers />
                   </div>
@@ -247,6 +251,7 @@ import SystemSettings from '@/views/system/SystemSettings.vue'
 import RuntimeQueues from '@/views/system/RuntimeQueues.vue'
 import PlatformAPIKeys from '@/views/system/PlatformAPIKeys.vue'
 import SystemAuditLog from '@/views/system/SystemAuditLog.vue'
+import SystemUserOverview from '@/views/system/SystemUserOverview.vue'
 import SystemUsers from '@/views/system/SystemUsers.vue'
 import SystemTenants from '@/views/system/SystemTenants.vue'
 import ThirdPartyApplications from '@/views/system/ThirdPartyApplications.vue'
@@ -402,6 +407,7 @@ const navItems = computed(() => {
     { key: 'runtime-queues', icon: 'queue', label: t('settings.taskQueue') },
     { key: 'platform-api-keys', icon: 'secured', label: t('platformApiKeys.title') },
     { key: 'system-audit-log', icon: 'history', label: t('system.globalSettings.audit.tabLabel') },
+    { key: 'system-user-overview', icon: 'chart-bar', label: t('systemUserOverview.title') },
     { key: 'system-users', icon: 'usergroup', label: t('systemUsers.navLabel') },
     { key: 'system-tenants', icon: 'folder', label: t('systemTenants.title') },
     { key: 'userprofile', icon: 'user', label: t('userProfile.title') },
@@ -457,6 +463,7 @@ const navGroups = computed<NavGroup[]>(() => {
       key: 'system_administration',
       label: t('settings.navGroups.systemAdministration'),
       items: pickItems([
+        'system-user-overview',
         'system-users',
         'system-tenants',
         'models',

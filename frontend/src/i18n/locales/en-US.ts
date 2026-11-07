@@ -3555,6 +3555,37 @@ export default {
     auditTarget: 'Workspace quota: {name} (ID: {id})',
     auditDiff: 'Added {increase} GB: {before} GB → {after} GB'
   },
+  systemUserOverview: {
+    title: 'User overview',
+    description: 'See the knowledge bases, documents, and storage each user has created. Storage per user only counts knowledge bases that user created.',
+    summary: {
+      users: 'Total users',
+      activeUsers: '{count} active',
+      usersWithKnowledgeBases: 'Users with knowledge bases',
+      knowledgeBases: 'Knowledge bases',
+      documents: 'Documents',
+      storage: 'Storage used',
+      quota: 'Total quota {quota}'
+    },
+    searchPlaceholder: 'Search username, name, or email',
+    onlyWithKnowledgeBase: 'Only users with knowledge bases',
+    search: 'Search',
+    sort: {
+      createdAt: 'Newest users',
+      knowledgeBaseCount: 'Most knowledge bases',
+      storageSize: 'Most storage'
+    },
+    columns: {
+      user: 'User',
+      status: 'Status',
+      workspaces: 'Workspaces',
+      knowledgeBases: 'Knowledge bases',
+      documents: 'Documents',
+      storage: 'Storage',
+      createdAt: 'Registered'
+    },
+    empty: 'No matching users'
+  },
   systemUsers: {
     navLabel: 'User Management',
     title: 'User Management',

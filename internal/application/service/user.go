@@ -979,6 +979,28 @@ func (s *userService) ListSystemUsers(
 	return repo.ListSystemUsers(ctx, query, isActive, offset, limit)
 }
 
+// ListSystemUserOverview delegates the per-user usage page to the system-user
+// repository extension.
+func (s *userService) ListSystemUserOverview(
+	ctx context.Context, filter types.SystemUserOverviewFilter,
+) ([]*types.SystemUserOverviewItem, int64, error) {
+	repo, ok := s.userRepo.(interfaces.SystemUserRepository)
+	if !ok {
+		return nil, 0, errors.New("system user overview is unavailable")
+	}
+	return repo.ListSystemUserOverview(ctx, filter)
+}
+
+// GetSystemUserOverviewSummary delegates platform-wide totals to the
+// system-user repository extension.
+func (s *userService) GetSystemUserOverviewSummary(ctx context.Context) (*types.SystemUserOverviewSummary, error) {
+	repo, ok := s.userRepo.(interfaces.SystemUserRepository)
+	if !ok {
+		return nil, errors.New("system user overview is unavailable")
+	}
+	return repo.GetSystemUserOverviewSummary(ctx)
+}
+
 // RevokeSystemAdmin removes system-admin privileges through the
 // repository's transactional guard so concurrent revokes cannot remove
 // the final administrator.

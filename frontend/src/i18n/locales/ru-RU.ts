@@ -2706,6 +2706,37 @@ export default {
     auditTarget: 'Квота пространства: {name} (ID: {id})',
     auditDiff: 'Добавлено {increase} ГБ: {before} ГБ → {after} ГБ'
   },
+  systemUserOverview: {
+    title: 'Обзор пользователей',
+    description: 'Базы знаний, документы и занятое место по каждому пользователю. Учитываются только базы знаний, созданные самим пользователем.',
+    summary: {
+      users: 'Всего пользователей',
+      activeUsers: 'Активных: {count}',
+      usersWithKnowledgeBases: 'Создали базы знаний',
+      knowledgeBases: 'Баз знаний',
+      documents: 'Документов',
+      storage: 'Занято места',
+      quota: 'Общая квота {quota}'
+    },
+    searchPlaceholder: 'Поиск по логину, имени или email',
+    onlyWithKnowledgeBase: 'Только с базами знаний',
+    search: 'Найти',
+    sort: {
+      createdAt: 'По дате регистрации',
+      knowledgeBaseCount: 'По числу баз знаний',
+      storageSize: 'По занятому месту'
+    },
+    columns: {
+      user: 'Пользователь',
+      status: 'Статус',
+      workspaces: 'Пространства',
+      knowledgeBases: 'Базы знаний',
+      documents: 'Документы',
+      storage: 'Занято',
+      createdAt: 'Регистрация'
+    },
+    empty: 'Подходящие пользователи не найдены'
+  },
   systemUsers: {
     navLabel: 'Управление пользователями',
     title: 'Управление пользователями',

@@ -1667,6 +1667,77 @@ func (h *SystemHandler) ListSystemUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, ListSystemUsersResponse{Total: total, Users: infos})
 }
 
+// SystemUserOverviewResponse is the SystemAdmin user overview payload.
+type SystemUserOverviewResponse struct {
+	Summary *types.SystemUserOverviewSummary `json:"summary"`
+	Total   int64                            `json:"total"`
+	Users   []*types.SystemUserOverviewItem  `json:"users"`
+}
+
+// ListSystemUserOverview godoc
+// @Summary      Platform user overview
+// @Description  Platform totals plus a page of per-user workspace, knowledge-base, document and storage usage (SystemAdmin only).
+// @Tags         System Admin
+// @Produce      json
+// @Param        query              query string false "Username, name, or email search"
+// @Param        has_knowledge_base query bool   false "Only users who created at least one knowledge base"
+// @Param        sort_by            query string false "created_at, knowledge_base_count, or storage_size" default(created_at)
+// @Param        page               query int    false "Page number" default(1)
+// @Param        page_size          query int    false "Page size (max 100)" default(20)
+// @Success      200  {object}  SystemUserOverviewResponse
+// @Failure      400  {object}  map[string]interface{} "Invalid query parameters"
+// @Failure      403  {object}  map[string]interface{} "Forbidden: not a system admin"
+// @Router       /system/admin/users/overview [get]
+func (h *SystemHandler) ListSystemUserOverview(c *gin.Context) {
+	ctx := c.Request.Context()
+	page, pageSize, ok := parseListPagination(c)
+	if !ok {
+		return
+	}
+
+	sortBy := types.SystemUserOverviewSortCreatedAt
+	if s := strings.TrimSpace(c.Query("sort_by")); s != "" {
+		sortBy = types.SystemUserOverviewSort(s)
+	}
+	switch sortBy {
+	case types.SystemUserOverviewSortCreatedAt,
+		types.SystemUserOverviewSortKnowledgeBaseCount,
+		types.SystemUserOverviewSortStorageSize:
+	default:
+		_ = c.Error(apperrors.NewValidationError(
+			"sort_by must be one of: created_at, knowledge_base_count, storage_size"))
+		return
+	}
+
+	hasKnowledgeBase := false
+	if s := strings.TrimSpace(c.Query("has_knowledge_base")); s != "" {
+		value, err := strconv.ParseBool(s)
+		if err != nil {
+			_ = c.Error(apperrors.NewValidationError("has_knowledge_base must be a boolean"))
+			return
+		}
+		hasKnowledgeBase = value
+	}
+
+	summary, err := h.userSvc.GetSystemUserOverviewSummary(ctx)
+	if err != nil {
+		_ = c.Error(apperrors.NewInternalServerError("Failed to load user overview").WithDetails(err.Error()))
+		return
+	}
+	users, total, err := h.userSvc.ListSystemUserOverview(ctx, types.SystemUserOverviewFilter{
+		Query:            strings.TrimSpace(c.Query("query")),
+		HasKnowledgeBase: hasKnowledgeBase,
+		SortBy:           sortBy,
+		Offset:           (page - 1) * pageSize,
+		Limit:            pageSize,
+	})
+	if err != nil {
+		_ = c.Error(apperrors.NewInternalServerError("Failed to load user overview").WithDetails(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, SystemUserOverviewResponse{Summary: summary, Total: total, Users: users})
+}
+
 // UpdateSystemUserStatusRequest is the explicit account state mutation body.
 // A pointer preserves false during validation so disabling is not treated as a
 // missing field.
