@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -903,6 +904,8 @@ func TestRunArchivedRuntimeTasksSkipsCancellationReservations(t *testing.T) {
 			asynq.Queue(types.QueueSummary), asynq.TaskID(id))
 		require.NoError(t, err)
 		require.NoError(t, inspector.inspector.ArchiveTask(types.QueueSummary, id))
+		// Worker dequeue drops pending_since before a task is finally archived.
+		require.NoError(t, client.HDel(ctx, "asynq:{summary}:t:"+id, "pending_since").Err())
 	}
 	require.NoError(t, client.HSet(ctx, "asynq:{summary}:t:reserved", "runtime_cancel_token", "token").Err())
 
@@ -915,4 +918,10 @@ func TestRunArchivedRuntimeTasksSkipsCancellationReservations(t *testing.T) {
 	info, err := inspector.inspector.GetTaskInfo(types.QueueSummary, "dead-letter")
 	require.NoError(t, err)
 	require.Equal(t, asynq.TaskStatePending, info.State)
+	pending, err := inspector.GetPendingRuntimeCancellationTask(ctx, types.QueueSummary, "dead-letter")
+	require.NoError(t, err)
+	require.NotNil(t, pending)
+	pendingSince, err := strconv.ParseInt(pending.PendingSince, 10, 64)
+	require.NoError(t, err)
+	require.Positive(t, pendingSince)
 }

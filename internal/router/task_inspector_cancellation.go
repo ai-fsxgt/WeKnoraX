@@ -189,7 +189,8 @@ return deleted
 `)
 
 // Match Asynq's run-all-archived, excluding cancellation reservations like
-// purgeUnreservedArchivedTasks. Asynq keeps the retry counter.
+// purgeUnreservedArchivedTasks. Asynq keeps the retry counter. Dequeue drops
+// pending_since, so restore it for the pending cancellation path.
 var runUnreservedArchivedTasks = redis.NewScript(`
 local ids = redis.call('ZRANGE', KEYS[1], 0, -1)
 local run = 0
@@ -198,7 +199,7 @@ for _, id in ipairs(ids) do
  if redis.call('HEXISTS', key, 'runtime_cancel_token') == 0 then
   redis.call('ZREM', KEYS[1], id)
   redis.call('LPUSH', KEYS[2], id)
-  redis.call('HSET', key, 'state', 'pending')
+  redis.call('HSET', key, 'state', 'pending', 'pending_since', ARGV[2])
   run = run + 1
  end
 end

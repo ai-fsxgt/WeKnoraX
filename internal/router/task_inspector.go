@@ -800,7 +800,7 @@ func (a *asynqTaskInspector) RunArchivedRuntimeTasks(ctx context.Context, queue 
 	}
 	prefix := "asynq:{" + queue + "}:"
 	run, err := runUnreservedArchivedTasks.Run(ctx, a.redis,
-		[]string{prefix + "archived", prefix + "pending"}, prefix+"t:").Int()
+		[]string{prefix + "archived", prefix + "pending"}, prefix+"t:", time.Now().UnixNano()).Int()
 	return run, true, err
 }
 

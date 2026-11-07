@@ -966,7 +966,9 @@ async function runArchivedTasks() {
     const { run } = await runArchivedRuntimeTasks(queue)
     MessagePlugin.success(t('system.globalSettings.runtime.tasks.runArchivedSuccess', { count: run }))
     await Promise.all([reloadRuntimeTasks(), load(false)])
-    taskQueue.value = queues.value.find((item) => item.name === queue) ?? taskQueue.value
+    if (taskQueue.value?.name === queue) {
+      taskQueue.value = queues.value.find((item) => item.name === queue) ?? taskQueue.value
+    }
   } catch (err: any) {
     MessagePlugin.error(err?.message || t('system.globalSettings.runtime.tasks.runArchivedError'))
   } finally {
