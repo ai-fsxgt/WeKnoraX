@@ -38,6 +38,9 @@ const (
 	// minImageBytes is the minimum file size in bytes; very small images are
 	// almost certainly icons or decorative elements.
 	minImageBytes = 512 // 512 bytes
+	// maxImageAspectRatio is the max long/short side ratio; thinner images are
+	// decorative lines and are rejected by Qwen-VL processors (limit 200).
+	maxImageAspectRatio = 200
 )
 
 // isIconImage returns true if the image data looks like a small icon or
@@ -52,7 +55,8 @@ func isIconImage(data []byte) bool {
 	if cfg.Width < minImageDimension && cfg.Height < minImageDimension {
 		return true
 	}
-	return false
+	longSide, shortSide := max(cfg.Width, cfg.Height), min(cfg.Width, cfg.Height)
+	return longSide > shortSide*maxImageAspectRatio
 }
 
 // StoredImage describes an image that has been saved to storage.
