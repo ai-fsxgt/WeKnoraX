@@ -89,6 +89,12 @@ type UserService interface {
 	ListSystemUsers(
 		ctx context.Context, query string, isActive *bool, offset, limit int,
 	) ([]*types.User, int64, error)
+	// ListSystemUserOverview returns a page of per-user knowledge-base usage.
+	ListSystemUserOverview(
+		ctx context.Context, filter types.SystemUserOverviewFilter,
+	) ([]*types.SystemUserOverviewItem, int64, error)
+	// GetSystemUserOverviewSummary returns platform-wide user and storage totals.
+	GetSystemUserOverviewSummary(ctx context.Context) (*types.SystemUserOverviewSummary, error)
 	// AdminCreateUser provisions a new local user on behalf of a
 	// SystemAdmin. When req.Password is nil, a random password is generated
 	// and returned exactly once as the second result. provisioning is
@@ -152,6 +158,10 @@ type SystemUserRepository interface {
 	ListSystemUsers(
 		ctx context.Context, query string, isActive *bool, offset, limit int,
 	) ([]*types.User, int64, error)
+	ListSystemUserOverview(
+		ctx context.Context, filter types.SystemUserOverviewFilter,
+	) ([]*types.SystemUserOverviewItem, int64, error)
+	GetSystemUserOverviewSummary(ctx context.Context) (*types.SystemUserOverviewSummary, error)
 	PromoteSystemAdmin(ctx context.Context, userID string) (*types.User, bool, error)
 	SetSystemUserActive(
 		ctx context.Context, userID, actorID string, isActive bool,

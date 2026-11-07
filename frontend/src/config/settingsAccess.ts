@@ -38,6 +38,7 @@ export const SETTINGS_MANAGEMENT_SHORTCUT_MIN_ROLE = {
 } as const satisfies Record<string, SettingsRoleKey>
 
 export const SYSTEM_ADMIN_SETTINGS_SECTIONS = new Set([
+  'system-user-overview',
   'system-users',
   'system-tenants',
   'system-global',

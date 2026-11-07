@@ -18,6 +18,7 @@ test('system administration settings stay explicitly system-admin-only', () => {
   assert.deepEqual(
     [...SYSTEM_ADMIN_SETTINGS_SECTIONS],
     [
+      'system-user-overview',
       'system-users',
       'system-tenants',
       'system-global',

@@ -3750,6 +3750,44 @@ definitions:
       username:
         type: string
     type: object
+  github_com_Tencent_WeKnora_internal_types.SystemUserOverviewItem:
+    properties:
+      created_at:
+        type: string
+      document_count:
+        type: integer
+      email:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      knowledge_base_count:
+        type: integer
+      storage_size:
+        type: integer
+      username:
+        type: string
+      workspace_count:
+        type: integer
+    type: object
+  github_com_Tencent_WeKnora_internal_types.SystemUserOverviewSummary:
+    properties:
+      active_users:
+        type: integer
+      document_count:
+        type: integer
+      knowledge_base_count:
+        type: integer
+      storage_quota:
+        type: integer
+      storage_used:
+        type: integer
+      total_users:
+        type: integer
+      users_with_knowledge_bases:
+        type: integer
+    type: object
   github_com_Tencent_WeKnora_internal_types.TOSEngineConfig:
     properties:
       access_key:
@@ -5746,6 +5784,17 @@ definitions:
     required:
     - event_type
     - suggestion_set_id
+    type: object
+  internal_handler.SystemUserOverviewResponse:
+    properties:
+      summary:
+        $ref: '#/definitions/github_com_Tencent_WeKnora_internal_types.SystemUserOverviewSummary'
+      total:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/github_com_Tencent_WeKnora_internal_types.SystemUserOverviewItem'
+        type: array
     type: object
   internal_handler.TestProviderRequest:
     properties:
@@ -15365,6 +15414,58 @@ paths:
       - Bearer: []
       - ApiKeyAuth: []
       summary: Increase a workspace storage quota
+      tags:
+      - System Admin
+  /system/admin/users/overview:
+    get:
+      description: |-
+        Platform totals plus per-user workspace, knowledge-base, document and storage usage.
+        SystemAdmin only.
+      parameters:
+      - description: Username, name, or email search
+        in: query
+        name: query
+        type: string
+      - description: Only users who created at least one knowledge base
+        in: query
+        name: has_knowledge_base
+        type: boolean
+      - description: Sort
+        enum:
+        - created_at
+        - knowledge_base_count
+        - storage_size
+        in: query
+        name: sort_by
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Page size (max 100)
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.SystemUserOverviewResponse'
+        "400":
+          description: Invalid query parameters
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: 'Forbidden: not a system admin'
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Platform user overview
       tags:
       - System Admin
   /system/admin/users/reset-password:

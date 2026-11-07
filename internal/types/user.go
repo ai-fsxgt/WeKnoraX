@@ -309,3 +309,49 @@ func (u *User) ToUserInfo() *UserInfo {
 		UpdatedAt:           u.UpdatedAt,
 	}
 }
+
+// SystemUserOverviewSort selects the ordering of the SystemAdmin user overview.
+type SystemUserOverviewSort string
+
+// Supported SystemUserOverviewSort values.
+const (
+	SystemUserOverviewSortCreatedAt          SystemUserOverviewSort = "created_at"
+	SystemUserOverviewSortKnowledgeBaseCount SystemUserOverviewSort = "knowledge_base_count"
+	SystemUserOverviewSortStorageSize        SystemUserOverviewSort = "storage_size"
+)
+
+// SystemUserOverviewFilter narrows and orders the SystemAdmin user overview page.
+type SystemUserOverviewFilter struct {
+	Query            string
+	HasKnowledgeBase bool
+	SortBy           SystemUserOverviewSort
+	Offset           int
+	Limit            int
+}
+
+// SystemUserOverviewItem is one user's knowledge-base usage. Counts cover
+// non-temporary knowledge bases the user created; StorageSize uses the same
+// unit as Tenant.StorageUsed.
+type SystemUserOverviewItem struct {
+	ID                 string    `json:"id"`
+	Username           string    `json:"username"`
+	Email              string    `json:"email"`
+	IsActive           bool      `json:"is_active"`
+	WorkspaceCount     int64     `json:"workspace_count"`
+	KnowledgeBaseCount int64     `json:"knowledge_base_count"`
+	DocumentCount      int64     `json:"document_count"`
+	StorageSize        int64     `json:"storage_size"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+// SystemUserOverviewSummary holds platform-wide totals. StorageQuota is 0
+// when any workspace has an unlimited quota.
+type SystemUserOverviewSummary struct {
+	TotalUsers              int64 `json:"total_users"`
+	ActiveUsers             int64 `json:"active_users"`
+	UsersWithKnowledgeBases int64 `json:"users_with_knowledge_bases"`
+	KnowledgeBaseCount      int64 `json:"knowledge_base_count"`
+	DocumentCount           int64 `json:"document_count"`
+	StorageUsed             int64 `json:"storage_used"`
+	StorageQuota            int64 `json:"storage_quota"`
+}
