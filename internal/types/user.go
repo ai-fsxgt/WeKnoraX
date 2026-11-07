@@ -313,6 +313,7 @@ func (u *User) ToUserInfo() *UserInfo {
 // SystemUserOverviewSort selects the ordering of the SystemAdmin user overview.
 type SystemUserOverviewSort string
 
+// Supported SystemUserOverviewSort values.
 const (
 	SystemUserOverviewSortCreatedAt          SystemUserOverviewSort = "created_at"
 	SystemUserOverviewSortKnowledgeBaseCount SystemUserOverviewSort = "knowledge_base_count"

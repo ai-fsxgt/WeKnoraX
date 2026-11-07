@@ -1676,12 +1676,13 @@ type SystemUserOverviewResponse struct {
 
 // ListSystemUserOverview godoc
 // @Summary      Platform user overview
-// @Description  Platform totals plus a page of per-user workspace, knowledge-base, document and storage usage (SystemAdmin only).
+// @Description  Platform totals plus per-user workspace, knowledge-base, document and storage usage.
+// @Description  SystemAdmin only.
 // @Tags         System Admin
 // @Produce      json
 // @Param        query              query string false "Username, name, or email search"
 // @Param        has_knowledge_base query bool   false "Only users who created at least one knowledge base"
-// @Param        sort_by            query string false "created_at, knowledge_base_count, or storage_size" default(created_at)
+// @Param        sort_by            query string false "Sort" Enums(created_at, knowledge_base_count, storage_size)
 // @Param        page               query int    false "Page number" default(1)
 // @Param        page_size          query int    false "Page size (max 100)" default(20)
 // @Success      200  {object}  SystemUserOverviewResponse

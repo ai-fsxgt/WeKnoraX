@@ -215,10 +215,14 @@ func systemUserSearch(db *gorm.DB, query string) *gorm.DB {
 	)
 }
 
+const systemUserOverviewTieBreak = "users.created_at DESC, users.id ASC"
+
 var systemUserOverviewOrder = map[types.SystemUserOverviewSort]string{
-	types.SystemUserOverviewSortCreatedAt:          "users.created_at DESC, users.id ASC",
-	types.SystemUserOverviewSortKnowledgeBaseCount: "COALESCE(kbs.kb_count, 0) DESC, users.created_at DESC, users.id ASC",
-	types.SystemUserOverviewSortStorageSize:        "COALESCE(kbs.storage_size, 0) DESC, users.created_at DESC, users.id ASC",
+	types.SystemUserOverviewSortCreatedAt: systemUserOverviewTieBreak,
+	types.SystemUserOverviewSortKnowledgeBaseCount: "COALESCE(kbs.kb_count, 0) DESC, " +
+		systemUserOverviewTieBreak,
+	types.SystemUserOverviewSortStorageSize: "COALESCE(kbs.storage_size, 0) DESC, " +
+		systemUserOverviewTieBreak,
 }
 
 // knowledgeStatsByCreator aggregates non-temporary knowledge bases and their
