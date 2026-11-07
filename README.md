@@ -108,6 +108,16 @@
 - [Docker](https://www.docker.com/) & [Docker Compose](https://docs.docker.com/compose/)
 - [Git](https://git-scm.com/)
 
+#### 推荐机器配置
+
+| 项目 | 推荐值 |
+| --- | --- |
+| CPU | 16 核 |
+| 内存 | 32 GB（其中 PostgreSQL 容器分配 16 GB） |
+| 磁盘 | SSD，500 GB 以上 |
+
+> PostgreSQL 容器内存应不低于「HNSW 向量索引大小 + 4 GB」，每 100 万条 1536 维向量约占 3.6 GB 索引。内存不足时索引无法常驻缓存，向量检索会因磁盘随机读而超时（报错 `vector retrieval failed for one or more bound stores`）。扩容步骤见 [常见问题 第 20 条](./docs/QA.md#20-pgvector-检索变慢或刚升级后需要做什么)。
+
 ### 📦 安装与启动
 
 ```bash

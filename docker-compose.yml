@@ -493,8 +493,10 @@ services:
   postgres:
     image: registry.cn-hangzhou.aliyuncs.com/ripper/paradedb:v0.22.2-pg17
     container_name: WeKnora-postgres
-    mem_limit: 8g
-    memswap_limit: 8g
+    mem_limit: 16g
+    memswap_limit: 16g
+    shm_size: 1g
+    command: postgres -c shared_buffers=2GB -c effective_cache_size=12GB -c maintenance_work_mem=1GB
     ports:
       - "${DB_PORT:-5432}:5432"
     environment:

@@ -284,6 +284,42 @@ Wiki 模式允许 Agent 根据原始文档自动生成并维护一套结构化�
 
 0.6.2 新增迁移 `000059_embeddings_hnsw_1024`，为 **1024 维** embedding（如 bge-m3）在 PostgreSQL pgvector 上创建 HNSW 索引。服务启动会自动执行迁移；若你使用其他维度，该索引可能不适用，需按自身 embedding 维度另行调优。升级后首次大批量入库期间索引构建可能占用额外 I/O，属正常现象。
 
+### 检索超时报 `vector retrieval failed for one or more bound stores`
+
+**原因**：HNSW 向量索引大于 PostgreSQL 容器可用内存，索引无法常驻缓存，每次检索都要大量随机读磁盘，超过 30 秒检索超时。app 日志中可见 `[Postgres] Vector retrieval failed: timeout: context deadline exceeded`，IM 机器人则回复「处理您的问题时出现了异常」。
+
+**查看索引大小**（索引名按 embedding 维度替换）：
+
+```bash
+docker exec WeKnora-postgres psql -U postgres -d WeKnora -c "select pg_size_pretty(pg_relation_size('embeddings_embedding_idx_1536'));"
+```
+
+**配置规则**（`docker-compose.yml` 中的 `postgres` 服务）：
+
+| 配置 | 规则 | 示例（索引 10GB） |
+| --- | --- | --- |
+| `mem_limit` / `memswap_limit` | ≥ 索引大小 + 4GB | `16g` |
+| `effective_cache_size` | 约为 `mem_limit` 的 75% | `12GB` |
+| `shared_buffers` | 固定 `2GB`，无需随内存调整 | `2GB` |
+
+估算：每 100 万条 1536 维向量约占 3.6GB 索引。索引接近「`mem_limit` − 4GB」时即需扩容。
+
+**扩容步骤**：
+
+1. 先增加服务器物理内存，并为 app、minio、docreader 等其他容器预留空间；
+2. 按上表修改 `mem_limit`、`memswap_limit` 和 `command` 中的 `effective_cache_size`；
+3. 只重建 PostgreSQL：`docker compose up -d --no-deps postgres`；
+4. 预热索引（磁盘较慢时可能耗时数十分钟）：
+
+```bash
+docker exec WeKnora-postgres psql -U postgres -d WeKnora -c "create extension if not exists pg_prewarm; select pg_prewarm('embeddings_embedding_idx_1536', 'read');"
+```
+
+**说明**：
+
+- PostgreSQL 每次重启后都不会自动预热，首批检索可能较慢甚至超时，建议重启后执行上面的预热命令；
+- 内存不会无限增长：`shared_buffers` 固定，其余为系统文件缓存，上限为 `mem_limit`，满后由内核自动淘汰。`docker stats` 显示接近上限属正常现象。
+
 ## 21. 如何在网站嵌入 WeKnora 智能体（Embed Widget）？
 
 0.6.3 起支持**嵌入渠道**：在 **集成中心** 或 Agent 编辑器中创建 embed 渠道，绑定自定义 Agent，获取渠道 ID 与发布 Token（`em_…`），将 `weknora-widget.js` 嵌入外部网页即可提供访客问答。
