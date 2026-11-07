@@ -69,6 +69,11 @@ func TestIsIconImage(t *testing.T) {
 			data:   createTestPNG(200, 30),
 			expect: false,
 		},
+		{
+			name:   "decorative line 370x1",
+			data:   createTestPNG(370, 1),
+			expect: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
