@@ -429,7 +429,7 @@ func (g *pgRepository) VectorRetrieve(ctx context.Context,
 			// abort transaction and let the fallback path below handle it.
 			return err
 		}
-		return tx.Raw(querySQL, allVars...).Scan(&embeddingDBList).Error
+		return tx.Raw(querySQL, allVars...).Find(&embeddingDBList).Error
 	})
 
 	// Fallback: if the transaction failed because of an unsupported GUC (e.g.
@@ -439,7 +439,7 @@ func (g *pgRepository) VectorRetrieve(ctx context.Context,
 		(strings.Contains(err.Error(), "hnsw.ef_search") ||
 			strings.Contains(err.Error(), "hnsw.iterative_scan")) {
 		logger.GetLogger(ctx).Warnf("[Postgres] Retrying vector query without HNSW GUC overrides: %v", err)
-		err = g.db.WithContext(ctx).Raw(querySQL, allVars...).Scan(&embeddingDBList).Error
+		err = g.db.WithContext(ctx).Raw(querySQL, allVars...).Find(&embeddingDBList).Error
 	}
 
 	if err == gorm.ErrRecordNotFound {
