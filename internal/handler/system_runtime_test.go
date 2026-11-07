@@ -90,6 +90,8 @@ type runtimeTaskTestInspector struct {
 	purgedQueue         string
 	purgedCount         int
 	purgeErr            error
+	runArchivedQueue    string
+	runArchivedCount    int
 	cancelKnowledge     string
 	cancelDeleted       int
 	mutatedQueue        string
@@ -208,6 +210,13 @@ func (r *runtimeTaskTestInspector) PurgeArchivedRuntimeTasks(
 		return 0, true, r.purgeErr
 	}
 	return r.purgedCount, true, nil
+}
+
+func (r *runtimeTaskTestInspector) RunArchivedRuntimeTasks(
+	_ context.Context, queue string,
+) (int, bool, error) {
+	r.runArchivedQueue = queue
+	return r.runArchivedCount, true, nil
 }
 
 type runtimeCancellationTestService struct {
@@ -475,6 +484,61 @@ func TestPurgeArchivedRuntimeTasksRejectsUnknownQueue(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodDelete, "/archived", nil)
 
 	handler.PurgeArchivedRuntimeTasks(ctx)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+func TestRunArchivedRuntimeTasksDelegatesToInspectorAndAudits(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	inspector := &runtimeTaskTestInspector{runArchivedCount: 5}
+	audits := &capturingAuditService{}
+	handler := &SystemHandler{taskInspector: inspector, auditSvc: audits}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Params = gin.Params{{Key: "queue", Value: types.QueueSummary}}
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/archived/run", nil)
+
+	handler.RunArchivedRuntimeTasks(ctx)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+	if inspector.runArchivedQueue != types.QueueSummary {
+		t.Fatalf("run queue = %q, want %q", inspector.runArchivedQueue, types.QueueSummary)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response["run"] != float64(5) {
+		t.Fatalf("run = %v, want 5", response["run"])
+	}
+	if len(audits.entries) != 1 {
+		t.Fatalf("audit entries=%d", len(audits.entries))
+	}
+	audit := audits.entries[0]
+	if audit.Action != types.AuditActionSystemQueueArchivedRun || audit.TargetID != types.QueueSummary {
+		t.Fatalf("audit=%+v", audit)
+	}
+	var details map[string]string
+	if err := json.Unmarshal([]byte(audit.Details), &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["run"] != "5" {
+		t.Fatalf("audit details=%v", details)
+	}
+}
+
+func TestRunArchivedRuntimeTasksRejectsUnknownQueue(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := &SystemHandler{taskInspector: &runtimeTaskTestInspector{}}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Params = gin.Params{{Key: "queue", Value: "unknown"}}
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/archived/run", nil)
+
+	handler.RunArchivedRuntimeTasks(ctx)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}

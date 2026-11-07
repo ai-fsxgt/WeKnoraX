@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -889,4 +890,38 @@ func BenchmarkRuntimeTaskCancellation(b *testing.B) {
 			})
 		}
 	}
+}
+
+func TestRunArchivedRuntimeTasksSkipsCancellationReservations(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	inspector := &asynqTaskInspector{redis: client, inspector: asynq.NewInspectorFromRedisClient(client)}
+	enqueuer := asynq.NewClientFromRedisClient(client)
+	ctx := context.Background()
+	for _, id := range []string{"dead-letter", "reserved"} {
+		_, err := enqueuer.Enqueue(asynq.NewTask(types.TypeSummaryGeneration, []byte(id)),
+			asynq.Queue(types.QueueSummary), asynq.TaskID(id))
+		require.NoError(t, err)
+		require.NoError(t, inspector.inspector.ArchiveTask(types.QueueSummary, id))
+		// Worker dequeue drops pending_since before a task is finally archived.
+		require.NoError(t, client.HDel(ctx, "asynq:{summary}:t:"+id, "pending_since").Err())
+	}
+	require.NoError(t, client.HSet(ctx, "asynq:{summary}:t:reserved", "runtime_cancel_token", "token").Err())
+
+	run, supported, err := inspector.RunArchivedRuntimeTasks(ctx, types.QueueSummary)
+	require.NoError(t, err)
+	require.True(t, supported)
+	require.Equal(t, 1, run)
+	require.Equal(t, []string{"reserved"}, client.ZRange(ctx, "asynq:{summary}:archived", 0, -1).Val())
+	require.Equal(t, []string{"dead-letter"}, client.LRange(ctx, "asynq:{summary}:pending", 0, -1).Val())
+	info, err := inspector.inspector.GetTaskInfo(types.QueueSummary, "dead-letter")
+	require.NoError(t, err)
+	require.Equal(t, asynq.TaskStatePending, info.State)
+	pending, err := inspector.GetPendingRuntimeCancellationTask(ctx, types.QueueSummary, "dead-letter")
+	require.NoError(t, err)
+	require.NotNil(t, pending)
+	pendingSince, err := strconv.ParseInt(pending.PendingSince, 10, 64)
+	require.NoError(t, err)
+	require.Positive(t, pendingSince)
 }

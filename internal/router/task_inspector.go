@@ -791,6 +791,19 @@ func (a *asynqTaskInspector) PurgeArchivedRuntimeTasks(ctx context.Context, queu
 	return deleted, true, err
 }
 
+func (a *asynqTaskInspector) RunArchivedRuntimeTasks(ctx context.Context, queue string) (int, bool, error) {
+	if a == nil || a.inspector == nil || a.redis == nil {
+		return 0, false, nil
+	}
+	if _, err := a.inspector.GetQueueInfo(queue); err != nil {
+		return 0, true, err
+	}
+	prefix := "asynq:{" + queue + "}:"
+	run, err := runUnreservedArchivedTasks.Run(ctx, a.redis,
+		[]string{prefix + "archived", prefix + "pending"}, prefix+"t:", time.Now().UnixNano()).Int()
+	return run, true, err
+}
+
 func (a *asynqTaskInspector) WorkerServerStats(
 	ctx context.Context,
 ) ([]types.WorkerServerStat, bool, error) {

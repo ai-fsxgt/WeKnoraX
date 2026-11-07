@@ -2929,6 +2929,7 @@ export default {
           'system.queue_task_run_now': '立即执行队列任务',
           'system.queue_task_cancelled': '终止队列任务',
           'system.queue_archived_purged': '清除全部失败任务',
+          'system.queue_archived_run': '重试全部失败任务',
           'system.queue_pending_cancelled': '批量取消排队任务'
         },
         columns: {
@@ -3195,6 +3196,10 @@ export default {
           purgeArchivedConfirm: '将从当前队列一次性移除全部 {count} 条失败记录，仅清理队列里的失败任务，不影响运行中或排队中的任务，也不会回滚已失败文档的业务状态。确认清除？',
           purgeArchivedSuccess: '已清除 {count} 条失败任务',
           purgeArchivedError: '清除失败任务失败',
+          runArchived: '全部重试',
+          runArchivedConfirm: '将当前队列全部 {count} 条失败任务重新放入待执行队列，重试次数不会重置，再次失败会直接回到失败列表。确认重试？',
+          runArchivedSuccess: '已重新提交 {count} 条失败任务',
+          runArchivedError: '重试失败任务失败',
           cancelPending: '批量取消排队',
           cancelPendingConfirm: '将取消操作开始时当前队列中的排队任务（当前约 {count} 个），同时结束对应业务状态。文档任务会取消整篇文档的处理和关联子任务；必要的清理任务会保留。新增任务不计入本批次，失败或状态变化的任务会继续保留。操作在后台执行，关闭页面后仍会继续。确认取消？',
           cancelPendingError: '启动批量取消失败',

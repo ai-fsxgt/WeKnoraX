@@ -188,6 +188,24 @@ end
 return deleted
 `)
 
+// Match Asynq's run-all-archived, excluding cancellation reservations like
+// purgeUnreservedArchivedTasks. Asynq keeps the retry counter. Dequeue drops
+// pending_since, so restore it for the pending cancellation path.
+var runUnreservedArchivedTasks = redis.NewScript(`
+local ids = redis.call('ZRANGE', KEYS[1], 0, -1)
+local run = 0
+for _, id in ipairs(ids) do
+ local key = ARGV[1] .. id
+ if redis.call('HEXISTS', key, 'runtime_cancel_token') == 0 then
+  redis.call('ZREM', KEYS[1], id)
+  redis.call('LPUSH', KEYS[2], id)
+  redis.call('HSET', key, 'state', 'pending', 'pending_since', ARGV[2])
+  run = run + 1
+ end
+end
+return run
+`)
+
 // CancelRuntimeKnowledgeTasks snapshots each live queue state once for the
 // whole document set, then reads one payload at a time. Deletions cannot shift
 // pagination, and memory does not grow with the sum of task payload sizes.

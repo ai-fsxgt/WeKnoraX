@@ -43,6 +43,7 @@ func TestAuditAction_DotNamespaceConvention(t *testing.T) {
 		AuditActionSystemQueueTaskRunNow,
 		AuditActionSystemQueueTaskCancelled,
 		AuditActionSystemQueueArchivedPurged,
+		AuditActionSystemQueueArchivedRun,
 		AuditActionSystemQueuePendingCancelled,
 	}
 	for _, a := range all {
@@ -133,6 +134,7 @@ func TestAuditAction_NoCollisionsAcrossNamespaces(t *testing.T) {
 	register("AuditActionSystemQueueTaskRunNow", AuditActionSystemQueueTaskRunNow)
 	register("AuditActionSystemQueueTaskCancelled", AuditActionSystemQueueTaskCancelled)
 	register("AuditActionSystemQueueArchivedPurged", AuditActionSystemQueueArchivedPurged)
+	register("AuditActionSystemQueueArchivedRun", AuditActionSystemQueueArchivedRun)
 	register("AuditActionSystemQueuePendingCancelled", AuditActionSystemQueuePendingCancelled)
 }
 
@@ -155,6 +157,7 @@ func TestAuditAction_SystemNamespacePrefix(t *testing.T) {
 		AuditActionSystemQueueTaskRunNow,
 		AuditActionSystemQueueTaskCancelled,
 		AuditActionSystemQueueArchivedPurged,
+		AuditActionSystemQueueArchivedRun,
 		AuditActionSystemQueuePendingCancelled,
 	}
 	for _, a := range cases {
@@ -185,6 +188,7 @@ func TestAuditAction_SystemWireValues(t *testing.T) {
 		{AuditActionSystemQueueTaskRunNow, "system.queue_task_run_now"},
 		{AuditActionSystemQueueTaskCancelled, "system.queue_task_cancelled"},
 		{AuditActionSystemQueueArchivedPurged, "system.queue_archived_purged"},
+		{AuditActionSystemQueueArchivedRun, "system.queue_archived_run"},
 		{AuditActionSystemQueuePendingCancelled, "system.queue_pending_cancelled"},
 	}
 	for _, c := range cases {

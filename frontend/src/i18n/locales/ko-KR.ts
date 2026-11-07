@@ -2873,6 +2873,7 @@ export default {
           'system.queue_task_run_now': '큐 작업 즉시 실행',
           'system.queue_task_cancelled': '큐 작업 취소',
           'system.queue_archived_purged': '실패 작업 모두 지우기',
+          'system.queue_archived_run': '실패 작업 모두 재시도',
           'system.queue_pending_cancelled': '대기 작업 일괄 취소 시작'
         },
         columns: {
@@ -3139,6 +3140,10 @@ export default {
           purgeArchivedConfirm: '현재 큐의 실패 기록 {count}건을 한 번에 제거합니다. 큐의 실패 작업만 정리하며 실행 중이거나 대기 중인 작업에는 영향이 없고, 이미 실패한 문서의 비즈니스 상태도 되돌리지 않습니다. 지울까요?',
           purgeArchivedSuccess: '실패 작업 {count}건을 지웠습니다',
           purgeArchivedError: '실패 작업을 지우지 못했습니다',
+          runArchived: '모두 재시도',
+          runArchivedConfirm: '현재 큐의 실패 작업 {count}개를 모두 대기 큐로 다시 넣습니다. 재시도 횟수는 초기화되지 않으며, 다시 실패하면 실패 목록으로 돌아갑니다. 재시도할까요?',
+          runArchivedSuccess: '실패 작업 {count}개를 다시 제출했습니다',
+          runArchivedError: '실패 작업을 재시도하지 못했습니다',
           cancelPending: '대기 작업 일괄 취소',
           cancelPendingConfirm: '작업 시작 시 이 큐에서 대기 중인 작업(현재 약 {count}개)을 취소하고 비즈니스 상태를 종료합니다. 문서는 전체 처리 및 관련 작업을 취소합니다. 필수 정리 작업은 유지합니다. 새 작업은 제외하며 실패하거나 상태가 바뀐 작업은 유지합니다. 페이지를 닫아도 백그라운드에서 계속됩니다. 취소할까요?',
           cancelPendingError: '일괄 취소를 시작하지 못했습니다',

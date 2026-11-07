@@ -256,6 +256,7 @@ function auditActionTheme(
     case 'system.setting_changed':
     case 'system.queue_task_retried':
     case 'system.queue_task_run_now':
+    case 'system.queue_archived_run':
       return 'warning'
     case 'system.user_password_reset':
     case 'system.queue_task_deleted':
@@ -336,6 +337,7 @@ function auditTargetKey(row: AuditLog): string {
   }
   if (
     row.action === 'system.queue_archived_purged'
+    || row.action === 'system.queue_archived_run'
     || row.action === 'system.queue_pending_cancelled'
   ) {
     const queue = details && typeof details.queue === 'string' ? details.queue : ''
